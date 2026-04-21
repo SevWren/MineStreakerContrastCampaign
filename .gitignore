@@ -1,0 +1,83 @@
+# Repository outputs
+results/
+claude_conv_output/
+docs/result_reports/
+Larger_boards_fidelity_iteration/
+assets/WIP/
+
+# Generated conversation artifacts
+conversations.json
+*_conversation.json
+*_conversation.md
+*codebase*.txt
+
+# Reports and data exports
+*.csv
+*.json
+*.jsonl
+
+# Media and other binary assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+*.svg
+*.ico
+*.tif
+*.tiff
+*.heic
+*.avif
+*.psd
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wmv
+
+# Archives
+*.zip
+*.7z
+*.tar
+*.gz
+*.bz2
+*.xz
+*.rar
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.nox/
+.tox/
+.ipynb_checkpoints/
+
+# Temporary or scratch files
+*.plan
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+
+7a592fcd_conversation.md
+
+# Git ignore cannot enforce file-size caps. Use a pre-commit or CI check
+# if the repository must reject tracked files larger than 50 KB.

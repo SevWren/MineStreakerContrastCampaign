@@ -1,0 +1,318 @@
+"""
+run_contrast_preprocessing_study.py
+
+Batch contrast-preprocessing study over multiple source images.
+Generates per-run artifacts and a cross-run severity analysis focused on
+harm-signal thresholds (for example T>=7 share > 20%).
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+import numpy as np
+
+
+def _parse_csv_list(text: str, cast_fn):
+    vals = []
+    for part in str(text).split(","):
+        part = part.strip()
+        if not part:
+            continue
+        vals.append(cast_fn(part))
+    return vals
+
+
+def _safe_name(path: str) -> str:
+    base = os.path.splitext(os.path.basename(path))[0]
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", base)
+
+
+def _pearson(x_vals, y_vals):
+    if len(x_vals) < 2:
+        return None
+    x = np.asarray(x_vals, dtype=np.float64)
+    y = np.asarray(y_vals, dtype=np.float64)
+    if float(np.std(x)) <= 1e-12 or float(np.std(y)) <= 1e-12:
+        return None
+    return float(np.corrcoef(x, y)[0, 1])
+
+
+def _write_json(path: str, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _write_csv(path: str, rows):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if not rows:
+        return
+    keys = list(rows[0].keys())
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _build_summary(rows):
+    severe = [r for r in rows if r["harm_signal_t_ge_7_pct"] > 0.20]
+    non_severe = [r for r in rows if r["harm_signal_t_ge_7_pct"] <= 0.20]
+
+    def agg(group_rows):
+        if not group_rows:
+            return {
+                "count": 0,
+                "mean_n_unknown": None,
+                "median_n_unknown": None,
+                "mean_coverage": None,
+                "mean_hi_err": None,
+                "solvable_rate": None,
+                "mean_total_time_s": None,
+            }
+        return {
+            "count": len(group_rows),
+            "mean_n_unknown": float(np.mean([r["n_unknown"] for r in group_rows])),
+            "median_n_unknown": float(np.median([r["n_unknown"] for r in group_rows])),
+            "mean_coverage": float(np.mean([r["coverage"] for r in group_rows])),
+            "mean_hi_err": float(np.mean([r["hi_err"] for r in group_rows])),
+            "solvable_rate": float(np.mean([1.0 if r["solvable"] else 0.0 for r in group_rows])),
+            "mean_total_time_s": float(np.mean([r["total_time_s"] for r in group_rows])),
+        }
+
+    by_image = {}
+    image_names = sorted(set(r["image"] for r in rows))
+    for image in image_names:
+        img_rows = [r for r in rows if r["image"] == image]
+        by_image[image] = {
+            "count": len(img_rows),
+            "best_by_unknown_then_hi_err": sorted(
+                img_rows,
+                key=lambda r: (r["n_unknown"], r["hi_err"], r["total_time_s"]),
+            )[0],
+            "worst_by_unknown": sorted(
+                img_rows,
+                key=lambda r: (r["n_unknown"], r["hi_err"], r["total_time_s"]),
+                reverse=True,
+            )[0],
+        }
+
+    x_harm = [r["harm_signal_t_ge_7_pct"] for r in rows]
+    y_unknown = [r["n_unknown"] for r in rows]
+    y_coverage = [r["coverage"] for r in rows]
+    y_hi_err = [r["hi_err"] for r in rows]
+
+    return {
+        "rows": len(rows),
+        "threshold_analysis": {
+            "definition": "severe if harm_signal_t_ge_7_pct > 0.20",
+            "severe_group": agg(severe),
+            "non_severe_group": agg(non_severe),
+        },
+        "correlations": {
+            "harm_t_ge_7_vs_n_unknown_pearson": _pearson(x_harm, y_unknown),
+            "harm_t_ge_7_vs_coverage_pearson": _pearson(x_harm, y_coverage),
+            "harm_t_ge_7_vs_hi_err_pearson": _pearson(x_harm, y_hi_err),
+        },
+        "by_image": by_image,
+        "global_best_by_unknown_then_hi_err": sorted(
+            rows, key=lambda r: (r["n_unknown"], r["hi_err"], r["total_time_s"])
+        )[0],
+    }
+
+
+def _summary_markdown(summary, rows, config):
+    lines = []
+    lines.append("# Contrast Preprocessing Study")
+    lines.append("")
+    lines.append(f"- Generated at: {summary['generated_at_utc']}")
+    lines.append(f"- Runs: {summary['rows']}")
+    lines.append(f"- Images: {', '.join(config['images'])}")
+    lines.append(f"- Contrasts: {', '.join(str(c) for c in config['contrasts'])}")
+    lines.append("")
+    th = summary["threshold_analysis"]
+    lines.append("## Harm-Signal Severity (>20%)")
+    lines.append(f"- Definition: `{th['definition']}`")
+    lines.append(f"- Severe count: {th['severe_group']['count']}")
+    lines.append(f"- Non-severe count: {th['non_severe_group']['count']}")
+    lines.append(f"- Severe mean unknown: {th['severe_group']['mean_n_unknown']}")
+    lines.append(f"- Non-severe mean unknown: {th['non_severe_group']['mean_n_unknown']}")
+    lines.append(f"- Severe solvable rate: {th['severe_group']['solvable_rate']}")
+    lines.append(f"- Non-severe solvable rate: {th['non_severe_group']['solvable_rate']}")
+    lines.append("")
+    corr = summary["correlations"]
+    lines.append("## Correlations")
+    lines.append(f"- harm(T>=7) vs n_unknown: {corr['harm_t_ge_7_vs_n_unknown_pearson']}")
+    lines.append(f"- harm(T>=7) vs coverage: {corr['harm_t_ge_7_vs_coverage_pearson']}")
+    lines.append(f"- harm(T>=7) vs hi_err: {corr['harm_t_ge_7_vs_hi_err_pearson']}")
+    lines.append("")
+    lines.append("## Best Per Image")
+    for image, payload in summary["by_image"].items():
+        best = payload["best_by_unknown_then_hi_err"]
+        lines.append(
+            f"- {image}: contrast={best['contrast_factor']}, "
+            f"unknown={best['n_unknown']}, coverage={best['coverage']:.6f}, "
+            f"hi_err={best['hi_err']:.4f}, time={best['total_time_s']:.2f}s, "
+            f"harm(T>=7)={best['harm_signal_t_ge_7_pct']:.4f}"
+        )
+    lines.append("")
+    bestg = summary["global_best_by_unknown_then_hi_err"]
+    lines.append("## Global Best")
+    lines.append(
+        f"- image={bestg['image']} contrast={bestg['contrast_factor']} "
+        f"unknown={bestg['n_unknown']} coverage={bestg['coverage']:.6f} "
+        f"hi_err={bestg['hi_err']:.4f} time={bestg['total_time_s']:.2f}s "
+        f"harm(T>=7)={bestg['harm_signal_t_ge_7_pct']:.4f}"
+    )
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run contrast preprocessing study over multiple source images.")
+    parser.add_argument(
+        "--images",
+        default="irisd3.png,assets/input_source_image.png,assets/input_source_image_research.png",
+        help="Comma-separated source image paths.",
+    )
+    parser.add_argument(
+        "--contrasts",
+        default="0.6,0.8,1.0,1.2,1.5,2.0,2.5",
+        help="Comma-separated contrast factors to test.",
+    )
+    parser.add_argument("--board-w", type=int, default=300, help="Board width.")
+    parser.add_argument("--max-runtime-s", type=float, default=50.0, help="Per-run runtime budget.")
+    parser.add_argument("--iters-multiplier", type=float, default=0.25, help="Iteration multiplier.")
+    parser.add_argument("--phase1-budget-s", type=float, default=8.0, help="Phase1 budget.")
+    parser.add_argument("--phase2-budget-s", type=float, default=20.0, help="Phase2 budget.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument("--out-root", default="", help="Optional output root; default timestamped under results/.")
+    parser.add_argument("--allow-noncanonical", action="store_true", help="Forward --allow-noncanonical.")
+    parser.add_argument(
+        "--method-test-sa-3x",
+        action="store_true",
+        default=True,
+        help="Deprecated: multi-contrast study always enforces 3x SA budget.",
+    )
+    args = parser.parse_args()
+
+    images = _parse_csv_list(args.images, str)
+    contrasts = _parse_csv_list(args.contrasts, float)
+    if not images:
+        raise ValueError("No images provided.")
+    if not contrasts:
+        raise ValueError("No contrast factors provided.")
+    for c in contrasts:
+        if c <= 0.0:
+            raise ValueError(f"Contrast must be > 0, got {c}")
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    out_root = args.out_root or os.path.join("results", f"contrast_preprocess_study_{stamp}")
+    os.makedirs(out_root, exist_ok=True)
+    runs_root = os.path.join(out_root, "runs")
+    os.makedirs(runs_root, exist_ok=True)
+
+    rows = []
+    for image_path in images:
+        if not os.path.exists(image_path):
+            raise FileNotFoundError(f"Image not found: {image_path}")
+        image_key = _safe_name(image_path)
+        for contrast in contrasts:
+            contrast_tag = str(contrast).replace(".", "p")
+            run_tag = f"contrast_study_{image_key}_c{contrast_tag}"
+            out_dir = os.path.join(runs_root, f"{image_key}_c{contrast_tag}")
+            cmd = [
+                sys.executable,
+                "run_iris3d_visual_report.py",
+                "--image", image_path,
+                "--out-dir", out_dir,
+                "--board-w", str(args.board_w),
+                "--seed", str(args.seed),
+                "--iters-multiplier", str(args.iters_multiplier),
+                "--max-runtime-s", str(args.max_runtime_s),
+                "--phase1-budget-s", str(args.phase1_budget_s),
+                "--phase2-budget-s", str(args.phase2_budget_s),
+                "--pw-knee", "4.0",
+                "--pw-t-max", "6.0",
+                "--contrast-factor", str(contrast),
+                "--hi-boost", "18.0",
+                "--adaptive-local-cap",
+                "--adaptive-local-cap-ladder", "4.6",
+                "--adaptive-local-cap-value", "4.6",
+                "--adaptive-local-trigger-eval", "7.5",
+                "--adaptive-local-clusters-per-step", "25",
+                "--adaptive-local-sa-budget-s", "12",
+                "--run-tag", run_tag,
+            ]
+            cmd.append("--method-test-sa-3x")
+            if args.allow_noncanonical:
+                cmd.append("--allow-noncanonical")
+            print(f"[contrast-study] running: image={image_path} contrast={contrast}", flush=True)
+            subprocess.run(cmd, check=True)
+
+            metrics_candidates = glob.glob(os.path.join(out_dir, "metrics_*.json"))
+            if not metrics_candidates:
+                raise RuntimeError(f"No metrics file produced for run: {run_tag}")
+            with open(metrics_candidates[0], "r", encoding="utf-8") as f:
+                m = json.load(f)
+
+            prep = m.get("preprocess", {})
+            row = {
+                "run_tag": m.get("run_tag"),
+                "image": image_path,
+                "contrast_factor": float(m.get("contrast_factor", contrast)),
+                "n_unknown": int(m.get("n_unknown", 0)),
+                "coverage": float(m.get("coverage", 0.0)),
+                "solvable": bool(m.get("solvable", False)),
+                "mine_accuracy": float(m.get("mine_accuracy", 0.0)),
+                "hi_err": float(m.get("hi_err", 0.0)),
+                "mean_abs_error": float(m.get("mean_abs_error", 0.0)),
+                "total_time_s": float(m.get("total_time_s", 0.0)),
+                "solve_time_s": float(m.get("solve_time_s", 0.0)),
+                "harm_signal_t_ge_7_pct": float(prep.get("harm_signal_t_ge_7_pct", 0.0)),
+                "harm_signal_t_ge_6_pct": float(prep.get("harm_signal_t_ge_6_pct", 0.0)),
+                "harm_signal_t_le_1_pct": float(prep.get("harm_signal_t_le_1_pct", 0.0)),
+                "target_eval_mean": float((prep.get("target_eval_stats") or {}).get("mean", 0.0)),
+                "target_eval_std": float((prep.get("target_eval_stats") or {}).get("std", 0.0)),
+                "target_eval_q75": float((prep.get("target_eval_stats") or {}).get("q75", 0.0)),
+                "target_eval_q90": float((prep.get("target_eval_stats") or {}).get("q90", 0.0)),
+                "metrics_path": metrics_candidates[0],
+                "visual_path": os.path.join(out_dir, f"visual_{m.get('board', 'unknown')}.png"),
+            }
+            rows.append(row)
+
+    summary = _build_summary(rows)
+    summary["generated_at_utc"] = datetime.now(timezone.utc).isoformat()
+    summary["config"] = {
+        "images": images,
+        "contrasts": contrasts,
+        "board_w": args.board_w,
+        "max_runtime_s": args.max_runtime_s,
+        "iters_multiplier": args.iters_multiplier,
+        "phase1_budget_s": args.phase1_budget_s,
+        "phase2_budget_s": args.phase2_budget_s,
+        "seed": args.seed,
+        "method_test_sa_3x": True,
+    }
+
+    csv_path = os.path.join(out_root, "contrast_study_runs.csv")
+    json_path = os.path.join(out_root, "contrast_study_summary.json")
+    md_path = os.path.join(out_root, "contrast_study_summary.md")
+    _write_csv(csv_path, rows)
+    _write_json(json_path, summary)
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(_summary_markdown(summary, rows, summary["config"]))
+
+    print(f"[contrast-study] wrote runs csv: {csv_path}", flush=True)
+    print(f"[contrast-study] wrote summary json: {json_path}", flush=True)
+    print(f"[contrast-study] wrote summary md: {md_path}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
