@@ -79,6 +79,8 @@ This document records the contrast preprocessing study in plain English. It is w
   - [`results/contrast_preprocess_study_20260421_100952/contrast_study_summary.md`](../results/contrast_preprocess_study_20260421_100952/contrast_study_summary.md)
 - Refresh source-of-truth policy:
   - Only refresh saturation follow-up conclusions from eligible SA3x matrix campaigns that pass controls, stress, and visual approval.
+  - Parallel matrix runs are refresh-eligible only after all phase shards complete, phase-local worker ledgers are merged or retained, and missing `metrics_*.json` files are resolved.
+  - Runtime reporting should separate solve-clock budget fields (`solve_budget_hit`) from total-clock artifact fields (`total_runtime_budget_hit`, `post_solve_overhead_s`).
   - Do not treat SA1x-only new runs as refresh-eligible evidence.
   - If matrix outputs are incomplete (missing required artifacts or visual review ledger), keep current documentation state and mark campaign incomplete.
 

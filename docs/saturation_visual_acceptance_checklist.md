@@ -5,6 +5,7 @@ Use this checklist during Phase 7 before setting `user_approved=yes` in `winner_
 ## Review Inputs
 - `metrics_*.json` for each candidate.
 - `visual_*.png` for each candidate.
+- `parallel_batch_id` and `shard_id` from `winner_visual_review.csv` when the candidate came from a parallel phase.
 - Candidate rank context (why this candidate is currently top-ranked by metrics).
 
 ## Pass/Fail Criteria
@@ -29,7 +30,7 @@ Use one short reason in `rejection_reason`:
 - Reviewer is you; your decision is authoritative.
 - Set `user_approved=yes` only when all required criteria pass.
 - For a reject, set `user_approved=no` and provide `rejection_reason`.
-- Always fill `reviewer` and `reviewed_at_utc`.
+- Always fill `parallel_batch_id`, `shard_id`, `reviewer`, and `reviewed_at_utc`.
 
 ## Decision Rule
 - A candidate cannot be promoted on metrics alone.
