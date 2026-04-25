@@ -17,9 +17,9 @@ conversations.json
 *.jsonl
 
 # Media and other binary assets
-*.png
-*.jpg
-*.jpeg
+# *.png
+# *.jpg
+# *.jpeg
 *.gif
 *.bmp
 *.webp
