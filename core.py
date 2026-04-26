@@ -226,6 +226,46 @@ def compute_sealing_prevention_weights(base_weights: np.ndarray,
     return np.ascontiguousarray((base_weights * seal_mult).astype(np.float32))
 
 
+def compute_sealed_cluster_risk_map(
+    target: np.ndarray,
+    grid: np.ndarray | None = None,
+    high_target_threshold: float = 5.5,
+    dense_neighbor_threshold: int = 5,
+) -> dict:
+    """
+    Estimate regions likely to create solver-inaccessible clusters.
+    """
+    hi_mask = target >= float(high_target_threshold)
+    dense_counts = convolve(hi_mask.astype(np.int32), _KERNEL, mode='constant', cval=0)
+    risk_mask = hi_mask & (dense_counts >= int(dense_neighbor_threshold))
+    from scipy.ndimage import label as _label
+
+    _, n_comp = _label(risk_mask.astype(np.int8))
+    sat_risk_cells = int(np.sum(risk_mask))
+    if sat_risk_cells == 0:
+        predicted = "none"
+    elif sat_risk_cells < 25:
+        predicted = "low"
+    elif sat_risk_cells < 100:
+        predicted = "medium"
+    else:
+        predicted = "high"
+
+    result = {
+        "sat_risk_cells": sat_risk_cells,
+        "high_target_dense_components": int(n_comp),
+        "predicted_sealed_cluster_risk": predicted,
+        "high_target_threshold": float(high_target_threshold),
+        "dense_neighbor_threshold": int(dense_neighbor_threshold),
+    }
+    if grid is not None:
+        result["risk_mine_overlap_count"] = int(np.sum((grid == 1) & risk_mask))
+        result["risk_mine_overlap_pct"] = float(
+            result["risk_mine_overlap_count"] / max(int(np.sum(risk_mask)), 1)
+        )
+    return result
+
+
 def load_image_smart_v2(path: str, board_w: int, board_h: int,
                          invert: bool = True,
                          skel_density_thr: float = 0.35,

@@ -2,6 +2,7 @@
 pipeline.py — Full orchestration.  Iter 2: asymmetric weights + extended schedule.
 """
 import os, sys, json, time
+from dataclasses import dataclass, field
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
@@ -12,16 +13,18 @@ try:
                        assert_board_valid)
     from .corridors import build_adaptive_corridors
     from .sa import compile_sa_kernel, run_sa
-    from .repair import run_phase1_repair
+    from .repair import run_last100_repair, run_phase1_repair, run_phase2_full_repair
     from .report import render_report
+    from .solver import classify_unresolved_clusters, solve_board
 except ImportError:
     from core import (compute_N, load_image_smart,
                       compute_edge_weights, compute_asymmetric_weights,
                       assert_board_valid)
     from corridors import build_adaptive_corridors
     from sa import compile_sa_kernel, run_sa
-    from repair import run_phase1_repair
+    from repair import run_last100_repair, run_phase1_repair, run_phase2_full_repair
     from report import render_report
+    from solver import classify_unresolved_clusters, solve_board
 
 
 def atomic_save_json(data, path):
@@ -33,6 +36,167 @@ def atomic_save_npy(arr, path):
     tmp = path + '.tmp.npy'
     np.save(tmp, arr)
     os.replace(tmp, path)
+
+
+@dataclass
+class RepairRoutingConfig:
+    phase2_budget_s: float = 360.0
+    last100_budget_s: float = 300.0
+    last100_unknown_threshold: int = 100
+    solve_max_rounds: int = 300
+    trial_max_rounds: int = 60
+    enable_phase2: bool = True
+    enable_last100: bool = True
+    enable_sa_rerun: bool = False
+
+
+@dataclass
+class RepairRouteResult:
+    grid: np.ndarray
+    sr: object
+    selected_route: str
+    route_result: str
+    failure_taxonomy: dict
+    phase2_log: list = field(default_factory=list)
+    last100_log: list = field(default_factory=list)
+    visual_delta_summary: dict = field(default_factory=dict)
+    decision: dict = field(default_factory=dict)
+
+
+def route_late_stage_failure(
+    grid: np.ndarray,
+    target: np.ndarray,
+    weights: np.ndarray,
+    forbidden: np.ndarray,
+    sr,
+    config: RepairRoutingConfig,
+) -> RepairRouteResult:
+    """
+    Choose the cheapest next intervention based on unresolved-cell diagnosis.
+    """
+    del weights
+    failure_taxonomy = classify_unresolved_clusters(grid, sr)
+    decision = {
+        "solver_n_unknown_before": int(sr.n_unknown),
+        "dominant_failure_class": failure_taxonomy.get("dominant_failure_class"),
+        "recommended_route": failure_taxonomy.get("recommended_route"),
+        "selected_route": "needs_sa_or_adaptive_rerun",
+        "phase2_budget_s": float(config.phase2_budget_s),
+        "last100_budget_s": float(config.last100_budget_s),
+        "last100_invoked": False,
+        "sa_rerun_invoked": False,
+        "solver_n_unknown_after": int(sr.n_unknown),
+        "route_result": "unresolved_after_repair",
+    }
+
+    if int(sr.n_unknown) == 0:
+        decision["selected_route"] = "already_solved"
+        decision["route_result"] = "solved"
+        return RepairRouteResult(
+            grid=grid.copy(),
+            sr=sr,
+            selected_route="already_solved",
+            route_result="solved",
+            failure_taxonomy=failure_taxonomy,
+            decision=decision,
+        )
+
+    if config.enable_phase2 and int(failure_taxonomy.get("sealed_cluster_count", 0)) > 0:
+        routed_grid, _, phase2_log = run_phase2_full_repair(
+            grid,
+            target,
+            forbidden,
+            verbose=True,
+            time_budget_s=float(config.phase2_budget_s),
+            trial_max_rounds=int(config.trial_max_rounds),
+            solve_max_rounds=int(config.solve_max_rounds),
+        )
+        routed_sr = solve_board(routed_grid, max_rounds=int(config.solve_max_rounds), mode="full")
+        if int(routed_sr.n_unknown) == 0:
+            decision["selected_route"] = "phase2_full_repair"
+            decision["solver_n_unknown_after"] = int(routed_sr.n_unknown)
+            decision["route_result"] = "solved"
+            visual_delta_summary = phase2_log[-1] if phase2_log else {}
+            return RepairRouteResult(
+                grid=routed_grid,
+                sr=routed_sr,
+                selected_route="phase2_full_repair",
+                route_result="solved",
+                failure_taxonomy=failure_taxonomy,
+                phase2_log=phase2_log,
+                visual_delta_summary=visual_delta_summary,
+                decision=decision,
+            )
+        grid = routed_grid
+        sr = routed_sr
+
+    if config.enable_last100 and int(sr.n_unknown) <= int(config.last100_unknown_threshold):
+        routed_grid, routed_sr, _, last100_log, stop_reason = run_last100_repair(
+            grid,
+            target,
+            target,
+            forbidden,
+            budget_s=float(config.last100_budget_s),
+            trial_max_rounds=int(config.trial_max_rounds),
+            solve_max_rounds=int(config.solve_max_rounds),
+            verbose=True,
+        )
+        decision["selected_route"] = "last100_repair"
+        decision["last100_invoked"] = True
+        decision["solver_n_unknown_after"] = int(routed_sr.n_unknown)
+        decision["route_result"] = "solved" if int(routed_sr.n_unknown) == 0 else "unresolved_after_repair"
+        decision["last100_stop_reason"] = stop_reason
+        visual_delta_summary = last100_log[-1] if last100_log else {}
+        return RepairRouteResult(
+            grid=routed_grid,
+            sr=routed_sr,
+            selected_route="last100_repair",
+            route_result=decision["route_result"],
+            failure_taxonomy=failure_taxonomy,
+            last100_log=last100_log,
+            visual_delta_summary=visual_delta_summary,
+            decision=decision,
+        )
+
+    return RepairRouteResult(
+        grid=grid.copy(),
+        sr=sr,
+        selected_route="needs_sa_or_adaptive_rerun",
+        route_result="unresolved_after_repair",
+        failure_taxonomy=failure_taxonomy,
+        decision=decision,
+    )
+
+
+def write_repair_route_artifacts(
+    out_dir: str,
+    board_label: str,
+    route_result: RepairRouteResult,
+    artifact_metadata: dict | None = None,
+) -> dict:
+    """
+    Write failure_taxonomy.json, repair_route_decision.json, visual_delta_summary.json.
+    Return artifact paths.
+    """
+    del board_label
+    failure_taxonomy_path = os.path.join(out_dir, "failure_taxonomy.json")
+    repair_route_decision_path = os.path.join(out_dir, "repair_route_decision.json")
+    visual_delta_summary_path = os.path.join(out_dir, "visual_delta_summary.json")
+    failure_taxonomy = dict(route_result.failure_taxonomy)
+    repair_route_decision = dict(route_result.decision)
+    visual_delta_summary = dict(route_result.visual_delta_summary)
+    if artifact_metadata is not None:
+        failure_taxonomy["artifact_metadata"] = dict(artifact_metadata)
+        repair_route_decision["artifact_metadata"] = dict(artifact_metadata)
+        visual_delta_summary["artifact_metadata"] = dict(artifact_metadata)
+    atomic_save_json(failure_taxonomy, failure_taxonomy_path)
+    atomic_save_json(repair_route_decision, repair_route_decision_path)
+    atomic_save_json(visual_delta_summary, visual_delta_summary_path)
+    return {
+        "failure_taxonomy": failure_taxonomy_path,
+        "repair_route_decision": repair_route_decision_path,
+        "visual_delta_summary": visual_delta_summary_path,
+    }
 
 
 def run_board(board_w, board_h, label, sa_fn, img_path, out_dir,

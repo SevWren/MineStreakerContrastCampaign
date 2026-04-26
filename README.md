@@ -23,6 +23,27 @@ The latest major finding is that a targeted repair-only campaign showed that nea
 
 ---
 
+## Source Image Runtime Contract
+
+Normal runs must pass source images explicitly:
+
+```powershell
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 420 --seeds 11 22 33 --allow-noncanonical
+```
+
+`python run_iter9.py` remains backward-compatible and defaults to `assets/input_source_image.png` only when `--image` is omitted.
+
+Validation modes:
+
+- default image strict validation uses `assets/SOURCE_IMAGE_HASH.json`
+- explicit image + `--image-manifest <path>` validates against that manifest
+- explicit image + `--allow-noncanonical` allows noncanonical validation with structured warnings
+
+Source-image provenance is written into metrics (`source_image`, `source_image_validation`, `command_invocation`, `run_identity`, and artifact paths).
+
+---
+
 ## Beginner Summary
 
 ### What problem does this project solve?
@@ -153,7 +174,13 @@ python -m pip install numpy scipy numba Pillow matplotlib scikit-image
 
 ### Verify The Source Image
 
-Before long runs, validate the canonical source image:
+Before long runs, validate the source image you will run:
+
+```powershell
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
+```
+
+Backward-compatible strict default check:
 
 ```powershell
 python assets/image_guard.py --path assets/input_source_image.png
@@ -166,7 +193,7 @@ python assets/image_guard.py --path assets/input_source_image.png
 ### Run The Main Reconstruction Pipeline
 
 ```powershell
-python run_iter9.py
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
 Expected output location:
@@ -191,18 +218,18 @@ Use this order if you are new to the project.
 ### Step 1: Check the input image
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-This confirms that the source image exists and matches the expected project input.
+This confirms the source image exists and passes the chosen validation mode.
 
 ### Step 2: Run the main pipeline
 
 ```powershell
-python run_iter9.py
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-This creates a Minesweeper board attempt from the source image.
+This creates a Minesweeper board attempt from the explicit source image.
 
 ### Step 3: Open the results folder
 

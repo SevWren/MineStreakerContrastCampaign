@@ -5,6 +5,7 @@ Routes prefer dark (low-target) regions so corridors are visually hidden.
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import minimum_spanning_tree
+from scipy.ndimage import distance_transform_edt, label as nd_label
 
 
 def build_adaptive_corridors(target: np.ndarray,
@@ -90,3 +91,68 @@ def build_adaptive_corridors(target: np.ndarray,
 
     coverage_pct = float(forbidden.mean() * 100)
     return forbidden, coverage_pct, seeds, mst
+
+
+def analyze_corridor_access_to_unknowns(forbidden: np.ndarray, sr) -> dict:
+    """
+    Measure whether unresolved clusters are near corridor paths.
+    """
+    try:
+        from .solver import SAFE, UNKNOWN
+    except ImportError:
+        from solver import SAFE, UNKNOWN
+
+    if sr is None or sr.state is None:
+        return {
+            "unknown_cells": int(getattr(sr, "n_unknown", 0) or 0),
+            "unknown_clusters_touching_corridor": 0,
+            "mean_distance_unknown_to_corridor": None,
+            "sealed_clusters_isolated_from_corridor": 0,
+        }
+
+    unknown_mask = sr.state == UNKNOWN
+    unknown_cells = int(np.sum(unknown_mask))
+    if unknown_cells == 0:
+        return {
+            "unknown_cells": 0,
+            "unknown_clusters_touching_corridor": 0,
+            "mean_distance_unknown_to_corridor": None,
+            "sealed_clusters_isolated_from_corridor": 0,
+        }
+
+    labels, n_comp = nd_label(unknown_mask.astype(np.int8))
+    corridor_mask = forbidden == 1
+    dist = distance_transform_edt(~corridor_mask)
+
+    touching = 0
+    isolated = 0
+    for cid in range(1, int(n_comp) + 1):
+        comp_mask = labels == cid
+        if np.any(corridor_mask & comp_mask):
+            touching += 1
+        has_safe_neighbor = False
+        coords = np.argwhere(comp_mask)
+        for cy, cx in coords:
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny = int(cy + dy)
+                    nx = int(cx + dx)
+                    if 0 <= ny < sr.state.shape[0] and 0 <= nx < sr.state.shape[1]:
+                        if sr.state[ny, nx] == SAFE:
+                            has_safe_neighbor = True
+                            break
+                if has_safe_neighbor:
+                    break
+            if has_safe_neighbor:
+                break
+        if not has_safe_neighbor and not np.any(corridor_mask & comp_mask):
+            isolated += 1
+
+    return {
+        "unknown_cells": unknown_cells,
+        "unknown_clusters_touching_corridor": int(touching),
+        "mean_distance_unknown_to_corridor": float(dist[unknown_mask].mean()) if unknown_cells else None,
+        "sealed_clusters_isolated_from_corridor": int(isolated),
+    }

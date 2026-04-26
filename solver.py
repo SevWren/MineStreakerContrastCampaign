@@ -17,6 +17,7 @@ from typing import Optional
 
 import numpy as np
 from numba import njit
+from scipy.ndimage import label as nd_label
 
 try:
     from .core import compute_N as _compute_N
@@ -41,6 +42,18 @@ class SolveResult:
     n_unknown:     int   = 0
     state:         Optional[np.ndarray] = field(default=None, repr=False)
     rounds:        int   = 0
+
+
+@dataclass
+class UnresolvedCluster:
+    cluster_id: int
+    size: int
+    kind: str
+    has_safe_neighbor: bool
+    external_mine_count: int
+    candidate_repair: str
+    cells: list[tuple[int, int]] = field(default_factory=list)
+    external_mines: list[tuple[int, int]] = field(default_factory=list)
 
 
 def build_neighbor_table(H: int, W: int) -> np.ndarray:
@@ -425,3 +438,129 @@ def solve_board(grid: np.ndarray,
         n_revealed=n_revealed, n_safe=n_safe, n_mines=n_mines_g,
         n_unknown=n_unknown, state=state_out, rounds=int(rounds),
     )
+
+
+def classify_unresolved_clusters(grid: np.ndarray, sr: SolveResult) -> dict:
+    """
+    Classify remaining UNKNOWN cells after solve_board().
+    """
+    n_unknown = int(sr.n_unknown)
+    if sr.state is None:
+        return {
+            "n_unknown": n_unknown,
+            "unknown_cluster_count": 0,
+            "sealed_single_mesa_count": 0,
+            "sealed_multi_cell_cluster_count": 0,
+            "frontier_adjacent_unknown_count": 0,
+            "ordinary_ambiguous_unknown_count": 0,
+            "sealed_cluster_count": 0,
+            "dominant_failure_class": "unclassified_missing_solver_state",
+            "recommended_route": "rerun_solver_full",
+            "clusters": [],
+        }
+
+    if n_unknown == 0:
+        return {
+            "n_unknown": 0,
+            "unknown_cluster_count": 0,
+            "sealed_single_mesa_count": 0,
+            "sealed_multi_cell_cluster_count": 0,
+            "frontier_adjacent_unknown_count": 0,
+            "ordinary_ambiguous_unknown_count": 0,
+            "sealed_cluster_count": 0,
+            "dominant_failure_class": "no_unknowns",
+            "recommended_route": "none",
+            "clusters": [],
+        }
+
+    state = sr.state
+    labeled, n_comp = nd_label((state == UNKNOWN).astype(np.int8))
+    clusters: list[UnresolvedCluster] = []
+
+    for cluster_id in range(1, int(n_comp) + 1):
+        comp_mask = labeled == cluster_id
+        cells_arr = np.argwhere(comp_mask)
+        cells = [(int(y), int(x)) for y, x in cells_arr]
+        ext_mines: set[tuple[int, int]] = set()
+        has_safe_neighbor = False
+        for cy, cx in cells:
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = cy + dy, cx + dx
+                    if 0 <= ny < grid.shape[0] and 0 <= nx < grid.shape[1]:
+                        if state[ny, nx] == SAFE:
+                            has_safe_neighbor = True
+                        if grid[ny, nx] == 1 and not comp_mask[ny, nx]:
+                            ext_mines.add((int(ny), int(nx)))
+
+        external_mines = sorted(ext_mines)
+        if has_safe_neighbor:
+            kind = "frontier_adjacent_unknown"
+            candidate_repair = "last100_or_standard_repair"
+        elif external_mines:
+            kind = "sealed_single_mesa" if len(cells) == 1 else "sealed_multi_cell_cluster"
+            candidate_repair = "phase2_full_repair"
+        else:
+            kind = "ordinary_ambiguous_unknown"
+            candidate_repair = "manual_or_future_solver_analysis"
+
+        clusters.append(
+            UnresolvedCluster(
+                cluster_id=int(cluster_id),
+                size=int(len(cells)),
+                kind=kind,
+                has_safe_neighbor=bool(has_safe_neighbor),
+                external_mine_count=int(len(external_mines)),
+                candidate_repair=candidate_repair,
+                cells=cells,
+                external_mines=external_mines,
+            )
+        )
+
+    counts = {
+        "sealed_single_mesa": 0,
+        "sealed_multi_cell_cluster": 0,
+        "frontier_adjacent_unknown": 0,
+        "ordinary_ambiguous_unknown": 0,
+    }
+    for cluster in clusters:
+        counts[cluster.kind] += 1
+
+    dominant_failure_class = max(
+        counts.items(),
+        key=lambda item: (item[1], item[0] == "sealed_multi_cell_cluster", item[0] == "sealed_single_mesa"),
+    )[0]
+    sealed_cluster_count = counts["sealed_single_mesa"] + counts["sealed_multi_cell_cluster"]
+    if sealed_cluster_count > 0:
+        recommended_route = "phase2_full_repair"
+    elif counts["frontier_adjacent_unknown"] > 0:
+        recommended_route = "last100_or_standard_repair"
+    else:
+        recommended_route = "manual_or_future_solver_analysis"
+
+    return {
+        "n_unknown": n_unknown,
+        "unknown_cluster_count": int(len(clusters)),
+        "sealed_single_mesa_count": int(counts["sealed_single_mesa"]),
+        "sealed_multi_cell_cluster_count": int(counts["sealed_multi_cell_cluster"]),
+        "frontier_adjacent_unknown_count": int(counts["frontier_adjacent_unknown"]),
+        "ordinary_ambiguous_unknown_count": int(counts["ordinary_ambiguous_unknown"]),
+        "sealed_cluster_count": int(sealed_cluster_count),
+        "dominant_failure_class": dominant_failure_class,
+        "recommended_route": recommended_route,
+        "clusters": [
+            {
+                "cluster_id": int(cluster.cluster_id),
+                "size": int(cluster.size),
+                "kind": cluster.kind,
+                "has_safe_neighbor": bool(cluster.has_safe_neighbor),
+                "external_mine_count": int(cluster.external_mine_count),
+                "candidate_repair": cluster.candidate_repair,
+                "cells": [[int(y), int(x)] for y, x in cluster.cells],
+                "external_mines": [[int(y), int(x)] for y, x in cluster.external_mines],
+            }
+            for cluster in clusters
+        ],
+    }

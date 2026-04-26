@@ -125,3 +125,91 @@ def render_report(target, grid, sr, history, title, save_path, dpi=120):
     plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
     plt.close(fig)
     print(f"  Report saved: {save_path}", flush=True)
+
+
+def render_repair_overlay(
+    target: np.ndarray,
+    grid_before: np.ndarray,
+    grid_after: np.ndarray,
+    sr_before,
+    sr_after,
+    repair_log: list,
+    save_path: str,
+    dpi: int = 120,
+) -> None:
+    """
+    Render repair cause/effect overlay.
+    """
+    before_unknown = np.zeros_like(grid_before, dtype=np.float32)
+    after_unknown = np.zeros_like(grid_after, dtype=np.float32)
+    if getattr(sr_before, "state", None) is not None:
+        before_unknown = (sr_before.state == UNKNOWN).astype(np.float32)
+    if getattr(sr_after, "state", None) is not None:
+        after_unknown = (sr_after.state == UNKNOWN).astype(np.float32)
+
+    before_n = compute_N(grid_before)
+    after_n = compute_N(grid_after)
+    error_delta = np.abs(after_n.astype(np.float32) - target.astype(np.float32)) - np.abs(
+        before_n.astype(np.float32) - target.astype(np.float32)
+    )
+    removed = np.argwhere((grid_before == 1) & (grid_after == 0))
+    added = np.argwhere((grid_before == 0) & (grid_after == 1))
+
+    removed_overlay = np.zeros((*grid_before.shape, 3), dtype=np.float32)
+    for y, x in removed:
+        removed_overlay[int(y), int(x)] = [1.0, 0.2, 0.2]
+    for y, x in added:
+        removed_overlay[int(y), int(x)] = [0.2, 0.9, 0.2]
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    ax = axes.ravel()
+
+    im0 = ax[0].imshow(target, cmap='inferno', vmin=0, vmax=8)
+    ax[0].set_title('Target image')
+    plt.colorbar(im0, ax=ax[0], fraction=0.046, pad=0.04)
+
+    ax[1].imshow(before_unknown, cmap='Blues', vmin=0, vmax=1)
+    ax[1].set_title(f'Before UNKNOWNs ({int(np.sum(before_unknown))})')
+
+    ax[2].imshow(after_unknown, cmap='Blues', vmin=0, vmax=1)
+    ax[2].set_title(f'After UNKNOWNs ({int(np.sum(after_unknown))})')
+
+    ax[3].imshow(removed_overlay)
+    ax[3].set_title(f'Removed/Add mines (-{len(removed)} / +{len(added)})')
+
+    im4 = ax[4].imshow(error_delta, cmap='coolwarm', vmin=-1.5, vmax=1.5)
+    ax[4].set_title('Error delta |N_after-T| - |N_before-T|')
+    plt.colorbar(im4, ax=ax[4], fraction=0.046, pad=0.04)
+
+    summary_lines = [
+        f"route repairs: {len(repair_log)}",
+        f"before unknown: {getattr(sr_before, 'n_unknown', 'n/a')}",
+        f"after unknown: {getattr(sr_after, 'n_unknown', 'n/a')}",
+        f"removed mines: {len(removed)}",
+        f"added mines: {len(added)}",
+    ]
+    if repair_log:
+        last_entry = repair_log[-1]
+        summary_lines.append(f"last move: {last_entry.get('move_type', 'n/a')}")
+        summary_lines.append(f"last delta_unknown: {last_entry.get('delta_unknown', last_entry.get('delta_unk', 'n/a'))}")
+    ax[5].axis('off')
+    ax[5].text(
+        0.05,
+        0.95,
+        "\n".join(summary_lines),
+        transform=ax[5].transAxes,
+        verticalalignment='top',
+        fontsize=10,
+        fontfamily='monospace',
+        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+    )
+    ax[5].set_title('Repair summary')
+
+    for item in ax:
+        item.set_xticks([])
+        item.set_yticks([])
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Repair overlay saved: {save_path}", flush=True)
