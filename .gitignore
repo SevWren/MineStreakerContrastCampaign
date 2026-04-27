@@ -4,12 +4,20 @@ claude_conv_output/
 docs/result_reports/
 Larger_boards_fidelity_iteration/
 assets/WIP/
+digest.txt
 
 # Generated conversation artifacts
 conversations.json
 *_conversation.json
 *_conversation.md
 *codebase*.txt
+
+# Archived
+docs/archive
+docs\archive
+archives/
+archives
+
 
 # Reports and data exports
 *.csv

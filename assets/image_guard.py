@@ -17,6 +17,7 @@ from PIL import Image
 DEFAULT_IMG_PATH = "assets/input_source_image.png"
 DEFAULT_MANIFEST_PATH = "assets/SOURCE_IMAGE_HASH.json"
 ALLOW_NONCANONICAL_ENV = "MINESTREAKER_ALLOW_NONCANONICAL"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 _MEAN_TOL = 0.01
 _STD_TOL = 0.01
@@ -28,6 +29,22 @@ def _warning(code: str, message: str, severity: str = "warning") -> dict:
 
 def _path_posix(value: str | Path) -> str:
     return Path(value).resolve().as_posix()
+
+
+def _resolve_repo_relative(path_value: str) -> Path:
+    candidate = Path(path_value).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (_REPO_ROOT / candidate).resolve()
+
+
+def _resolve_input_path(path_value: str) -> Path:
+    candidate = Path(path_value).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    if path_value == DEFAULT_IMG_PATH:
+        return (_REPO_ROOT / candidate).resolve()
+    return candidate.resolve()
 
 
 def _env_flag_enabled(name: str) -> bool:
@@ -180,7 +197,7 @@ def verify_source_image(
     manifest_path: str | None = None,
     return_details: bool = False,
 ):
-    resolved_path = Path(path).expanduser().resolve()
+    resolved_path = _resolve_input_path(path)
     if allow_noncanonical is None:
         allow_noncanonical_flag = _env_flag_enabled(ALLOW_NONCANONICAL_ENV)
     else:
@@ -244,7 +261,7 @@ def verify_source_image(
         print(f"  OK Pixel dtype: {computed['pixel_dtype']}")
         print(f"  OK Pixel shape: {tuple(computed['pixel_shape'])}")
 
-    default_image_path = Path(DEFAULT_IMG_PATH).resolve()
+    default_image_path = _resolve_repo_relative(DEFAULT_IMG_PATH)
     explicit_manifest = Path(manifest_path).expanduser().resolve() if manifest_path else None
 
     if explicit_manifest is not None:
@@ -254,7 +271,7 @@ def verify_source_image(
         expected = _normalize_manifest(manifest_raw)
     elif resolved_path == default_image_path:
         validation_mode = "default_manifest"
-        default_manifest = Path(DEFAULT_MANIFEST_PATH).resolve()
+        default_manifest = _resolve_repo_relative(DEFAULT_MANIFEST_PATH)
         used_manifest_path = default_manifest.as_posix()
         warnings.append(
             _warning(
@@ -328,7 +345,7 @@ def verify_source_image(
 
 
 def get_canonical_record() -> dict:
-    manifest = Path(DEFAULT_MANIFEST_PATH).resolve()
+    manifest = _resolve_repo_relative(DEFAULT_MANIFEST_PATH)
     return _normalize_manifest(_load_json(manifest))
 
 

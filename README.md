@@ -183,7 +183,7 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 Backward-compatible strict default check:
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path <default-image-path>
 ```
 
 ---
@@ -205,11 +205,19 @@ results/iter9/
 Typical artifacts include:
 
 ```text
-grid_<board>.npy
-metrics_<board>.json
-visual_<board>.png
-report_<board>.png
+metrics_iter9_<board>.json
+grid_iter9_<board>.npy
+grid_iter9_latest.npy
+iter9_<board>_FINAL.png
+iter9_<board>_FINAL_explained.png
+repair_overlay_<board>.png
+repair_overlay_<board>_explained.png
+failure_taxonomy.json
+repair_route_decision.json
+visual_delta_summary.json
 ```
+
+The technical PNGs are the detailed audit view. The explained PNGs are additive first-look review artifacts for humans and LLMs, and they do not replace the technical reports.
 
 ## Beginner Workflow
 
@@ -242,8 +250,8 @@ results/iter9/
 Start with:
 
 ```text
-visual_<board>.png
-metrics_<board>.json
+iter9_<board>_FINAL.png
+metrics_iter9_<board>.json
 ```
 
 ### Step 4: Read the key numbers
@@ -417,10 +425,19 @@ repair_overlay_<board>.png
 
 | Artifact                   | Meaning                                           |
 | -------------------------- | ------------------------------------------------- |
-| `grid_<board>.npy`         | Binary mine grid.                                 |
-| `metrics_<board>.json`     | Main machine-readable run metrics.                |
-| `visual_<board>.png`       | Rendered visual reconstruction.                   |
-| `report_<board>.png`       | Multi-panel diagnostic report.                    |
+| `grid_iter9_<board>.npy`   | Iter9 binary mine grid.                           |
+| `metrics_iter9_<board>.json` | Iter9 machine-readable run metrics.             |
+| `iter9_<board>_FINAL.png`  | Iter9 technical final visual for detailed audit.  |
+| `iter9_<board>_FINAL_explained.png` | Iter9 explained final visual for first-look review. |
+| `repair_overlay_<board>.png` | Technical repair-route overlay in Iter9 and benchmark child run directories. |
+| `repair_overlay_<board>_explained.png` | Iter9 explained repair overlay for first-look review. |
+| `metrics_<board>.json`     | Benchmark child-run machine-readable metrics.     |
+| `visual_<board>.png`       | Benchmark child-run technical final visual.       |
+| `visual_<board>_explained.png` | Benchmark child-run explained final visual.   |
+| `repair_overlay_<board>_explained.png` | Benchmark child-run explained repair overlay. |
+| `benchmark_summary.json`   | Benchmark run-root summary (JSON).                |
+| `benchmark_summary.csv`    | Benchmark run-root summary (CSV).                 |
+| `benchmark_summary.md`     | Benchmark run-root summary (Markdown).            |
 | `repair_checkpoint.npy`    | Intermediate repair grid checkpoint when emitted. |
 | `repair_move_log.jsonl`    | Accepted/rejected repair moves.                   |
 | `campaign_summary.md`      | Human-readable campaign summary.                  |
@@ -501,7 +518,7 @@ Cause: the source image dimensions changed, or board sizing logic changed.
 Action:
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path <same path passed to --image> --allow-noncanonical
 ```
 
 Then inspect `board_sizing.py` and the relevant metrics file.
@@ -512,7 +529,7 @@ Cause: the solver is stuck with unresolved safe cells.
 
 Action:
 
-1. Inspect `metrics_<board>.json`.
+1. Inspect `metrics_iter9_<board>.json` (or benchmark `metrics_<board>.json`).
 2. Check `coverage` and `n_unknown`.
 3. Inspect repair logs if present.
 4. Run benchmark before changing repair logic.
@@ -523,7 +540,7 @@ Cause: repair may have improved logical solvability while changing visual fideli
 
 Action:
 
-1. Compare `visual_<board>.png` before and after repair.
+1. Compare `iter9_<board>_FINAL.png` (or benchmark `visual_<board>.png`) before and after repair.
 2. Check `mean_abs_error`.
 3. Inspect `repair_move_log.jsonl`.
 4. Prefer future visual-delta instrumentation before changing repair policy.
@@ -545,10 +562,10 @@ Action:
 ### For Beginners
 
 1. This `README.md`
-2. `docs/project_result_summary.md`
-3. `results/line_art_campaigns.md`
-4. Latest `campaign_summary.md`
-5. `metrics_<board>.json` from a recent run
+2. `docs/implement_clarified_source_image_runtime_contract.md`
+3. `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
+4. Latest benchmark summary under `results/benchmark/.../benchmark_summary.md`
+5. `metrics_iter9_<board>.json` from a recent run
 
 ### For Advanced Contributors
 

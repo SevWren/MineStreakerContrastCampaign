@@ -9,6 +9,13 @@ def _path_to_posix(path: Path) -> str:
     return path.as_posix()
 
 
+def _resolve_path(value: str | Path, *, base_root: Path | None = None) -> Path:
+    candidate = Path(value).expanduser()
+    if not candidate.is_absolute() and base_root is not None:
+        candidate = base_root / candidate
+    return candidate.resolve()
+
+
 @dataclass(frozen=True)
 class SourceImageConfig:
     command_arg: str
@@ -65,14 +72,18 @@ def resolve_source_image_config(
     allow_noncanonical: bool = False,
     manifest_path: str | None = None,
 ) -> SourceImageConfig:
-    path = Path(image_path).expanduser().resolve()
+    root = Path(project_root).resolve() if project_root is not None else None
+    path = _resolve_path(image_path, base_root=root)
     if not path.exists():
         raise FileNotFoundError(f"Source image not found: {image_path}")
     if not path.is_file():
         raise FileNotFoundError(f"Source image is not a file: {image_path}")
 
-    root = Path(project_root).resolve() if project_root is not None else Path.cwd().resolve()
-    project_relative = project_relative_or_none(path, root)
+    relative_root = root if root is not None else Path.cwd().resolve()
+    project_relative = project_relative_or_none(path, relative_root)
+    normalized_manifest = (
+        _resolve_path(manifest_path, base_root=root).as_posix() if manifest_path else None
+    )
 
     return SourceImageConfig(
         command_arg=image_path,
@@ -83,5 +94,5 @@ def resolve_source_image_config(
         sha256=compute_file_sha256(path),
         size_bytes=int(path.stat().st_size),
         allow_noncanonical=bool(allow_noncanonical),
-        manifest_path=Path(manifest_path).as_posix() if manifest_path else None,
+        manifest_path=normalized_manifest,
     )

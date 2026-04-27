@@ -178,7 +178,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run contrast preprocessing study over multiple source images.")
     parser.add_argument(
         "--images",
-        default="irisd3.png,assets/input_source_image.png,assets/input_source_image_research.png",
+        default="irisd3.png,assets/default_input_source_image.png,assets/input_source_image_research.png",
         help="Comma-separated source image paths.",
     )
     parser.add_argument(

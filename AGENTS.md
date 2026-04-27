@@ -8,12 +8,17 @@ This repository is a Python research codebase for Minesweeper-board reconstructi
 
 - Root runtime modules: `core.py`, `sa.py`, `solver.py`, `corridors.py`, `repair.py`, `report.py`, `pipeline.py`
 - Main entry scripts: `run_iter9.py`, `run_benchmark.py`
-- Study/orchestration scripts: `run_contrast_preprocessing_study.py`, `run_iris3d_visual_report.py`
+- Study/orchestration scripts: `run_contrast_preprocessing_study.py`, legacy visual report script (removed)
 - Assets: `assets/` (`input_source_image.png`, `input_source_image_research.png`, guards/checks)
 - Documentation: `docs/` (including saturation matrix and visual-gate workflow docs)
 - Outputs: `results/` (all generated runs, summaries, ledgers, visuals)
 
 Keep algorithm/runtime code in root Python modules. Keep generated artifacts under `results/` and avoid committing ad-hoc output files at repo root.
+
+Visual artifact guidance:
+- Technical PNGs are the detailed audit/debug view.
+- Explained PNGs are additive first-look review artifacts for humans and LLMs.
+- Explained PNGs do not replace the technical PNGs.
 
 ## Deprecated Study Docs (Out Of Scope)
 The prior saturation/contrast planning docs were intentionally deprecated and removed from active workflow.
@@ -29,8 +34,8 @@ Use a local venv and install runtime libs used by imports (`numpy`, `scipy`, `nu
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
-python run_iter9.py
-python run_benchmark.py
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 420 --seeds 11 22 33 --allow-noncanonical
 ```
 
 Notes:
@@ -46,14 +51,14 @@ Notes:
 - Use atomic write patterns for outputs (`*.tmp` then `os.replace`) for any new file emitters.
 
 ## Validation Guidelines
-There is no dedicated `tests/` suite in this snapshot. Minimum required validation:
+Minimum required validation:
 
-1. `python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical`
-2. `python run_iter9.py` and confirm expected solvability metrics for the target run.
-3. `python run_benchmark.py` for regression across board sizes/seeds.
-
-Backward-compatible strict default check (only when intentionally validating the legacy default image):
-- `python assets/image_guard.py --path assets/input_source_image.png`
+1. `python -m unittest discover -s tests -p "test_*.py"`
+2. `python run_iter9.py --help`
+3. `python run_benchmark.py --help`
+4. `python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical`
+5. `python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical`
+6. `python run_benchmark.py --regression-only`
 
 If you add automated tests, place them in `tests/` with names like `test_solver_frontier.py`.
 
@@ -82,18 +87,10 @@ When modifying runtime entry points and benchmark workflows:
 - `run_benchmark.py --regression-only` is the fixed-case exception and must preserve stable regression behavior.
 
 ## Saturation Campaign Rules
-When running saturation matrix campaigns:
+Historical saturation campaign instructions are not active in this repository snapshot.
 
-- Use SA3x settings for refresh-eligible evidence.
-- Keep seeds, controls, stress widths, and phase sequencing aligned with `docs/saturation_run_matrix.md`.
-- Produce required campaign outputs:
-  - `matrix_runs.csv`
-  - `matrix_summary.json`
-  - `matrix_summary.md`
-  - `winner_visual_review.csv`
-- Apply mandatory visual approval before promoting any metric winner.
-- Use `results/saturation_matrix_TEMPLATE/winner_visual_review.csv` as the header template when bootstrapping campaigns.
-- Do not treat SA1x-only runs as refresh-eligible evidence.
+- Keep old saturation campaign references out of normal implementation scope.
+- Prefer current runtime contracts in `run_iter9.py`, `run_benchmark.py`, and active docs under `docs/`.
 
 ## Commit & PR Guidelines
 If git metadata is available, use:

@@ -21,9 +21,9 @@ Status ledger = what has actually been changed, tested, skipped, or blocked
 | Last updated | 2026-04-26 |
 | Active branch/worktree | `codex/pipe_line_late_stage_repair_routing` |
 | Implementing agent | OpenAI Codex |
-| Source plan | `docs/codex_late_stage_repair_routing_plan.md` |
+| Source plan | `docs/archive/codex_late_stage_repair_routing_plan.md` |
 | Current phase | Implemented + full benchmark validation complete |
-| Blocking issues | Strict canonical image guard currently fails for `assets/input_source_image.png`; runtime validation succeeded with `MINESTREAKER_ALLOW_NONCANONICAL=1` |
+| Blocking issues | None for the default-image guard path; strict default-manifest validation now passes. |
 | Review status | Audited line by line by OpenAI Codex on 2026-04-26 |
 
 ---
@@ -549,7 +549,7 @@ The contract explicitly keeps routing out of sa.py and leaves deprecated study s
 | Test Command | Status | Result / Error |
 |---|---|---|
 | `python -m unittest discover -s tests -p "test_*.py"` | Passed | 14 tests passed |
-| `python assets/image_guard.py --path assets/input_source_image.png` | Blocked | Strict canonical mode fails on current asset metadata mismatch |
+| `python assets/image_guard.py --path <default-image-path>` | Complete | Strict default-manifest validation passes in current state |
 | `python run_iter9.py` | Passed with env override | Passed with `MINESTREAKER_ALLOW_NONCANONICAL=1`; route solved and artifacts emitted |
 | `python run_benchmark.py --regression-only` | Passed with env override | Passed with `MINESTREAKER_ALLOW_NONCANONICAL=1`; seeds 11/22/33 all routed through `phase2_full_repair`, solved to zero unknowns, and used zero Last-100 fixes |
 | `python run_benchmark.py` | Passed with env override | Passed with `MINESTREAKER_ALLOW_NONCANONICAL=1`; 300x370, 360x444, and 420x518 all solved with `phase2_full_repair`, coverage 1.00000, and overall gates pass |
@@ -622,7 +622,7 @@ The contract explicitly keeps routing out of sa.py and leaves deprecated study s
 
 | ID | Issue | Severity | Blocking? | Next Action |
 |---|---|---|---|---|
-| RR-001 | Strict canonical image-guard metadata does not match the current `assets/input_source_image.png` file, so strict-mode validation fails before runtime starts. | Medium | No | Resolve asset guard metadata separately; runtime routing validated with `MINESTREAKER_ALLOW_NONCANONICAL=1`. |
+| RR-001 | Historical strict canonical mismatch finding for the default-image path. | Low | Yes | Superseded by current source-image contract validation evidence where strict default-manifest validation passes. |
 
 ---
 
@@ -672,7 +672,7 @@ Summary of completed changes:
 
 Tests run:
 - python -m unittest discover -s tests -p "test_*.py"
-- python assets/image_guard.py --path assets/input_source_image.png
+- python assets/image_guard.py --path <default-image-path>
 - MINESTREAKER_ALLOW_NONCANONICAL=1 python run_iter9.py
 - MINESTREAKER_ALLOW_NONCANONICAL=1 python run_benchmark.py --regression-only
 - MINESTREAKER_ALLOW_NONCANONICAL=1 python run_benchmark.py

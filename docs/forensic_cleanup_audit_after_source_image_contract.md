@@ -21,7 +21,7 @@
 - `repair.py` — 683 lines
 - `report.py` — 217 lines
 - `run_benchmark.py` — 1060 lines
-- `run_iris3d_visual_report.py` — 1753 lines
+- legacy visual report script (removed) — 1753 lines
 - `run_iter9.py` — 823 lines
 - `run_repair_only_from_grid.py` — 798 lines
 - `sa.py` — 207 lines
@@ -31,10 +31,10 @@
 - `archives/Timeout Theory Campaign Plan line_art_irl_9 20min budget.md` — 736 lines
 - `assets/image_guard.py` — 374 lines
 - `docs/codex_late_stage_repair_routing_implementation_status.md` — 696 lines
-- `docs/codex_late_stage_repair_routing_plan.md` — 1510 lines
+- `docs/archive/codex_late_stage_repair_routing_plan.md` — 1510 lines
 - `docs/implement_clarified_source_image_runtime_contract.md` — 196 lines
 - `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md` — 704 lines
-- `docs/industry_standard_plan_remove_hardcoded_input_source_image.md` — 1834 lines
+- `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md` — 1834 lines
 - `tests/test_benchmark_layout.py` — 91 lines
 - `tests/test_digest_file_listing.py` — 46 lines
 - `tests/test_image_guard_contract.py` — 131 lines
@@ -59,7 +59,7 @@
 
 1. **The main runtime entry points mostly satisfy the new source-image contract**, but cleanup debt remains in documentation, older orchestration scripts, and duplicate helper code.
 2. **The largest remaining contract risk is documentation drift**: README and AGENTS still contain stale artifact names, stale validation instructions, or pre-implementation wording.
-3. **The largest code bloat risk is duplicated orchestration** across `run_iter9.py`, `run_benchmark.py`, `run_iris3d_visual_report.py`, and `run_repair_only_from_grid.py`.
+3. **The largest code bloat risk is duplicated orchestration** across `run_iter9.py`, `run_benchmark.py`, legacy visual report script (removed), and `run_repair_only_from_grid.py`.
 4. **The highest-value correctness cleanup is source path resolution** in `source_config.py` and `assets/image_guard.py`, because relative paths currently depend on process CWD in places where project-root behavior is safer.
 5. **Archived and historical docs should either be clearly marked historical or moved under a docs/archive policy**, otherwise future LLM agents may treat old plans as active instructions.
 
@@ -73,7 +73,7 @@
 | `README.md` | `124-139` | P1 | Main runtime module table omits `source_config.py` and still lists `run_contrast_preprocessing_study.py` as an active root script even though the digest only has `archives/run_contrast_preprocessing_study.py.old`. | Add `source_config.py`; remove or relocate contrast-study entry under archive/deprecated notes. |
 | `README.md` | `199-212` | P1 | Quick Start output description still uses generic legacy artifact names (`grid_<board>.npy`, `metrics_<board>.json`, `visual_<board>.png`, `report_<board>.png`) instead of the new Iter9 run-specific directory and preserved Iter9 filenames. | Update to `results/iter9/<run_id>/metrics_iter9_<board>.json`, `grid_iter9_<board>.npy`, `grid_iter9_latest.npy`, `iter9_<board>_FINAL.png`, `repair_overlay_<board>.png`, and route JSON files. |
 | `README.md` | `377-397` | P2 | Pipeline direction describes late-stage routing as future-facing and target artifacts as future artifacts, but the route artifacts are now implemented. | Change wording from future direction to current architecture, or move this section to historical/campaign notes. |
-| `README.md` | `503-505` | P1 | Troubleshooting directs users to validate `assets/input_source_image.png` for board-sizing mismatch, which re-centers the old default instead of the actual source image used for the run. | Replace with `python assets/image_guard.py --path <same path passed to --image> [--allow-noncanonical|--manifest ...]`; mention default only if `--image` was omitted. |
+| `README.md` | `503-505` | P1 | Troubleshooting directs users to validate `<default-image-path>` for board-sizing mismatch, which re-centers the old default instead of the actual source image used for the run. | Replace with `python assets/image_guard.py --path <same path passed to --image> [--allow-noncanonical|--manifest ...]`; mention default only if `--image` was omitted. |
 | `README.md` | `515-526` | P2 | Troubleshooting references generic `metrics_<board>.json` and `visual_<board>.png`; Iter9 outputs use `metrics_iter9_<board>.json` and `iter9_<board>_FINAL.png`. | Update artifact names or distinguish Iter9 vs benchmark artifact naming. |
 | `README.md` | `547-550` | P2 | Recommended reading order references `docs/project_result_summary.md` and `results/line_art_campaigns.md`, which are not present in the digest. | Verify those files exist outside the digest or replace with current docs that are present. |
 | `README.md` | `570-575` | P2 | Roadmap lists already-implemented or partially-implemented items as future work: failure taxonomy, late-stage routing, repair overlay, line_art_irl_9 regression promotion. | Rewrite roadmap around remaining work: quality regression on `420x311_seed22`, visual-delta gates, shared runner extraction, docs cleanup. |
@@ -90,7 +90,7 @@
 | `assets/image_guard.py` | `285-289` | P1 | When a non-default image lacks a manifest and noncanonical mode is not allowed, the code still sets `validation_mode='noncanonical_allowed'` before failing. | Use a clearer failure marker in warnings/errors, or add `noncanonical_allowed=False` plus a structured error warning such as `NONCANONICAL_SOURCE_REJECTED`. |
 | `assets/image_guard.py` | `216-218,323-327` | P2 | Library function calls `sys.exit(1)` when `halt_on_failure=True`; this is legacy-compatible but awkward for callers that want exceptions/details. | Keep legacy behavior for public compatibility, but add an exception-returning lower-level helper and have CLI handle `SystemExit`. |
 | `pipeline.py` | `6` | P2 | Manual `sys.path.insert(...)` points three directories upward and is likely leftover import scaffolding. | Remove if not required, or replace with normal package/import strategy. |
-| `pipeline.py` | `30-38` | P2 | Atomic JSON/NPY helpers duplicate equivalent logic in `run_iter9.py`, `run_benchmark.py`, `run_iris3d_visual_report.py`, and `run_repair_only_from_grid.py`. | Extract shared `atomic_write_json`, `atomic_write_npy`, and `atomic_render` helpers into a small utility module. |
+| `pipeline.py` | `30-38` | P2 | Atomic JSON/NPY helpers duplicate equivalent logic in `run_iter9.py`, `run_benchmark.py`, legacy visual report script (removed), and `run_repair_only_from_grid.py`. | Extract shared `atomic_write_json`, `atomic_write_npy`, and `atomic_render` helpers into a small utility module. |
 | `pipeline.py` | `202-378` | P1 | `run_board()` is a legacy full orchestration path using Iter2/asymmetric settings, old metrics shape, old artifact names, and no source-image provenance contract. | Either archive/remove `run_board()` if unused, or update it to accept `SourceImageConfig`, image validation details, provenance-rich metrics, and the same artifact metadata contract. |
 | `pipeline.py` | `217-218` | P1 | `run_board()` validates `img_path` through `verify_source_image()` without `allow_noncanonical`, `manifest_path`, or structured returned details. | Add parameters or remove this legacy path. Do not leave custom images dependent on the environment variable fallback. |
 | `pipeline.py` | `361-364` | P1 | `run_board()` writes `metrics_iterX_label.json`, `grid_iterX_label.npy`, and final PNG without the new run-id directory/provenance policy. | If keeping this path, align artifact layout with current run-specific policy or mark as deprecated. |
@@ -117,16 +117,16 @@
 | `run_benchmark.py` | `296-300` | P2 | Benchmark environment block is sparse compared with Iter9 metrics and lacks NumPy/SciPy/Pillow/matplotlib versions. | Use a shared environment summary helper. |
 | `run_benchmark.py` | `329-658` | P2 | `run_normal_child()` is a 330-line duplicated pipeline runner, largely parallel to `run_iter9.py`. | Extract a reusable single-run engine used by both Iter9 and benchmark child runs. |
 | `run_benchmark.py` | `825-904,911-922` | P1 | Regression rows add `source_image_validation` but do not add nested `source_image` provenance via `SourceImageConfig.to_metrics_dict()`. | Resolve each regression case image through `resolve_source_image_config()` and include nested `source_image` in each regression row. |
-| `run_iris3d_visual_report.py` | `54-72,110-132,165-186` | P2 | This script duplicates atomic write, hash, git metadata, JSONL, and CSV helper logic now present elsewhere. | Replace duplicated helpers with shared utility/source_config helpers if the script remains active. |
-| `run_iris3d_visual_report.py` | `1550-1559,1630-1638` | P1 | The script still has `--copy-from` / `--copy-to` workflow defaulting to copying into `assets/input_source_image.png`, which directly conflicts with the new no-overwrite source-image contract. | Remove copy-overwrite workflow or mark this script archived/deprecated; require explicit `--image` instead. |
-| `run_iris3d_visual_report.py` | `1626-1628,1654` | P1 | The script sets `MINESTREAKER_ALLOW_NONCANONICAL` in the environment but calls `verify_source_image()` without passing `allow_noncanonical` or `return_details`. | Use explicit `verify_source_image(..., allow_noncanonical=args.allow_noncanonical, return_details=True)` and record validation details. |
-| `run_iris3d_visual_report.py` | `771-1545` | P2 | `run_single_board()` is a 775-line experimental orchestration path that overlaps heavily with Iter9/benchmark logic. | Move to archive or split into reusable stages; otherwise it will keep drifting from the source-image runtime contract. |
+| legacy visual report script (removed) | `54-72,110-132,165-186` | P2 | This script duplicates atomic write, hash, git metadata, JSONL, and CSV helper logic now present elsewhere. | Replace duplicated helpers with shared utility/source_config helpers if the script remains active. |
+| legacy visual report script (removed) | `1550-1559,1630-1638` | P1 | The script still has `--copy-from` / `--copy-to` workflow defaulting to copying into `<default-image-path>`, which directly conflicts with the new no-overwrite source-image contract. | Remove copy-overwrite workflow or mark this script archived/deprecated; require explicit `--image` instead. |
+| legacy visual report script (removed) | `1626-1628,1654` | P1 | The script sets `MINESTREAKER_ALLOW_NONCANONICAL` in the environment but calls `verify_source_image()` without passing `allow_noncanonical` or `return_details`. | Use explicit `verify_source_image(..., allow_noncanonical=args.allow_noncanonical, return_details=True)` and record validation details. |
+| legacy visual report script (removed) | `771-1545` | P2 | `run_single_board()` is a 775-line experimental orchestration path that overlaps heavily with Iter9/benchmark logic. | Move to archive or split into reusable stages; otherwise it will keep drifting from the source-image runtime contract. |
 | `run_repair_only_from_grid.py` | `44-86,392-407` | P2 | Duplicates atomic write, file hashing, and git metadata helpers. | Use shared helpers and `source_config.compute_file_sha256()`. |
 | `run_repair_only_from_grid.py` | `418-420` | P1 | Repair-only runner sets `MINESTREAKER_ALLOW_NONCANONICAL` instead of passing explicit validation arguments and does not capture structured validation details. | Call `verify_source_image(str(image_path), allow_noncanonical=args.allow_noncanonical, return_details=True)` and record the details in metrics. |
 | `run_repair_only_from_grid.py` | `204-389` | P2 | Contains a local `run_last100_repair()` implementation that overlaps with `repair.py`. | Consolidate to the canonical repair implementation. |
-| `docs/codex_late_stage_repair_routing_implementation_status.md` | `26,552,625,689-690` | P1 | Status document still says strict canonical validation for `assets/input_source_image.png` is blocked/failing, contradicting the later source-image contract verification refresh. | Mark the document historical or append a superseding status note that strict default validation now passes after source-image contract implementation. |
-| `docs/codex_late_stage_repair_routing_plan.md` | `1189,1289,1425` | P3 | Historical plan still contains default-image validation commands. This is acceptable only if clearly historical. | No code change required; optionally move old plans under docs/archive or add `Historical plan; not current workflow` banner. |
-| `docs/industry_standard_plan_remove_hardcoded_input_source_image.md` | `1554-1599,1616-1800` | P3 | Implementation plan still contains unchecked checklist / pre-implementation prompt sections after implementation is complete. | Either keep as historical plan or move active checklist/status to the implementation checklist doc and add a historical banner. |
+| `docs/codex_late_stage_repair_routing_implementation_status.md` | `26,552,625,689-690` | P1 | Status document still says strict canonical validation for `<default-image-path>` is blocked/failing, contradicting the later source-image contract verification refresh. | Mark the document historical or append a superseding status note that strict default validation now passes after source-image contract implementation. |
+| `docs/archive/codex_late_stage_repair_routing_plan.md` | `1189,1289,1425` | P3 | Historical plan still contains default-image validation commands. This is acceptable only if clearly historical. | No code change required; optionally move old plans under docs/archive or add `Historical plan; not current workflow` banner. |
+| `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md` | `1554-1599,1616-1800` | P3 | Implementation plan still contains unchecked checklist / pre-implementation prompt sections after implementation is complete. | Either keep as historical plan or move active checklist/status to the implementation checklist doc and add a historical banner. |
 | `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md` | `692-696` | P2 | Checklist notes residual historical references but does not link a cleanup ledger. | Add a pointer to this cleanup audit or convert residual references into tracked cleanup issues. |
 | `tests/test_source_image_cli_contract.py` | `57-65` | P2 | Import-time validation test patches `assets.image_guard.verify_source_image`, but `run_iter9.py` and `run_benchmark.py` import the function directly; this test may not catch already-bound aliases after import order changes. | Add direct module import/reload checks and inspect that no validation call occurs through either module-level alias. |
 | `tests/test_benchmark_layout.py` | `1-91` | P2 | Benchmark layout tests likely verify helper naming but not a real small end-to-end child artifact set. | Add a cheap smoke test with mocked SA/solver or fixture grid to prove child directory artifact inventory is written. |
@@ -168,7 +168,7 @@
   - **Problem:** Pipeline direction describes late-stage routing as future-facing and target artifacts as future artifacts, but the route artifacts are now implemented.
   - **Cleanup:** Change wording from future direction to current architecture, or move this section to historical/campaign notes.
 - **Lines `503-505` — P1**
-  - **Problem:** Troubleshooting directs users to validate `assets/input_source_image.png` for board-sizing mismatch, which re-centers the old default instead of the actual source image used for the run.
+  - **Problem:** Troubleshooting directs users to validate `<default-image-path>` for board-sizing mismatch, which re-centers the old default instead of the actual source image used for the run.
   - **Cleanup:** Replace with `python assets/image_guard.py --path <same path passed to --image> [--allow-noncanonical|--manifest ...]`; mention default only if `--image` was omitted.
 - **Lines `515-526` — P2**
   - **Problem:** Troubleshooting references generic `metrics_<board>.json` and `visual_<board>.png`; Iter9 outputs use `metrics_iter9_<board>.json` and `iter9_<board>_FINAL.png`.
@@ -219,10 +219,10 @@
 ### `docs/codex_late_stage_repair_routing_implementation_status.md`
 
 - **Lines `26,552,625,689-690` — P1**
-  - **Problem:** Status document still says strict canonical validation for `assets/input_source_image.png` is blocked/failing, contradicting the later source-image contract verification refresh.
+  - **Problem:** Status document still says strict canonical validation for `<default-image-path>` is blocked/failing, contradicting the later source-image contract verification refresh.
   - **Cleanup:** Mark the document historical or append a superseding status note that strict default validation now passes after source-image contract implementation.
 
-### `docs/codex_late_stage_repair_routing_plan.md`
+### `docs/archive/codex_late_stage_repair_routing_plan.md`
 
 - **Lines `1189,1289,1425` — P3**
   - **Problem:** Historical plan still contains default-image validation commands. This is acceptable only if clearly historical.
@@ -234,7 +234,7 @@
   - **Problem:** Checklist notes residual historical references but does not link a cleanup ledger.
   - **Cleanup:** Add a pointer to this cleanup audit or convert residual references into tracked cleanup issues.
 
-### `docs/industry_standard_plan_remove_hardcoded_input_source_image.md`
+### `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md`
 
 - **Lines `1554-1599,1616-1800` — P3**
   - **Problem:** Implementation plan still contains unchecked checklist / pre-implementation prompt sections after implementation is complete.
@@ -246,7 +246,7 @@
   - **Problem:** Manual `sys.path.insert(...)` points three directories upward and is likely leftover import scaffolding.
   - **Cleanup:** Remove if not required, or replace with normal package/import strategy.
 - **Lines `30-38` — P2**
-  - **Problem:** Atomic JSON/NPY helpers duplicate equivalent logic in `run_iter9.py`, `run_benchmark.py`, `run_iris3d_visual_report.py`, and `run_repair_only_from_grid.py`.
+  - **Problem:** Atomic JSON/NPY helpers duplicate equivalent logic in `run_iter9.py`, `run_benchmark.py`, legacy visual report script (removed), and `run_repair_only_from_grid.py`.
   - **Cleanup:** Extract shared `atomic_write_json`, `atomic_write_npy`, and `atomic_render` helpers into a small utility module.
 - **Lines `202-378` — P1**
   - **Problem:** `run_board()` is a legacy full orchestration path using Iter2/asymmetric settings, old metrics shape, old artifact names, and no source-image provenance contract.
@@ -300,13 +300,13 @@
   - **Problem:** Regression rows add `source_image_validation` but do not add nested `source_image` provenance via `SourceImageConfig.to_metrics_dict()`.
   - **Cleanup:** Resolve each regression case image through `resolve_source_image_config()` and include nested `source_image` in each regression row.
 
-### `run_iris3d_visual_report.py`
+### legacy visual report script (removed)
 
 - **Lines `54-72,110-132,165-186` — P2**
   - **Problem:** This script duplicates atomic write, hash, git metadata, JSONL, and CSV helper logic now present elsewhere.
   - **Cleanup:** Replace duplicated helpers with shared utility/source_config helpers if the script remains active.
 - **Lines `1550-1559,1630-1638` — P1**
-  - **Problem:** The script still has `--copy-from` / `--copy-to` workflow defaulting to copying into `assets/input_source_image.png`, which directly conflicts with the new no-overwrite source-image contract.
+  - **Problem:** The script still has `--copy-from` / `--copy-to` workflow defaulting to copying into `<default-image-path>`, which directly conflicts with the new no-overwrite source-image contract.
   - **Cleanup:** Remove copy-overwrite workflow or mark this script archived/deprecated; require explicit `--image` instead.
 - **Lines `1626-1628,1654` — P1**
   - **Problem:** The script sets `MINESTREAKER_ALLOW_NONCANONICAL` in the environment but calls `verify_source_image()` without passing `allow_noncanonical` or `return_details`.
@@ -411,7 +411,7 @@
 
 ### Step 3: Remove or isolate legacy orchestration paths
 1. `pipeline.py::run_board()` lines 202-378.
-2. `run_iris3d_visual_report.py` copy-over workflow lines 1550-1559 and 1630-1638.
+2. legacy visual report script (removed) copy-over workflow lines 1550-1559 and 1630-1638.
 3. `run_repair_only_from_grid.py` image validation and duplicated Last-100 implementation.
 
 ### Step 4: Extract shared utilities after behavior is stable
@@ -439,16 +439,16 @@ Priorities:
 4. Update README and AGENTS to remove stale artifact names, stale tests guidance, and copy/default-image centered instructions.
 5. Mark historical docs as historical or move them under a docs/archive policy.
 6. Remove or explicitly deprecate `pipeline.run_board()` if no active caller exists.
-7. Remove copy-over workflow from `run_iris3d_visual_report.py` or archive the script.
+7. Remove copy-over workflow from legacy visual report script (removed) or archive the script.
 8. Consolidate duplicated helper functions only after tests pass.
 
 Validation:
 - python -m unittest discover -s tests -p "test_*.py"
 - python run_iter9.py --help
 - python run_benchmark.py --help
-- python assets/image_guard.py --path assets/input_source_image.png
+- python assets/image_guard.py --path <default-image-path>
 - python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
 - python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 - python run_benchmark.py --regression-only
-- git grep "assets/input_source_image.png"
+- git grep "<default-image-path>"
 ```

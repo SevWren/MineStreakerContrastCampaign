@@ -1,6 +1,8 @@
 import hashlib
+import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from source_config import (
@@ -11,6 +13,16 @@ from source_config import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@contextmanager
+def _pushd(path: Path):
+    prior = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prior)
 
 
 class SourceConfigTests(unittest.TestCase):
@@ -48,6 +60,29 @@ class SourceConfigTests(unittest.TestCase):
             self.assertIsNone(cfg.project_relative_path)
             rel = project_relative_or_none(path, PROJECT_ROOT)
             self.assertIsNone(rel)
+
+    def test_relative_image_path_uses_project_root_when_supplied(self):
+        with tempfile.TemporaryDirectory() as td:
+            with _pushd(Path(td)):
+                cfg = resolve_source_image_config(
+                    "assets/input_source_image.png",
+                    project_root=PROJECT_ROOT,
+                )
+        self.assertEqual(cfg.project_relative_path, "assets/input_source_image.png")
+        self.assertEqual(cfg.absolute_path, (PROJECT_ROOT / "assets/input_source_image.png").resolve())
+
+    def test_manifest_path_uses_project_root_when_supplied(self):
+        with tempfile.TemporaryDirectory() as td:
+            with _pushd(Path(td)):
+                cfg = resolve_source_image_config(
+                    "assets/input_source_image.png",
+                    project_root=PROJECT_ROOT,
+                    manifest_path="assets/SOURCE_IMAGE_HASH.json",
+                )
+        self.assertEqual(
+            cfg.manifest_path,
+            (PROJECT_ROOT / "assets/SOURCE_IMAGE_HASH.json").resolve().as_posix(),
+        )
 
 
 if __name__ == "__main__":

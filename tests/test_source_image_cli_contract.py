@@ -1,6 +1,7 @@
 import importlib
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -131,10 +132,21 @@ class SourceImageCliContractTests(unittest.TestCase):
             visual_quality_summary={},
             runtime_phase_timing_s={},
             environment={},
-            artifact_inventory={},
+            artifact_inventory={
+                "visual_png": "results/iter9/example/iter9_300x370_FINAL.png",
+                "visual_explained_png": "results/iter9/example/iter9_300x370_FINAL_explained.png",
+                "repair_overlay_png": "results/iter9/example/repair_overlay_300x370.png",
+                "repair_overlay_explained_png": "results/iter9/example/repair_overlay_300x370_explained.png",
+            },
             validation_gates={},
             warnings_and_exceptions=[],
-            llm_review_summary={},
+            llm_review_summary={
+                "best_artifact_to_open_first": "results/iter9/example/iter9_300x370_FINAL_explained.png",
+                "best_artifact_to_open_second": "results/iter9/example/iter9_300x370_FINAL.png",
+                "best_repair_artifact_to_open_first": "results/iter9/example/repair_overlay_300x370_explained.png",
+                "best_repair_artifact_to_open_second": "results/iter9/example/repair_overlay_300x370.png",
+            },
+            source_image_validation={"ok": True, "validation_mode": "default_manifest"},
         )
         required = [
             "schema_version",
@@ -167,6 +179,35 @@ class SourceImageCliContractTests(unittest.TestCase):
         self.assertEqual(doc["repair_route_selected"], "phase2_full_repair")
         self.assertIn("repair_route_result", doc)
         self.assertIn("visual_delta", doc)
+        self.assertIn("source_image_validation", doc)
+        self.assertTrue(doc["source_image_validation"]["ok"])
+        self.assertIn("visual_explained_png", doc["artifact_inventory"])
+        self.assertIn("repair_overlay_explained_png", doc["artifact_inventory"])
+        self.assertIn("best_artifact_to_open_first", doc["llm_review_summary"])
+        self.assertIn("best_artifact_to_open_second", doc["llm_review_summary"])
+        self.assertIn("best_repair_artifact_to_open_first", doc["llm_review_summary"])
+        self.assertIn("best_repair_artifact_to_open_second", doc["llm_review_summary"])
+
+    def test_pipeline_run_board_is_present_and_deprecated(self):
+        pipeline = importlib.import_module("pipeline")
+        self.assertTrue(hasattr(pipeline, "run_board"))
+        self.assertIn("deprecated", (pipeline.run_board.__doc__ or "").lower())
+        with mock.patch("assets.image_guard.verify_source_image", side_effect=RuntimeError("stop")):
+            with self.assertWarnsRegex(DeprecationWarning, "deprecated"):
+                with self.assertRaisesRegex(RuntimeError, "stop"):
+                    pipeline.run_board(
+                        board_w=10,
+                        board_h=10,
+                        label="deprecation-test",
+                        sa_fn=None,
+                        img_path="assets/input_source_image.png",
+                        out_dir=str(PROJECT_ROOT / "results" / "tmp_deprecation_test"),
+                        verbose=False,
+                    )
+
+    def test_removed_legacy_visual_report_script_is_absent(self):
+        legacy_script = PROJECT_ROOT / "run_iris3d_visual_report.py"
+        self.assertFalse(legacy_script.exists())
 
 
 if __name__ == "__main__":

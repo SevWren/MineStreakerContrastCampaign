@@ -35,7 +35,12 @@ from core import (
 from corridors import build_adaptive_corridors
 from pipeline import RepairRoutingConfig, route_late_stage_failure, write_repair_route_artifacts
 from repair import run_phase1_repair
-from report import render_repair_overlay, render_report
+from report import (
+    render_repair_overlay,
+    render_repair_overlay_explained,
+    render_report,
+    render_report_explained,
+)
 from sa import compile_sa_kernel, run_sa
 from solver import ensure_solver_warmed, solve_board
 from source_config import SourceImageConfig, resolve_source_image_config
@@ -220,9 +225,12 @@ def _llm_review_summary(
         ),
         "main_success": "The routed repair pipeline completed and produced final artifacts.",
         "main_risk": risk,
-        "best_artifact_to_open_first": artifact_inventory.get("repair_overlay_png"),
+        "best_artifact_to_open_first": artifact_inventory.get("visual_explained_png"),
+        "best_artifact_to_open_second": artifact_inventory.get("visual_png"),
+        "best_repair_artifact_to_open_first": artifact_inventory.get("repair_overlay_explained_png"),
+        "best_repair_artifact_to_open_second": artifact_inventory.get("repair_overlay_png"),
         "best_metric_to_check_first": "n_unknown",
-        "next_recommended_check": "Review final visual output and repair overlay before promotion.",
+        "next_recommended_check": "Start with the explained final visual, then use the technical reports for detailed audit.",
     }
 
 
@@ -259,6 +267,7 @@ def build_metrics_document(
     validation_gates: dict,
     warnings_and_exceptions: list[dict],
     llm_review_summary: dict,
+    source_image_validation: dict | None = None,
 ) -> dict:
     document = dict(flat_metrics)
     document.update(
@@ -287,6 +296,7 @@ def build_metrics_document(
             "validation_gates": validation_gates,
             "warnings_and_exceptions": warnings_and_exceptions,
             "llm_review_summary": llm_review_summary,
+            "source_image_validation": dict(source_image_validation or {}),
         }
     )
     return document
@@ -519,7 +529,9 @@ def main() -> int:
     grid_path = out_dir_path / f"grid_iter9_{board_label}.npy"
     grid_latest_path = out_dir_path / "grid_iter9_latest.npy"
     final_png = out_dir_path / f"iter9_{board_label}_FINAL.png"
+    final_explained_png = out_dir_path / f"iter9_{board_label}_FINAL_explained.png"
     overlay_png = out_dir_path / f"repair_overlay_{board_label}.png"
+    overlay_explained_png = out_dir_path / f"repair_overlay_{board_label}_explained.png"
 
     route_artifact_meta = {
         "run_id": run_id,
@@ -534,6 +546,32 @@ def main() -> int:
         route,
         artifact_metadata=route_artifact_meta,
     )
+
+    removed_mines = int(np.sum((grid_before_route == 1) & (grid == 0)))
+    added_mines = int(np.sum((grid_before_route == 0) & (grid == 1)))
+    render_metrics = {
+        "run_id": run_id,
+        "board": board_label,
+        "board_width": int(bw),
+        "board_height": int(bh),
+        "seed": int(args.seed),
+        "source_image": {
+            "name": source_cfg.name,
+            "project_relative_path": source_cfg.project_relative_path,
+        },
+        "repair_route_selected": route.selected_route,
+        "coverage": float(sr_final.coverage),
+        "solvable": bool(sr_final.solvable),
+        "mine_accuracy": float(sr_final.mine_accuracy),
+        "n_unknown": int(sr_final.n_unknown),
+        "mean_abs_error": float(err.mean()),
+        "mine_density": float(grid.mean()),
+        "before_unknown": int(sr_before_route.n_unknown),
+        "after_unknown": int(sr_final.n_unknown),
+        "removed_mines": removed_mines,
+        "added_mines": added_mines,
+        "solved_after": bool(sr_final.solvable and sr_final.n_unknown == 0),
+    }
 
     phase_start = time.perf_counter()
     _atomic_render(
@@ -556,6 +594,29 @@ def main() -> int:
         sr_final,
         all_history,
         f"Mine-Streaker Iter9 - {board_label} [solvable={sr_final.solvable}]",
+        dpi=120,
+    )
+    _atomic_render(
+        render_repair_overlay_explained,
+        overlay_explained_png,
+        target_eval,
+        grid_before_route,
+        grid,
+        sr_before_route,
+        sr_final,
+        route.phase2_log + route.last100_log,
+        metrics=render_metrics,
+        dpi=120,
+    )
+    _atomic_render(
+        render_report_explained,
+        final_explained_png,
+        target_eval,
+        grid,
+        sr_final,
+        all_history,
+        "Mine-Streaker explained final report",
+        metrics=render_metrics,
         dpi=120,
     )
     phase_timers["render_and_write"] = time.perf_counter() - phase_start
@@ -752,7 +813,9 @@ def main() -> int:
         "grid_npy": _relative_or_absolute(grid_path, project_root),
         "grid_latest_npy": _relative_or_absolute(grid_latest_path, project_root),
         "visual_png": _relative_or_absolute(final_png, project_root),
+        "visual_explained_png": _relative_or_absolute(final_explained_png, project_root),
         "repair_overlay_png": _relative_or_absolute(overlay_png, project_root),
+        "repair_overlay_explained_png": _relative_or_absolute(overlay_explained_png, project_root),
         "failure_taxonomy_json": _relative_or_absolute(Path(route_artifacts["failure_taxonomy"]), project_root),
         "repair_route_decision_json": _relative_or_absolute(
             Path(route_artifacts["repair_route_decision"]), project_root
@@ -808,6 +871,7 @@ def main() -> int:
         validation_gates=validation_gates,
         warnings_and_exceptions=warnings_and_exceptions,
         llm_review_summary=llm_review,
+        source_image_validation=image_validation,
     )
     _atomic_save_json(metrics_doc, metrics_path)
 

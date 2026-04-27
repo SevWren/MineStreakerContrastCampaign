@@ -32,7 +32,12 @@ from core import (
 from corridors import build_adaptive_corridors
 from pipeline import RepairRoutingConfig, route_late_stage_failure, write_repair_route_artifacts
 from repair import run_phase1_repair
-from report import render_repair_overlay, render_report
+from report import (
+    render_repair_overlay,
+    render_repair_overlay_explained,
+    render_report,
+    render_report_explained,
+)
 from sa import compile_sa_kernel, run_sa
 from solver import ensure_solver_warmed, solve_board
 from source_config import SourceImageConfig, resolve_source_image_config
@@ -163,7 +168,9 @@ def benchmark_child_artifact_filenames(board: str) -> dict:
         "metrics": f"metrics_{board}.json",
         "grid": f"grid_{board}.npy",
         "visual": f"visual_{board}.png",
+        "visual_explained": f"visual_{board}_explained.png",
         "overlay": f"repair_overlay_{board}.png",
+        "overlay_explained": f"repair_overlay_{board}_explained.png",
         "failure_taxonomy": "failure_taxonomy.json",
         "repair_route_decision": "repair_route_decision.json",
         "visual_delta_summary": "visual_delta_summary.json",
@@ -314,7 +321,10 @@ def _build_child_metrics_document(
                     f"finished with route={flat_metrics['repair_route_selected']} "
                     f"and n_unknown={flat_metrics['n_unknown']}."
                 ),
-                "best_artifact_to_open_first": artifact_inventory.get("repair_overlay_png"),
+                "best_artifact_to_open_first": artifact_inventory.get("visual_explained_png"),
+                "best_artifact_to_open_second": artifact_inventory.get("visual_png"),
+                "best_repair_artifact_to_open_first": artifact_inventory.get("repair_overlay_explained_png"),
+                "best_repair_artifact_to_open_second": artifact_inventory.get("repair_overlay_png"),
                 "best_metric_to_check_first": "n_unknown",
             },
             "benchmark_mode": "normal",
@@ -505,7 +515,9 @@ def run_normal_child(
     metrics_path = child_dir / artifact_files["metrics"]
     grid_path = child_dir / artifact_files["grid"]
     visual_path = child_dir / artifact_files["visual"]
+    visual_explained_path = child_dir / artifact_files["visual_explained"]
     overlay_path = child_dir / artifact_files["overlay"]
+    overlay_explained_path = child_dir / artifact_files["overlay_explained"]
 
     route_artifact_meta = {
         "run_id": f"{benchmark_run_id}_{board}_seed{seed}",
@@ -520,6 +532,32 @@ def run_normal_child(
         route,
         artifact_metadata=route_artifact_meta,
     )
+
+    removed_mines = int(np.sum((grid_before_route == 1) & (grid == 0)))
+    added_mines = int(np.sum((grid_before_route == 0) & (grid == 1)))
+    render_metrics = {
+        "run_id": f"{benchmark_run_id}_{board}_seed{seed}",
+        "board": board,
+        "board_width": int(board_w),
+        "board_height": int(board_h),
+        "seed": int(seed),
+        "source_image": {
+            "name": source_cfg.name,
+            "project_relative_path": source_cfg.project_relative_path,
+        },
+        "repair_route_selected": route.selected_route,
+        "coverage": float(sr_final.coverage),
+        "solvable": bool(sr_final.solvable),
+        "mine_accuracy": float(sr_final.mine_accuracy),
+        "n_unknown": int(sr_final.n_unknown),
+        "mean_abs_error": float(err.mean()),
+        "mine_density": float(grid.mean()),
+        "before_unknown": int(sr_before_route.n_unknown),
+        "after_unknown": int(sr_final.n_unknown),
+        "removed_mines": removed_mines,
+        "added_mines": added_mines,
+        "solved_after": bool(sr_final.solvable and sr_final.n_unknown == 0),
+    }
 
     phase_start = time.perf_counter()
     _atomic_render(
@@ -542,6 +580,29 @@ def run_normal_child(
         sr_final,
         all_history,
         f"Benchmark {board} seed={seed}",
+        dpi=120,
+    )
+    _atomic_render(
+        render_repair_overlay_explained,
+        overlay_explained_path,
+        target_eval,
+        grid_before_route,
+        grid,
+        sr_before_route,
+        sr_final,
+        route.phase2_log + route.last100_log,
+        metrics=render_metrics,
+        dpi=120,
+    )
+    _atomic_render(
+        render_report_explained,
+        visual_explained_path,
+        target_eval,
+        grid,
+        sr_final,
+        all_history,
+        f"Benchmark explained report {board} seed={seed}",
+        metrics=render_metrics,
         dpi=120,
     )
     phase_timing["render_and_write"] = float(time.perf_counter() - phase_start)
@@ -576,7 +637,9 @@ def run_normal_child(
         "metrics_json": _relative_or_absolute(metrics_path, project_root),
         "grid_npy": _relative_or_absolute(grid_path, project_root),
         "visual_png": _relative_or_absolute(visual_path, project_root),
+        "visual_explained_png": _relative_or_absolute(visual_explained_path, project_root),
         "repair_overlay_png": _relative_or_absolute(overlay_path, project_root),
+        "repair_overlay_explained_png": _relative_or_absolute(overlay_explained_path, project_root),
         "failure_taxonomy_json": _relative_or_absolute(Path(route_artifacts["failure_taxonomy"]), project_root),
         "repair_route_decision_json": _relative_or_absolute(
             Path(route_artifacts["repair_route_decision"]),

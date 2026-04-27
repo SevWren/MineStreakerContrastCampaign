@@ -1,6 +1,8 @@
 import json
+import os
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 from assets.image_guard import (
@@ -11,6 +13,16 @@ from assets.image_guard import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@contextmanager
+def _pushd(path: Path):
+    prior = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prior)
 
 
 class ImageGuardContractTests(unittest.TestCase):
@@ -123,6 +135,19 @@ class ImageGuardContractTests(unittest.TestCase):
         self.assertFalse(details["ok"])
         self.assertEqual(details["validation_mode"], "explicit_manifest")
         self.assertFalse(details["canonical_match"])
+
+    def test_default_image_and_manifest_are_repo_root_stable_outside_cwd(self):
+        with tempfile.TemporaryDirectory() as td:
+            with _pushd(Path(td)):
+                details = verify_source_image(
+                    DEFAULT_IMG_PATH,
+                    halt_on_failure=False,
+                    verbose=False,
+                    return_details=True,
+                )
+        self.assertTrue(details["ok"])
+        self.assertEqual(details["validation_mode"], "default_manifest")
+        self.assertTrue(str(details["manifest_path"]).endswith("/assets/SOURCE_IMAGE_HASH.json"))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """
 pipeline.py — Full orchestration.  Iter 2: asymmetric weights + extended schedule.
 """
-import os, sys, json, time
+import os, sys, json, time, warnings
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -210,6 +210,12 @@ def run_board(board_w, board_h, label, sa_fn, img_path, out_dir,
               bg_penalty=6.0, hi_boost=8.0, hi_threshold=3.0,
               edge_sigma=1.0, edge_boost=2.0,
               verbose=True):
+    """Legacy orchestration path kept for compatibility. Deprecated."""
+    warnings.warn(
+        "pipeline.run_board() is legacy/deprecated and will be removed in a future cleanup.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     t_total = time.perf_counter()
 
