@@ -462,7 +462,22 @@ Explained PNGs are the first file to open when you want a human-readable overvie
 | Generated number colorbar | `0` means a safe cell has no touching mines. `8` means a safe cell is surrounded by mines. |
 | Difference colorbar | `0` means the generated number matched the target. Higher values mean a larger visual mismatch. `4+` means a large mismatch. |
 | Solver colors | Gray means revealed safe cells. Orange means flagged mines. Blue means unresolved cells. |
-| Optimizer progress | Lower is better. Each point is saved after 50,000 attempted mine changes. This axis shows optimizer work, not clock time. |
+| Optimizer progress | Lower is better. The x-axis is shown in **millions of attempted mine changes** and also states that `1 plotted point = 50,000 attempted changes`. This axis shows optimizer work, not clock time. |
+
+### Explained vs Technical Report Terms
+
+The explained report intentionally uses beginner language:
+
+- `Optimizer progress: lower is better`
+- `Optimizer work, in millions of attempted mine changes`
+- `1 plotted point = 50,000 attempted changes`
+- `Match error score (lower is better)`
+
+The technical report keeps audit/debug wording:
+
+- `Loss curve (log)`
+- `x50k iters`
+- `Weighted loss`
 
 ---
 

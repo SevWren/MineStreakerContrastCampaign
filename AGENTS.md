@@ -20,6 +20,30 @@ Visual artifact guidance:
 - Explained PNGs are additive first-look review artifacts for humans and LLMs.
 - Explained PNGs do not replace the technical PNGs.
 
+Explained report readability contract:
+- Explained colorbar labels must remain:
+  - `Target value: 0 background → 8 strongest line`
+  - `Generated number: 0 no nearby mines → 8 surrounded`
+  - `Difference: 0 match → 4+ large mismatch`
+  - `Visual change: negative better → positive worse`
+- Explained optimization chart wording must remain:
+  - Title: `Optimizer progress: lower is better`
+  - X-axis: `Optimizer work, in millions of attempted mine changes` plus second line `1 plotted point = 50,000 attempted changes`
+  - Y-axis: `Match error score (lower is better)`
+  - Legend/line label: `Match error score`
+  - Final annotation: `Final score: <value>`
+- The explained optimization chart must keep one plotted history curve, visible numeric ticks, and no extra plotted lines/secondary axes.
+- Forbidden in explained chart title/axis/legend/annotations:
+  - `Weighted loss`
+  - `x50k`
+  - `x50k iterations`
+- Technical report wording remains unchanged:
+  - `Loss curve (log)`
+  - `x50k iters`
+  - `Weighted loss`
+- Keep explained report layout/readability settings in sync with implementation and tests:
+  - `figsize=(24, 15.5)`, right-column subgridspec sidebar split, and `wspace=0.34`
+
 ## Deprecated Study Docs (Out Of Scope)
 The prior saturation/contrast planning docs were intentionally deprecated and removed from active workflow.
 
