@@ -6,6 +6,7 @@ This index defines active versus archived documentation paths for this repositor
 
 - `docs/forensic_cleanup_audit_after_source_image_contract.md`
 - `docs/codex_late_stage_repair_routing_implementation_status.md`
+- `docs/explained_report_artifact_contract.md`
 - `docs/DOCS_INDEX.md`
 
 ## Archived

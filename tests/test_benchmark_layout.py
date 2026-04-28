@@ -2,6 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import report
+import run_benchmark
 from run_benchmark import (
     _build_child_metrics_document,
     _child_dir_name,
@@ -17,6 +19,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class BenchmarkLayoutTests(unittest.TestCase):
+    def test_benchmark_uses_shared_explained_report_renderer(self):
+        self.assertIs(run_benchmark.render_report_explained, report.render_report_explained)
+        self.assertIs(run_benchmark.render_repair_overlay_explained, report.render_repair_overlay_explained)
+
     def test_child_directory_naming(self):
         self.assertEqual(_child_dir_name(300, 370, 11), "300x370_seed11")
 

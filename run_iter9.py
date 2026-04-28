@@ -549,6 +549,7 @@ def main() -> int:
 
     removed_mines = int(np.sum((grid_before_route == 1) & (grid == 0)))
     added_mines = int(np.sum((grid_before_route == 0) & (grid == 1)))
+    runtime_before_report_s = float(time.perf_counter() - started_wall)
     render_metrics = {
         "run_id": run_id,
         "board": board_label,
@@ -571,6 +572,7 @@ def main() -> int:
         "removed_mines": removed_mines,
         "added_mines": added_mines,
         "solved_after": bool(sr_final.solvable and sr_final.n_unknown == 0),
+        "runtime_before_report_s": runtime_before_report_s,
     }
 
     phase_start = time.perf_counter()

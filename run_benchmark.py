@@ -557,6 +557,7 @@ def run_normal_child(
         "removed_mines": removed_mines,
         "added_mines": added_mines,
         "solved_after": bool(sr_final.solvable and sr_final.n_unknown == 0),
+        "total_time_s": float(duration_s),
     }
 
     phase_start = time.perf_counter()

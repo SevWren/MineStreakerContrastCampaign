@@ -24,11 +24,11 @@ except ImportError:
 
 REPORT_PANEL_CAPTIONS = {
     "target_image": "This panel shows the target image after it was converted into Mine-Streaker number values from 0 to 8.",
-    "mine_grid": "This panel shows the generated mine layout itself, where darker cells mark mined positions in the final board.",
+    "mine_grid": "This panel shows the generated mine layout itself, where white cells are safe cells and black cells are mines.",
     "number_field": "This panel shows the numbers created by the generated mine layout, which is the pattern Mine-Streaker tries to match to the target image.",
     "error_map": "This panel highlights where the generated number field differs from the target image, so brighter areas deserve closer review.",
     "solver_result": "This panel shows what the solver could prove: gray cells are revealed safe cells, orange cells are identified mines, and blue cells remain unresolved.",
-    "loss_curve": "This panel tracks how the weighted optimization loss changed during simulated annealing, which helps show whether the search settled into a better solution.",
+    "loss_curve": "This panel tracks optimizer progress as a match error score, where lower values are visually better.",
     "distribution": "This panel compares the overall value distribution of the target image and the generated number field to show whether their shapes broadly agree.",
     "metrics": "This section translates the key quality numbers into plain language so a reviewer can tell whether the board is solved and visually close to the target.",
 }
@@ -45,6 +45,26 @@ REPAIR_PANEL_CAPTIONS = {
 _WRAP_WIDTH = 58
 _TITLE_WRAP_WIDTH = 92
 _FOOTER_WRAP_WIDTH = 108
+EXPLAINED_HISTORY_SAMPLE_INTERVAL = 50_000
+TECHNICAL_HISTORY_X_LABEL = "x50k iters"
+TECHNICAL_HISTORY_Y_LABEL = "Weighted loss"
+
+EXPLAINED_COLORBAR_LABELS = {
+    "target_image": "Target value: 0 background → 8 strongest line",
+    "number_field": "Generated number: 0 no nearby mines → 8 surrounded",
+    "error_map": "Difference: 0 match → 4+ large mismatch",
+    "repair_error_delta": "Visual change: negative better → positive worse",
+}
+
+EXPLAINED_VALUE_EXPLANATIONS = {
+    "target_image": "Target values: 0 means background. 8 means the strongest line area from the source image.",
+    "mine_grid": "Generated mine layout: white cells are safe cells. Black cells are mines.",
+    "number_field": "Generated number values: 0 means a safe cell has no touching mines. 8 means a safe cell is surrounded by mines.",
+    "error_map": "Difference values: 0 means the generated number matched the target at that cell. Higher values mean a larger visual mismatch. 4 or more means a large mismatch.",
+    "solver_result": "Solver result colors: gray means revealed safe cells, orange means flagged mines, and blue means unresolved cells.",
+    "loss_curve": "Optimizer progress: the line shows a match error score. Lower means the generated numbers are closer to the target image.",
+    "history_axis": "Optimizer work: each plotted point is saved after 50,000 attempted mine changes. This axis is optimizer work, not clock time.",
+}
 
 
 def _wrap_text(text: str, width: int) -> str:
@@ -106,6 +126,97 @@ def _coalesce(*values):
             continue
         return value
     return None
+
+
+def _add_explained_colorbar(image, ax, label: str, *, ticks: list[float]):
+    cbar = plt.colorbar(image, ax=ax, fraction=0.046, pad=0.04, ticks=ticks)
+    cbar.ax.set_ylabel(label, rotation=90, labelpad=9, fontsize=8)
+    cbar.ax.tick_params(labelsize=8)
+    return cbar
+
+
+def _format_duration(seconds: float | int | None) -> str | None:
+    if seconds is None:
+        return None
+    try:
+        total = int(round(float(seconds)))
+    except Exception:
+        return None
+    if total < 0:
+        return None
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"about {hours} hr {minutes} min"
+    if minutes:
+        return f"about {minutes} min {secs} sec"
+    return f"about {secs} sec"
+
+
+def _runtime_context_line(metrics: dict) -> str | None:
+    duration = _format_duration(_coalesce(metrics.get("total_time_s"), metrics.get("runtime_before_report_s")))
+    if duration:
+        return f"Runtime context: this run took {duration} for the work recorded before this report image was written."
+    return None
+
+
+def _plot_explained_optimization_progress(ax, hist: np.ndarray, metrics: dict) -> None:
+    if len(hist) > 1:
+        x_work = np.arange(len(hist), dtype=np.int64) * EXPLAINED_HISTORY_SAMPLE_INTERVAL
+        x_work_millions = x_work / 1_000_000.0
+
+        ax.semilogy(x_work_millions, hist, label="Match error score")
+        ax.set_title("Optimizer progress: lower is better", fontsize=12)
+        ax.set_xlabel(
+            "Optimizer work, in millions of attempted mine changes\n"
+            "1 plotted point = 50,000 attempted changes",
+            labelpad=8,
+        )
+        ax.set_ylabel("Match error score (lower is better)")
+        ax.legend(loc="lower right", fontsize=8)
+        ax.tick_params(axis="both", labelsize=8)
+        ax.margins(x=0.04)
+
+        ax.annotate(
+            f"Final score: {hist[-1]:.3g}",
+            xy=(x_work_millions[-1], hist[-1]),
+            xytext=(0.58, 0.18),
+            textcoords="axes fraction",
+            fontsize=8,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
+            arrowprops=dict(arrowstyle="->", linewidth=0.8),
+        )
+        runtime_line = _runtime_context_line(metrics)
+        note_lines = [EXPLAINED_VALUE_EXPLANATIONS["history_axis"]]
+        if runtime_line:
+            note_lines.append(runtime_line)
+        ax.text(
+            0.03,
+            0.97,
+            _wrap_lines(note_lines, 38),
+            transform=ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=7,
+            linespacing=1.05,
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.82),
+        )
+        return
+    ax.text(
+        0.5,
+        0.5,
+        "No optimization progress history was recorded for this run.",
+        ha="center",
+        va="center",
+        fontsize=9,
+    )
+    ax.set_title("Optimizer progress: lower is better", fontsize=12)
+    ax.set_xlabel(
+        "Optimizer work, in millions of attempted mine changes\n"
+        "1 plotted point = 50,000 attempted changes",
+        labelpad=8,
+    )
+    ax.set_ylabel("Match error score (lower is better)")
 
 
 def _source_name(metrics: dict) -> str | None:
@@ -326,8 +437,8 @@ def render_report(target, grid, sr, history, title, save_path, dpi=120):
     if len(hist) > 1:
         axes[1][2].semilogy(hist)
         axes[1][2].set_title("Loss curve (log)")
-        axes[1][2].set_xlabel("x50k iters")
-        axes[1][2].set_ylabel("Weighted loss")
+        axes[1][2].set_xlabel(TECHNICAL_HISTORY_X_LABEL)
+        axes[1][2].set_ylabel(TECHNICAL_HISTORY_Y_LABEL)
     else:
         axes[1][2].text(0.5, 0.5, "No history", ha="center")
         axes[1][2].set_title("Loss curve")
@@ -390,18 +501,24 @@ def render_report_explained(
     hist = np.array(history, dtype=np.float64)
     hist = hist[hist > 0]
 
-    fig = plt.figure(figsize=(21, 14))
+    fig = plt.figure(figsize=(24, 15.5))
     gs = gridspec.GridSpec(
         4,
         4,
         figure=fig,
-        height_ratios=[0.9, 2.2, 2.2, 0.7],
-        width_ratios=[1.2, 1.2, 1.2, 1.15],
-        hspace=0.35,
-        wspace=0.28,
+        height_ratios=[0.75, 2.25, 2.25, 0.55],
+        width_ratios=[1.2, 1.2, 1.2, 1.35],
+        hspace=0.46,
+        wspace=0.34,
+    )
+    right_gs = gs[:, 3].subgridspec(
+        2,
+        1,
+        height_ratios=[1.0, 1.0],
+        hspace=0.12,
     )
 
-    title_ax = fig.add_subplot(gs[0, :])
+    title_ax = fig.add_subplot(gs[0, :3])
     title_ax.axis("off")
     title_lines = build_plain_english_run_summary(metrics)
     title_ax.text(
@@ -432,24 +549,39 @@ def render_report_explained(
     ax_error = fig.add_subplot(gs[2, 0])
     ax_solver = fig.add_subplot(gs[2, 1])
     ax_history = fig.add_subplot(gs[2, 2])
-    caption_ax = fig.add_subplot(gs[1, 3])
-    metrics_ax = fig.add_subplot(gs[2, 3])
-    footer_ax = fig.add_subplot(gs[3, :])
+    caption_ax = fig.add_subplot(right_gs[0, 0])
+    metrics_ax = fig.add_subplot(right_gs[1, 0])
+    footer_ax = fig.add_subplot(gs[3, :3])
 
     im_target = ax_target.imshow(target, cmap="inferno", vmin=0, vmax=8)
     ax_target.set_title("Target image", fontsize=12)
-    plt.colorbar(im_target, ax=ax_target, fraction=0.046, pad=0.04)
+    _add_explained_colorbar(
+        im_target,
+        ax_target,
+        EXPLAINED_COLORBAR_LABELS["target_image"],
+        ticks=[0, 2, 4, 6, 8],
+    )
 
     ax_grid.imshow(grid, cmap="binary", vmin=0, vmax=1)
     ax_grid.set_title("Generated mine layout", fontsize=12)
 
     im_numbers = ax_numbers.imshow(n_field, cmap="inferno", vmin=0, vmax=8)
     ax_numbers.set_title("Generated number field", fontsize=12)
-    plt.colorbar(im_numbers, ax=ax_numbers, fraction=0.046, pad=0.04)
+    _add_explained_colorbar(
+        im_numbers,
+        ax_numbers,
+        EXPLAINED_COLORBAR_LABELS["number_field"],
+        ticks=[0, 2, 4, 6, 8],
+    )
 
     im_error = ax_error.imshow(err, cmap="hot", vmin=0, vmax=4)
     ax_error.set_title("Difference from target", fontsize=12)
-    plt.colorbar(im_error, ax=ax_error, fraction=0.046, pad=0.04)
+    _add_explained_colorbar(
+        im_error,
+        ax_error,
+        EXPLAINED_COLORBAR_LABELS["error_map"],
+        ticks=[0, 1, 2, 3, 4],
+    )
 
     solver_map = _solver_map_rgb(sr, grid.shape)
     ax_solver.imshow(solver_map)
@@ -461,28 +593,27 @@ def render_report_explained(
     ]
     ax_solver.legend(handles=legend, loc="lower right", fontsize=7)
 
-    if len(hist) > 1:
-        ax_history.semilogy(hist)
-        ax_history.set_title("Optimization progress", fontsize=12)
-        ax_history.set_xlabel("x50k iterations")
-        ax_history.set_ylabel("Weighted loss")
-    else:
-        ax_history.text(0.5, 0.5, "No optimization history was recorded for this run.", ha="center", va="center")
-        ax_history.set_title("Optimization progress", fontsize=12)
+    _plot_explained_optimization_progress(ax_history, hist, metrics)
 
     caption_lines = [
-        f"Target image: {REPORT_PANEL_CAPTIONS['target_image']}",
-        f"Generated number field: {REPORT_PANEL_CAPTIONS['number_field']}",
-        f"Solver result: {REPORT_PANEL_CAPTIONS['solver_result']}",
-        f"Difference view: {REPORT_PANEL_CAPTIONS['error_map']}",
+        EXPLAINED_VALUE_EXPLANATIONS["target_image"],
+        EXPLAINED_VALUE_EXPLANATIONS["mine_grid"],
+        EXPLAINED_VALUE_EXPLANATIONS["number_field"],
+        EXPLAINED_VALUE_EXPLANATIONS["error_map"],
+        EXPLAINED_VALUE_EXPLANATIONS["solver_result"],
+        EXPLAINED_VALUE_EXPLANATIONS["loss_curve"],
+        EXPLAINED_VALUE_EXPLANATIONS["history_axis"],
     ]
-    _text_axis(caption_ax, "What these panels mean", caption_lines, width=_WRAP_WIDTH, fontsize=10)
+    runtime_line = _runtime_context_line(metrics)
+    if runtime_line:
+        caption_lines.append(runtime_line)
+    _text_axis(caption_ax, "What these panels mean", caption_lines, width=44, fontsize=9)
 
     metric_lines = _format_metric_explanations(metrics)
     metric_lines.append(REPORT_PANEL_CAPTIONS["metrics"])
-    _text_axis(metrics_ax, "How to read the results", metric_lines, width=_WRAP_WIDTH, fontsize=10)
+    _text_axis(metrics_ax, "How to read the results", metric_lines, width=44, fontsize=9)
 
-    for axis in (ax_target, ax_grid, ax_numbers, ax_error, ax_solver, ax_history):
+    for axis in (ax_target, ax_grid, ax_numbers, ax_error, ax_solver):
         axis.set_xticks([])
         axis.set_yticks([])
 
@@ -617,7 +748,7 @@ def render_repair_overlay_explained(
     title_ax.text(
         0.01,
         0.85,
-        _wrap_text("Mine-Streaker explained repair overlay", _TITLE_WRAP_WIDTH),
+        _wrap_text("Mine-Streaker Repair Overlay (Explained)", _TITLE_WRAP_WIDTH),
         transform=title_ax.transAxes,
         va="top",
         ha="left",
@@ -630,7 +761,7 @@ def render_repair_overlay_explained(
         0.18,
         _wrap_text(
             (
-                f"Repair started with {before_unknown_count} unresolved cells and finished with "
+                f"Repair started with {before_unknown_count} unsolved cells and finished with "
                 f"{after_unknown_count}. The board {'did' if solved_after else 'did not'} finish solved."
             ),
             _TITLE_WRAP_WIDTH,
@@ -653,28 +784,38 @@ def render_repair_overlay_explained(
 
     im_target = ax_target.imshow(target, cmap="inferno", vmin=0, vmax=8)
     ax_target.set_title("Target image", fontsize=12)
-    plt.colorbar(im_target, ax=ax_target, fraction=0.046, pad=0.04)
+    _add_explained_colorbar(
+        im_target,
+        ax_target,
+        EXPLAINED_COLORBAR_LABELS["target_image"],
+        ticks=[0, 2, 4, 6, 8],
+    )
 
     ax_before.imshow(before_unknown, cmap="Blues", vmin=0, vmax=1)
-    ax_before.set_title(f"Before repair ({before_unknown_count} unknown)", fontsize=12)
+    ax_before.set_title(f"Visual: Unsolved cells pre-repair ({before_unknown_count} unknown)", fontsize=11)
 
     ax_after.imshow(after_unknown, cmap="Blues", vmin=0, vmax=1)
-    ax_after.set_title(f"After repair ({after_unknown_count} unknown)", fontsize=12)
+    ax_after.set_title(f"Visual: Unsolved cells post-repair ({after_unknown_count} unknown)", fontsize=11)
 
     ax_changes.imshow(change_overlay)
-    ax_changes.set_title(f"Mine changes (-{removed_count} / +{added_count})", fontsize=12)
+    ax_changes.set_title(f"Visual: Mine changes (-{removed_count} / +{added_count})", fontsize=12)
 
     im_delta = ax_delta.imshow(error_delta, cmap="coolwarm", vmin=-1.5, vmax=1.5)
     ax_delta.set_title("Visual change after repair", fontsize=12)
-    plt.colorbar(im_delta, ax=ax_delta, fraction=0.046, pad=0.04)
+    _add_explained_colorbar(
+        im_delta,
+        ax_delta,
+        EXPLAINED_COLORBAR_LABELS["repair_error_delta"],
+        ticks=[-1.5, -0.75, 0, 0.75, 1.5],
+    )
 
     caption_lines = [
-        f"Before unknown cells: {REPAIR_PANEL_CAPTIONS['before_unknown']}",
-        f"After unknown cells: {REPAIR_PANEL_CAPTIONS['after_unknown']}",
+        f"Before Repair cells: {REPAIR_PANEL_CAPTIONS['before_unknown']}",
+        f"After Repair cells: {REPAIR_PANEL_CAPTIONS['after_unknown']}",
         f"Mine changes: {REPAIR_PANEL_CAPTIONS['mine_changes']}",
         f"Visual change: {REPAIR_PANEL_CAPTIONS['error_delta']}",
     ]
-    _text_axis(caption_ax, "What these repair panels mean", caption_lines, width=_WRAP_WIDTH, fontsize=10)
+    _text_axis(caption_ax, "What do these panels mean?", caption_lines, width=_WRAP_WIDTH, fontsize=13)
 
     repair_lines = build_plain_english_repair_summary(
         before_unknown=before_unknown_count,
@@ -691,7 +832,7 @@ def render_repair_overlay_explained(
             f"The last logged repair move was {move_type}, and it changed the unresolved-cell count by {delta_unknown}."
         )
     repair_lines.append(REPAIR_PANEL_CAPTIONS["repair_summary"])
-    _text_axis(summary_ax, "Plain-English repair summary", repair_lines, width=66, fontsize=11)
+    _text_axis(summary_ax, "Repair Summary", repair_lines, width=66, fontsize=13)
 
     for axis in (ax_target, ax_before, ax_after, ax_changes, ax_delta):
         axis.set_xticks([])

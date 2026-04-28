@@ -250,6 +250,7 @@ results/iter9/
 Start with:
 
 ```text
+iter9_<board>_FINAL_explained.png
 iter9_<board>_FINAL.png
 metrics_iter9_<board>.json
 ```
@@ -450,6 +451,18 @@ Generated outputs should live under:
 ```text
 results/
 ```
+
+## How to Read Explained Report PNGs
+
+Explained PNGs are the first file to open when you want a human-readable overview.
+
+| Report element | Meaning |
+|---|---|
+| Target value colorbar | `0` means background. `8` means the strongest line area from the source image. |
+| Generated number colorbar | `0` means a safe cell has no touching mines. `8` means a safe cell is surrounded by mines. |
+| Difference colorbar | `0` means the generated number matched the target. Higher values mean a larger visual mismatch. `4+` means a large mismatch. |
+| Solver colors | Gray means revealed safe cells. Orange means flagged mines. Blue means unresolved cells. |
+| Optimizer progress | Lower is better. Each point is saved after 50,000 attempted mine changes. This axis shows optimizer work, not clock time. |
 
 ---
 
