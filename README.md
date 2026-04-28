@@ -23,6 +23,27 @@ The latest major finding is that a targeted repair-only campaign showed that nea
 
 ---
 
+## Source Image Runtime Contract
+
+Normal runs must pass source images explicitly:
+
+```powershell
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 420 --seeds 11 22 33 --allow-noncanonical
+```
+
+`python run_iter9.py` remains backward-compatible and defaults to `assets/input_source_image.png` only when `--image` is omitted.
+
+Validation modes:
+
+- default image strict validation uses `assets/SOURCE_IMAGE_HASH.json`
+- explicit image + `--image-manifest <path>` validates against that manifest
+- explicit image + `--allow-noncanonical` allows noncanonical validation with structured warnings
+
+Source-image provenance is written into metrics (`source_image`, `source_image_validation`, `command_invocation`, `run_identity`, and artifact paths).
+
+---
+
 ## Beginner Summary
 
 ### What problem does this project solve?
@@ -153,10 +174,16 @@ python -m pip install numpy scipy numba Pillow matplotlib scikit-image
 
 ### Verify The Source Image
 
-Before long runs, validate the canonical source image:
+Before long runs, validate the source image you will run:
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
+```
+
+Backward-compatible strict default check:
+
+```powershell
+python assets/image_guard.py --path <default-image-path>
 ```
 
 ---
@@ -166,7 +193,7 @@ python assets/image_guard.py --path assets/input_source_image.png
 ### Run The Main Reconstruction Pipeline
 
 ```powershell
-python run_iter9.py
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
 Expected output location:
@@ -178,11 +205,19 @@ results/iter9/
 Typical artifacts include:
 
 ```text
-grid_<board>.npy
-metrics_<board>.json
-visual_<board>.png
-report_<board>.png
+metrics_iter9_<board>.json
+grid_iter9_<board>.npy
+grid_iter9_latest.npy
+iter9_<board>_FINAL.png
+iter9_<board>_FINAL_explained.png
+repair_overlay_<board>.png
+repair_overlay_<board>_explained.png
+failure_taxonomy.json
+repair_route_decision.json
+visual_delta_summary.json
 ```
+
+The technical PNGs are the detailed audit view. The explained PNGs are additive first-look review artifacts for humans and LLMs, and they do not replace the technical reports.
 
 ## Beginner Workflow
 
@@ -191,18 +226,18 @@ Use this order if you are new to the project.
 ### Step 1: Check the input image
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-This confirms that the source image exists and matches the expected project input.
+This confirms the source image exists and passes the chosen validation mode.
 
 ### Step 2: Run the main pipeline
 
 ```powershell
-python run_iter9.py
+python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-This creates a Minesweeper board attempt from the source image.
+This creates a Minesweeper board attempt from the explicit source image.
 
 ### Step 3: Open the results folder
 
@@ -215,8 +250,9 @@ results/iter9/
 Start with:
 
 ```text
-visual_<board>.png
-metrics_<board>.json
+iter9_<board>_FINAL_explained.png
+iter9_<board>_FINAL.png
+metrics_iter9_<board>.json
 ```
 
 ### Step 4: Read the key numbers
@@ -390,10 +426,19 @@ repair_overlay_<board>.png
 
 | Artifact                   | Meaning                                           |
 | -------------------------- | ------------------------------------------------- |
-| `grid_<board>.npy`         | Binary mine grid.                                 |
-| `metrics_<board>.json`     | Main machine-readable run metrics.                |
-| `visual_<board>.png`       | Rendered visual reconstruction.                   |
-| `report_<board>.png`       | Multi-panel diagnostic report.                    |
+| `grid_iter9_<board>.npy`   | Iter9 binary mine grid.                           |
+| `metrics_iter9_<board>.json` | Iter9 machine-readable run metrics.             |
+| `iter9_<board>_FINAL.png`  | Iter9 technical final visual for detailed audit.  |
+| `iter9_<board>_FINAL_explained.png` | Iter9 explained final visual for first-look review. |
+| `repair_overlay_<board>.png` | Technical repair-route overlay in Iter9 and benchmark child run directories. |
+| `repair_overlay_<board>_explained.png` | Iter9 explained repair overlay for first-look review. |
+| `metrics_<board>.json`     | Benchmark child-run machine-readable metrics.     |
+| `visual_<board>.png`       | Benchmark child-run technical final visual.       |
+| `visual_<board>_explained.png` | Benchmark child-run explained final visual.   |
+| `repair_overlay_<board>_explained.png` | Benchmark child-run explained repair overlay. |
+| `benchmark_summary.json`   | Benchmark run-root summary (JSON).                |
+| `benchmark_summary.csv`    | Benchmark run-root summary (CSV).                 |
+| `benchmark_summary.md`     | Benchmark run-root summary (Markdown).            |
 | `repair_checkpoint.npy`    | Intermediate repair grid checkpoint when emitted. |
 | `repair_move_log.jsonl`    | Accepted/rejected repair moves.                   |
 | `campaign_summary.md`      | Human-readable campaign summary.                  |
@@ -406,6 +451,33 @@ Generated outputs should live under:
 ```text
 results/
 ```
+
+## How to Read Explained Report PNGs
+
+Explained PNGs are the first file to open when you want a human-readable overview.
+
+| Report element | Meaning |
+|---|---|
+| Target value colorbar | `0` means background. `8` means the strongest line area from the source image. |
+| Generated number colorbar | `0` means a safe cell has no touching mines. `8` means a safe cell is surrounded by mines. |
+| Difference colorbar | `0` means the generated number matched the target. Higher values mean a larger visual mismatch. `4+` means a large mismatch. |
+| Solver colors | Gray means revealed safe cells. Orange means flagged mines. Blue means unresolved cells. |
+| Optimizer progress | Lower is better. The x-axis is shown in **millions of attempted mine changes** and also states that `1 plotted point = 50,000 attempted changes`. This axis shows optimizer work, not clock time. |
+
+### Explained vs Technical Report Terms
+
+The explained report intentionally uses beginner language:
+
+- `Optimizer progress: lower is better`
+- `Optimizer work, in millions of attempted mine changes`
+- `1 plotted point = 50,000 attempted changes`
+- `Match error score (lower is better)`
+
+The technical report keeps audit/debug wording:
+
+- `Loss curve (log)`
+- `x50k iters`
+- `Weighted loss`
 
 ---
 
@@ -474,7 +546,7 @@ Cause: the source image dimensions changed, or board sizing logic changed.
 Action:
 
 ```powershell
-python assets/image_guard.py --path assets/input_source_image.png
+python assets/image_guard.py --path <same path passed to --image> --allow-noncanonical
 ```
 
 Then inspect `board_sizing.py` and the relevant metrics file.
@@ -485,7 +557,7 @@ Cause: the solver is stuck with unresolved safe cells.
 
 Action:
 
-1. Inspect `metrics_<board>.json`.
+1. Inspect `metrics_iter9_<board>.json` (or benchmark `metrics_<board>.json`).
 2. Check `coverage` and `n_unknown`.
 3. Inspect repair logs if present.
 4. Run benchmark before changing repair logic.
@@ -496,7 +568,7 @@ Cause: repair may have improved logical solvability while changing visual fideli
 
 Action:
 
-1. Compare `visual_<board>.png` before and after repair.
+1. Compare `iter9_<board>_FINAL.png` (or benchmark `visual_<board>.png`) before and after repair.
 2. Check `mean_abs_error`.
 3. Inspect `repair_move_log.jsonl`.
 4. Prefer future visual-delta instrumentation before changing repair policy.
@@ -518,10 +590,10 @@ Action:
 ### For Beginners
 
 1. This `README.md`
-2. `docs/project_result_summary.md`
-3. `results/line_art_campaigns.md`
-4. Latest `campaign_summary.md`
-5. `metrics_<board>.json` from a recent run
+2. `docs/implement_clarified_source_image_runtime_contract.md`
+3. `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
+4. Latest benchmark summary under `results/benchmark/.../benchmark_summary.md`
+5. `metrics_iter9_<board>.json` from a recent run
 
 ### For Advanced Contributors
 

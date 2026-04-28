@@ -4,6 +4,7 @@ claude_conv_output/
 docs/result_reports/
 Larger_boards_fidelity_iteration/
 assets/WIP/
+digest.txt
 
 # Generated conversation artifacts
 conversations.json
@@ -11,15 +12,22 @@ conversations.json
 *_conversation.md
 *codebase*.txt
 
+# Archived
+docs/archive
+docs\archive
+archives/
+archives
+
+
 # Reports and data exports
 *.csv
 *.json
 *.jsonl
 
 # Media and other binary assets
-*.png
-*.jpg
-*.jpeg
+# *.png
+# *.jpg
+# *.jpeg
 *.gif
 *.bmp
 *.webp

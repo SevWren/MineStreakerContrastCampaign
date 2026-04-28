@@ -7,12 +7,13 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
+from scipy.ndimage import convolve, label as nd_label
 try:
     from .core import compute_N, assert_board_valid
-    from .solver import solve_board
+    from .solver import SAFE, UNKNOWN, solve_board
 except ImportError:
     from core import compute_N, assert_board_valid
-    from solver import solve_board
+    from solver import SAFE, UNKNOWN, solve_board
 
 
 def _score_candidates(grid, state, search_radius=6):
@@ -237,6 +238,287 @@ def run_phase2_mesa_repair(grid: np.ndarray,
     return grid, n_fixed, mesa_history
 
 
+def compute_repair_visual_delta(
+    before_grid: np.ndarray,
+    after_grid: np.ndarray,
+    target: np.ndarray,
+) -> dict:
+    """
+    Compare visual cost before and after a repair move using |N - T| mean absolute error.
+    """
+    before_n = compute_N(before_grid)
+    after_n = compute_N(after_grid)
+    before_err = np.abs(before_n.astype(np.float32) - target.astype(np.float32))
+    after_err = np.abs(after_n.astype(np.float32) - target.astype(np.float32))
+    removed = np.argwhere((before_grid == 1) & (after_grid == 0))
+    added = np.argwhere((before_grid == 0) & (after_grid == 1))
+    changed = np.argwhere(before_grid != after_grid)
+    return {
+        "mean_abs_error_before": float(before_err.mean()),
+        "mean_abs_error_after": float(after_err.mean()),
+        "visual_delta": float(after_err.mean() - before_err.mean()),
+        "changed_cells": int(changed.shape[0]),
+        "removed_mines": [[int(y), int(x)] for y, x in removed],
+        "added_mines": [[int(y), int(x)] for y, x in added],
+    }
+
+
+def _compute_error_metrics_for_last100(grid: np.ndarray, target_eval: np.ndarray, hi_thr: float = 3.0) -> dict:
+    N = compute_N(grid)
+    err = np.abs(N.astype(np.float32) - target_eval.astype(np.float32))
+    k8 = np.ones((3, 3), dtype=np.int32)
+    k8[1, 1] = 0
+    hi_mask = target_eval >= hi_thr
+    bg_mask = target_eval < 1.0
+    adj_to_hi = convolve(hi_mask.astype(np.int32), k8, mode="constant", cval=0) > 0
+    true_bg = bg_mask & ~adj_to_hi
+    return {
+        "mean_abs_error": float(err.mean()),
+        "hi_err": float(err[hi_mask].mean()) if np.any(hi_mask) else 0.0,
+        "true_bg_err": float(err[true_bg].mean()) if np.any(true_bg) else 0.0,
+        "mine_density": float(grid.mean()),
+    }
+
+
+def find_sealed_unknown_clusters(grid: np.ndarray, sr, forbidden: np.ndarray) -> list[dict]:
+    """
+    Return sealed UNKNOWN clusters without mutating the grid.
+    Uses sr.state as authoritative solver state.
+    """
+    if sr is None or sr.state is None or int(sr.n_unknown) <= 0:
+        return []
+
+    state = sr.state
+    labeled, n_comp = nd_label((state == UNKNOWN).astype(np.int8))
+    clusters = []
+    for cluster_id in range(1, int(n_comp) + 1):
+        comp_mask = labeled == cluster_id
+        unk_cells = np.argwhere(comp_mask)
+        ext_mines = set()
+        has_safe_neighbor = False
+
+        for cy, cx in unk_cells:
+            cy_i = int(cy)
+            cx_i = int(cx)
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny = cy_i + dy
+                    nx = cx_i + dx
+                    if 0 <= ny < grid.shape[0] and 0 <= nx < grid.shape[1]:
+                        if state[ny, nx] == SAFE:
+                            has_safe_neighbor = True
+                        if grid[ny, nx] == 1 and forbidden[ny, nx] == 0 and not comp_mask[ny, nx]:
+                            ext_mines.add((int(ny), int(nx)))
+
+        if has_safe_neighbor or not ext_mines:
+            continue
+
+        cells = [(int(y), int(x)) for y, x in unk_cells]
+        clusters.append(
+            {
+                "cluster_id": int(cluster_id),
+                "cluster_size": int(len(cells)),
+                "cells": [[int(y), int(x)] for y, x in cells],
+                "has_safe_neighbor": False,
+                "external_mines": [[int(y), int(x)] for y, x in sorted(ext_mines)],
+                "external_mine_count": int(len(ext_mines)),
+                "cluster_kind": "sealed_single_mesa" if len(cells) == 1 else "sealed_multi_cell_cluster",
+            }
+        )
+    return clusters
+
+
+def run_last100_repair(
+    grid: np.ndarray,
+    target: np.ndarray,
+    target_eval: np.ndarray,
+    forbidden: np.ndarray,
+    *,
+    budget_s: float,
+    max_outer_iterations: int = 12,
+    trial_max_rounds: int = 60,
+    solve_max_rounds: int = 300,
+    pair_trial_limit: int = 12,
+    pair_combo_limit: int = 24,
+    max_error_delta_mean_abs: float = 0.005,
+    max_error_delta_true_bg: float = 0.03,
+    max_error_delta_hi: float = 0.03,
+    verbose: bool = True,
+):
+    t_start = time.perf_counter()
+    work_grid = grid.copy()
+    move_log = []
+    n_fixes = 0
+    stop_reason = "no_effect"
+
+    def elapsed() -> float:
+        return time.perf_counter() - t_start
+
+    for iteration in range(1, int(max_outer_iterations) + 1):
+        if elapsed() >= budget_s:
+            stop_reason = "timeout"
+            break
+
+        sr = solve_board(work_grid, max_rounds=solve_max_rounds, mode="full")
+        pre_n_unknown = int(sr.n_unknown)
+        if pre_n_unknown == 0:
+            stop_reason = "solved"
+            break
+        if pre_n_unknown > 100:
+            stop_reason = "last100_not_applicable"
+            break
+
+        base_q = _compute_error_metrics_for_last100(work_grid, target_eval)
+        labels, n_comp = nd_label((sr.state == UNKNOWN).astype(np.int8))
+        if n_comp <= 0:
+            stop_reason = "no_unknown_components"
+            break
+
+        comp_sizes = []
+        for cid in range(1, int(n_comp) + 1):
+            comp_sizes.append((int(np.sum(labels == cid)), cid))
+        comp_sizes.sort(reverse=True)
+
+        iteration_progress = False
+        for comp_size, comp_id in comp_sizes:
+            if elapsed() >= budget_s:
+                stop_reason = "timeout"
+                break
+            comp_mask = labels == comp_id
+            unk_cells = np.argwhere(comp_mask)
+            ext_mines = set()
+            for cy, cx in unk_cells:
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        if dy == 0 and dx == 0:
+                            continue
+                        ny = int(cy + dy)
+                        nx = int(cx + dx)
+                        if 0 <= ny < work_grid.shape[0] and 0 <= nx < work_grid.shape[1]:
+                            if work_grid[ny, nx] == 1 and forbidden[ny, nx] == 0 and not comp_mask[ny, nx]:
+                                ext_mines.add((ny, nx))
+            if not ext_mines:
+                continue
+
+            candidate_pool = sorted(ext_mines, key=lambda yx: float(target[yx[0], yx[1]]))
+            candidate_pool = candidate_pool[: max(2, int(pair_trial_limit))]
+            best = None
+
+            def maybe_consider(move_type: str, removed_mines: list[tuple[int, int]], comp_id_v: int, comp_size_v: int):
+                nonlocal best
+                trial = work_grid.copy()
+                for my, mx in removed_mines:
+                    trial[my, mx] = 0
+                trial[forbidden == 1] = 0
+                sr_t = solve_board(trial, max_rounds=trial_max_rounds, mode="trial")
+                post_n_unknown = int(sr_t.n_unknown)
+                delta_unknown = int(pre_n_unknown - post_n_unknown)
+                entry = {
+                    "iteration": int(iteration),
+                    "component_id": int(comp_id_v),
+                    "component_size": int(comp_size_v),
+                    "move_type": move_type,
+                    "removed_mines": [[int(y), int(x)] for y, x in removed_mines],
+                    "pre_n_unknown": int(pre_n_unknown),
+                    "post_n_unknown": int(post_n_unknown),
+                    "delta_unknown": int(delta_unknown),
+                    "delta_mean_abs_error": None,
+                    "delta_true_bg_err": None,
+                    "delta_hi_err": None,
+                    "accepted": False,
+                    "reject_reason": "",
+                }
+                if delta_unknown <= 0:
+                    entry["reject_reason"] = "no_unknown_reduction"
+                    move_log.append(entry)
+                    return
+
+                trial_q = _compute_error_metrics_for_last100(trial, target_eval)
+                d_mean = float(trial_q["mean_abs_error"] - base_q["mean_abs_error"])
+                d_bg = float(trial_q["true_bg_err"] - base_q["true_bg_err"])
+                d_hi = float(trial_q["hi_err"] - base_q["hi_err"])
+                entry["delta_mean_abs_error"] = d_mean
+                entry["delta_true_bg_err"] = d_bg
+                entry["delta_hi_err"] = d_hi
+                if d_mean > max_error_delta_mean_abs:
+                    entry["reject_reason"] = "mean_abs_guardrail"
+                    move_log.append(entry)
+                    return
+                if d_bg > max_error_delta_true_bg:
+                    entry["reject_reason"] = "true_bg_guardrail"
+                    move_log.append(entry)
+                    return
+                if d_hi > max_error_delta_hi:
+                    entry["reject_reason"] = "hi_err_guardrail"
+                    move_log.append(entry)
+                    return
+
+                entry["accepted"] = True
+                move_log.append(entry)
+                visual_cost = max(0.0, d_mean) + max(0.0, d_bg) + max(0.0, d_hi)
+                candidate = {
+                    "rank_key": (delta_unknown, -visual_cost),
+                    "trial_grid": trial,
+                    "entry": entry,
+                }
+                if best is None or candidate["rank_key"] > best["rank_key"]:
+                    best = candidate
+
+            for my, mx in candidate_pool:
+                if elapsed() >= budget_s:
+                    stop_reason = "timeout"
+                    break
+                maybe_consider("single", [(int(my), int(mx))], int(comp_id), int(comp_size))
+            if stop_reason == "timeout":
+                break
+
+            if best is None and len(candidate_pool) >= 2 and int(pair_combo_limit) > 0:
+                tested = 0
+                for i in range(len(candidate_pool)):
+                    if tested >= int(pair_combo_limit):
+                        break
+                    for j in range(i + 1, len(candidate_pool)):
+                        if tested >= int(pair_combo_limit):
+                            break
+                        if elapsed() >= budget_s:
+                            stop_reason = "timeout"
+                            break
+                        tested += 1
+                        maybe_consider(
+                            "pair",
+                            [candidate_pool[i], candidate_pool[j]],
+                            int(comp_id),
+                            int(comp_size),
+                        )
+                    if stop_reason == "timeout":
+                        break
+
+            if best is not None:
+                work_grid = best["trial_grid"]
+                work_grid[forbidden == 1] = 0
+                n_fixes += 1
+                iteration_progress = True
+                if verbose:
+                    entry = best["entry"]
+                    print(
+                        f"  last100 iter={iteration} comp={entry['component_id']} size={entry['component_size']} "
+                        f"move={entry['move_type']} delta_unknown={entry['delta_unknown']}",
+                        flush=True,
+                    )
+                break
+
+        if stop_reason == "timeout":
+            break
+        if not iteration_progress:
+            stop_reason = "no_accepted_move"
+            break
+
+    sr_final = solve_board(work_grid, max_rounds=solve_max_rounds, mode="full")
+    return work_grid, sr_final, int(n_fixes), move_log, stop_reason
+
+
 def run_phase2_full_repair(grid: np.ndarray,
                             target: np.ndarray,
                             forbidden: np.ndarray,
@@ -267,13 +549,7 @@ def run_phase2_full_repair(grid: np.ndarray,
     Returns (grid, n_fixed, log). Work is bounded by time_budget_s and
     per-iteration candidate caps to keep wall-clock predictable.
     """
-    try:
-        from .solver import solve_board, UNKNOWN, SAFE, MINE
-    except ImportError:
-        from solver import solve_board, UNKNOWN, SAFE, MINE
-
     grid = grid.copy()
-    H, W = grid.shape
     n_fixed = 0
     log = []
     t_start = time.perf_counter()
@@ -288,67 +564,31 @@ def run_phase2_full_repair(grid: np.ndarray,
         if sr.n_unknown == 0:
             break
 
-        state = sr.state
-
-        # Find all connected unknown-cell clusters
-        from scipy.ndimage import label as nd_label
-        unk_mask = (state == UNKNOWN).astype(np.int32)
-        labeled, n_comp = nd_label(unk_mask)
-        if n_comp == 0:
+        sealed_clusters = find_sealed_unknown_clusters(grid, sr, forbidden)
+        if not sealed_clusters:
             break
 
-        comp_ids = list(range(1, n_comp + 1))
-        if len(comp_ids) > max_clusters_per_iteration:
-            comp_sizes = []
-            for cid in comp_ids:
-                comp_sizes.append((int(np.sum(labeled == cid)), cid))
-            comp_sizes.sort(reverse=True)
-            comp_ids = [cid for _, cid in comp_sizes[:max_clusters_per_iteration]]
+        sealed_clusters = sorted(
+            sealed_clusters,
+            key=lambda item: (int(item["cluster_size"]), int(item["external_mine_count"])),
+            reverse=True,
+        )[:max_clusters_per_iteration]
 
         made_progress = False
-        for comp_id in comp_ids:
+        for cluster in sealed_clusters:
             if (time.perf_counter() - t_start) >= time_budget_s:
                 break
-            comp_mask = labeled == comp_id
-            unk_cells  = np.argwhere(comp_mask)
 
-            # Find all external mine neighbours of this cluster
-            ext_mines = set()
-            for cy, cx in unk_cells:
-                for dy in range(-1, 2):
-                    for dx in range(-1, 2):
-                        if dy == 0 and dx == 0: continue
-                        ny, nx = cy+dy, cx+dx
-                        if 0 <= ny < H and 0 <= nx < W:
-                            if grid[ny,nx] == 1 and not comp_mask[ny,nx] and forbidden[ny,nx] == 0:
-                                ext_mines.add((ny, nx))
-
+            ext_mines = [tuple(item) for item in cluster["external_mines"]]
             if not ext_mines:
                 continue
 
-            # Check if cluster is sealed (all external nbs are mines — no safe nbs)
-            has_safe_nb = False
-            for cy, cx in unk_cells:
-                for dy in range(-1, 2):
-                    for dx in range(-1, 2):
-                        if dy == 0 and dx == 0: continue
-                        ny, nx = cy+dy, cx+dx
-                        if 0 <= ny < H and 0 <= nx < W:
-                            if state[ny,nx] == SAFE:
-                                has_safe_nb = True
-                                break
-                if has_safe_nb:
-                    break
-
-            if has_safe_nb:
-                continue  # not sealed — standard repair should handle
-
-            # Sealed cluster: try removing each external mine
-            best_delta  = 0
-            best_mine   = None
+            best_delta = 0
+            best_mine = None
             best_grid_t = None
             best_move_type = 'none'
             best_removed = []
+            best_sr_t = None
 
             ext_mines = sorted(
                 ext_mines,
@@ -364,13 +604,13 @@ def run_phase2_full_repair(grid: np.ndarray,
                 sr_t = solve_board(trial, max_rounds=trial_max_rounds, mode='trial')
                 delta = sr.n_unknown - sr_t.n_unknown
                 if delta > best_delta:
-                    best_delta  = delta
-                    best_mine   = (my, mx)
+                    best_delta = delta
+                    best_mine = (my, mx)
                     best_grid_t = trial
                     best_move_type = 'single'
                     best_removed = [(my, mx)]
+                    best_sr_t = sr_t
 
-            # Escalate to bounded pair-removal trials if single removals fail.
             if best_delta <= 0 and len(ext_mines) >= 2 and pair_trial_limit >= 2 and pair_combo_limit > 0:
                 pair_pool = ext_mines[:max(2, int(pair_trial_limit))]
                 n_pairs_tested = 0
@@ -397,23 +637,38 @@ def run_phase2_full_repair(grid: np.ndarray,
                             best_grid_t = trial
                             best_move_type = 'pair'
                             best_removed = [(m1y, m1x), (m2y, m2x)]
+                            best_sr_t = sr_t
 
             if best_mine is not None:
+                before_grid = grid.copy()
                 grid = best_grid_t
                 grid[forbidden == 1] = 0
                 n_fixed += 1
                 made_progress = True
-                log.append({'cluster_size': len(unk_cells),
-                             'removed_mine': best_mine,
-                             'removed_mines': best_removed,
-                             'move_type': best_move_type,
-                             'T_removed': float(target[best_mine[0], best_mine[1]]),
-                             'delta_unk': best_delta})
+                delta_summary = compute_repair_visual_delta(before_grid, grid, target)
+                log.append({
+                    'cluster_size': int(cluster["cluster_size"]),
+                    'removed_mine': [int(best_mine[0]), int(best_mine[1])],
+                    'removed_mines': [[int(y), int(x)] for y, x in best_removed],
+                    'move_type': best_move_type,
+                    'T_removed': float(target[best_mine[0], best_mine[1]]),
+                    'delta_unk': int(best_delta),
+                    'repair_stage': 'phase2_full',
+                    'cluster_id': int(cluster["cluster_id"]),
+                    'cluster_kind': cluster["cluster_kind"],
+                    'n_unknown_before': int(sr.n_unknown),
+                    'n_unknown_after': int(best_sr_t.n_unknown if best_sr_t is not None else sr.n_unknown - best_delta),
+                    'delta_unknown': int(best_delta),
+                    'mean_abs_error_before': float(delta_summary["mean_abs_error_before"]),
+                    'mean_abs_error_after': float(delta_summary["mean_abs_error_after"]),
+                    'visual_delta': float(delta_summary["visual_delta"]),
+                    'accepted': True,
+                })
                 if verbose:
-                    print(f"    Sealed cluster (size={len(unk_cells)}): "
+                    print(f"    Sealed cluster (size={cluster['cluster_size']}): "
                           f"{best_move_type} removal {best_removed} "
                           f"(T={target[best_mine[0],best_mine[1]]:.2f}) "
-                          f"→ freed {best_delta} unknown cells", flush=True)
+                          f"-> freed {best_delta} unknown cells", flush=True)
 
         if not made_progress:
             break

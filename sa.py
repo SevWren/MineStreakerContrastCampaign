@@ -182,3 +182,24 @@ def run_sa(kernel, grid, target, weights, forbidden,
     # Enforce corridors post-SA
     best_grid[f == 1] = 0
     return best_grid, float(best_loss), history
+
+
+def summarize_sa_output(
+    grid: np.ndarray,
+    target: np.ndarray,
+    forbidden: np.ndarray,
+) -> dict:
+    """
+    Return density, local mine-density risk, target saturation overlap,
+    and corridor compliance.
+    """
+    high_target_mask = target >= 5.5
+    overlap_count = int(np.sum((grid == 1) & high_target_mask))
+    forbidden_mine_count = int(np.sum((grid == 1) & (forbidden == 1)))
+    return {
+        "mine_density": float(grid.mean()),
+        "forbidden_mine_count": forbidden_mine_count,
+        "forbidden_violation": bool(forbidden_mine_count > 0),
+        "high_target_mine_overlap_count": overlap_count,
+        "high_target_mine_overlap_pct": float(overlap_count / max(int(np.sum(high_target_mask)), 1)),
+    }
