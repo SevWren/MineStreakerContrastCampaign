@@ -5,6 +5,8 @@ docs/result_reports/
 Larger_boards_fidelity_iteration/
 assets/WIP/
 digest.txt
+number_gitingest.py
+digest.line_numbered.txt
 
 # Generated conversation artifacts
 conversations.json
