@@ -135,6 +135,31 @@ Entrypoint flags:
 Technical PNGs are detailed audit/debug artifacts.
 Explained PNGs are beginner-readable first-look artifacts and do not replace technical artifacts.
 
+## Iter9 Image Sweep Mode
+Use image-sweep mode to run Iter9 across discovered images in one batch.
+
+```powershell
+python run_iter9.py --image-dir assets --image-glob "*.png" --seed 11 --allow-noncanonical --out-root results/iter9_manual_explained_validation --max-images 2
+```
+
+Core sweep flags:
+- `--image-dir` activates sweep mode.
+- `--image-glob` selects files (default `*.png`).
+- `--recursive` includes nested folders.
+- `--out-root` sets the batch root. If omitted, output defaults to `results/iter9/<batch_id>/`.
+- `--continue-on-error` keeps processing after failed child runs.
+- `--skip-existing` skips children when expected metrics already exist.
+- `--max-images` limits discovered files after sorting.
+
+Batch root outputs:
+- `iter9_image_sweep_summary.json`
+- `iter9_image_sweep_summary.csv`
+- `iter9_image_sweep_summary.md`
+
+Per-child metrics behavior:
+- Single-image runs include top-level `source_image_validation` and omit `batch_context`.
+- Sweep child runs include top-level `source_image_validation` and populated `batch_context`.
+
 Required explained labels include:
 - `Target value: 0 background -> 8 strongest line`
 - `Generated number: 0 no nearby mines -> 8 surrounded`

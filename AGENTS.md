@@ -49,6 +49,36 @@ Validation behavior:
 - `assets/image_guard.py` supports default-manifest, explicit-manifest, and noncanonical-allowed modes.
 - Entrypoints expose `--image-manifest` and `--allow-noncanonical`.
 
+## Iter9 Image Sweep Contract
+`run_iter9.py` supports image-sweep mode when `--image-dir` is supplied.
+
+Sweep CLI surface:
+- `--image-dir`
+- `--image-glob` (default `*.png`)
+- `--recursive`
+- `--out-root` (optional; defaults to `results/iter9/<batch_id>/`)
+- `--continue-on-error`
+- `--skip-existing`
+- `--max-images`
+
+Sweep mode constraints:
+- `--out-dir`, explicit `--image`, and explicit `--image-manifest` are rejected with `--image-dir`.
+- Sweep-only flags are rejected unless `--image-dir` is present.
+- `--max-images` must be `>= 1` when supplied.
+
+Sweep outputs:
+- One child run directory per discovered image.
+- Child directory names include image identity plus full board label and seed.
+- Child artifact filenames remain unchanged (`metrics_iter9_<board>.json`, `iter9_<board>_FINAL.png`, etc.).
+- Batch root writes:
+  - `iter9_image_sweep_summary.json`
+  - `iter9_image_sweep_summary.csv`
+  - `iter9_image_sweep_summary.md`
+
+Metrics behavior:
+- Single-image metrics include top-level `source_image_validation` and omit `batch_context`.
+- Successful sweep child metrics include top-level `source_image_validation` and full `batch_context`.
+
 ## Benchmark Layout Contract
 Normal benchmark mode writes under a benchmark-run root with child directories named:
 - `<board_width>x<board_height>_seed<seed>/`
