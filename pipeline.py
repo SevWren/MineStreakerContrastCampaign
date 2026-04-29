@@ -45,6 +45,7 @@ class RepairRoutingConfig:
     last100_unknown_threshold: int = 100
     solve_max_rounds: int = 300
     trial_max_rounds: int = 60
+    # Control which repair methods are used during annealing
     enable_phase2: bool = True
     enable_last100: bool = True
     enable_sa_rerun: bool = False
