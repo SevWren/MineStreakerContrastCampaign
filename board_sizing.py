@@ -9,7 +9,9 @@ from PIL import Image
 def derive_board_from_width(
     image_path: str,
     board_width: int,
-    min_width: int = 300,
+    #min_width: int = 300,  # Default value before testing
+    min_width: int = 50,
+
     ratio_tolerance: float = 0.005,
 ) -> dict:
     """

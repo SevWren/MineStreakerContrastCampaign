@@ -1,169 +1,23 @@
 # Mine-Streaker
 
-**Mine-Streaker** is a Python research project that converts line-art images into Minesweeper mine layouts. The goal is not only to make a board that visually resembles an input image, but also to make the resulting Minesweeper board logically solvable with deterministic solver logic.
+Mine-Streaker is a Python research codebase that reconstructs Minesweeper mine layouts from source images.
+The objective is dual:
+- visual fidelity to the source image
+- deterministic solver reachability (low or zero unresolved safe cells)
 
-This project tries to turn an image into a black-and-white drawing into a Minesweeper puzzle where the revealed number pattern reconstructs the original image.
+## Current Reality (April 2026 Snapshot)
+Primary workflows:
+- `run_iter9.py` for single image reconstruction
+- `run_benchmark.py` for benchmark matrices and regression-only checks
 
----
+Important legacy notes:
+- `pipeline.py::run_board(...)` exists but is deprecated.
+- `test_runtime_entrypoint_source_image_contracts_and_deprecated_paths.py` is a historical replay script, not a primary runtime path.
+- `run_repair_only_from_grid.py` is currently a stub marker file.
 
-## Status
+## Quick Start
 
-This repository is an active research codebase, not a polished end-user application.
-
-It is currently focused on:
-
-* converting source images into Minesweeper-compatible mine grids,
-* improving visual fidelity of the reconstructed number field,
-* maximizing deterministic solvability,
-* reducing unresolved solver pockets,
-* testing repair strategies for late-stage solver failures,
-* recording reproducible metrics, reports, and campaign artifacts.
-
-The latest major finding is that a targeted repair-only campaign showed that near-pass boards can be resolved without rerunning simulated annealing when the remaining failure mode is localized sealed solver pockets.
-
----
-
-## Source Image Runtime Contract
-
-Normal runs must pass source images explicitly:
-
-```powershell
-python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
-python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 420 --seeds 11 22 33 --allow-noncanonical
-```
-
-`python run_iter9.py` remains backward-compatible and defaults to `assets/input_source_image.png` only when `--image` is omitted.
-
-Validation modes:
-
-- default image strict validation uses `assets/SOURCE_IMAGE_HASH.json`
-- explicit image + `--image-manifest <path>` validates against that manifest
-- explicit image + `--allow-noncanonical` allows noncanonical validation with structured warnings
-
-Source-image provenance is written into metrics (`source_image`, `source_image_validation`, `command_invocation`, `run_identity`, and artifact paths).
-
----
-
-## Beginner Summary
-
-### What problem does this project solve?
-
-Minesweeper boards contain mines. Every safe square shows a number from `0` to `8`, telling you how many mines touch that square.
-
-This project uses that rule backward:
-
-1. Start with an image.
-2. Choose where mines should go.
-3. Compute the Minesweeper numbers caused by those mines.
-4. Compare those numbers to the image.
-5. Improve the mine layout until the number field looks like the image.
-6. Check whether a deterministic solver can reveal the board without guessing.
-
-### Why is this hard?
-
-A board can look visually good but still be bad as a puzzle.
-
-For example:
-
-* The image may look correct.
-* The number field may match the drawing well.
-* But the solver may get stuck because some safe cells are trapped behind mine walls.
-
-The project therefore has two competing goals:
-
-| Goal                | Meaning                                                               |
-| ------------------- | --------------------------------------------------------------------- |
-| Visual fidelity     | The Minesweeper number field should look like the source image.       |
-| Logical solvability | The board should be solvable by deterministic logic without guessing. |
-
-The research challenge is balancing both.
-
----
-
-## The Technical Summary
-
-Mine-Streaker is an inverse-design pipeline for Minesweeper reconstruction.
-
-The current pipeline consists of:
-
-1. **Image preprocessing** — load and normalize the source image.
-2. **Board sizing** — derive a board size that preserves the source aspect ratio.
-3. **Target construction** — convert image intensity into a target number field.
-4. **Weight construction** — assign higher or lower penalties to regions of the image.
-5. **Corridor generation** — reserve mine-free paths to support solver reachability.
-6. **Simulated annealing** — optimize a binary mine grid against the target number field.
-7. **Deterministic solving** — evaluate how much of the board can be solved logically.
-8. **Repair phases** — adjust late-stage mine placement to reduce unresolved unknown cells.
-9. **Reporting** — write metrics, visual reports, grids, logs, and campaign summaries.
-
----
-
-## Repository Layout
-
-```text
-.
-├── board_sizing.py
-├── core.py
-├── corridors.py
-├── pipeline.py
-├── repair.py
-├── report.py
-├── run_benchmark.py
-├── run_iter9.py
-├── run_repair_only_from_grid.py
-├── sa.py
-├── solver.py
-├── assets/
-├── docs/
-├── Larger_boards_fidelity_iteration/
-└── results/
-```
-
-### Main Runtime Modules
-
-| File                                  | Responsibility                                                                                   |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `board_sizing.py`                     | Derives board dimensions from source image aspect ratio.                                         |
-| `core.py`                             | Loads images, computes target fields, number fields, loss weights, and preprocessing transforms. |
-| `corridors.py`                        | Builds mine-free corridor masks to improve solver reachability.                                  |
-| `sa.py`                               | Runs simulated annealing to optimize mine placement.                                             |
-| `solver.py`                           | Runs deterministic Minesweeper solving logic and reports coverage/unknowns.                      |
-| `repair.py`                           | Applies post-solver repair heuristics such as Phase 1, Phase 2, and Last-100 repair.             |
-| `pipeline.py`                         | Older orchestration path for the reconstruction pipeline.                                        |
-| `report.py`                           | Renders visual reports and diagnostic outputs.                                                   |
-| `run_iter9.py`                        | Main current reconstruction entry point.                                                         |
-| `run_benchmark.py`                    | Runs multi-board/multi-seed benchmark checks.                                                    |
-| `run_contrast_preprocessing_study.py` | Runs contrast preprocessing experiments and writes comparison summaries.                         |
-| `run_repair_only_from_grid.py`        | Runs repair-only experiments from existing baseline grids.                                       |
-| `list_unignored_files.py`             | Builds file lists/digests for review and archival workflows.                                     |
-
----
-
-## Installation
-
-### Requirements
-
-Use Python 3.11+ if available. The project uses scientific Python libraries and Numba acceleration.
-
-Required runtime libraries:
-
-```text
-numpy
-scipy
-numba
-Pillow
-matplotlib
-```
-
-Optional:
-
-```text
-scikit-image
-```
-
-### Windows PowerShell Setup
-
-From the repository root:
+### 1. Create environment and install dependencies
 
 ```powershell
 python -m venv .venv
@@ -172,450 +26,180 @@ python -m pip install --upgrade pip
 python -m pip install numpy scipy numba Pillow matplotlib scikit-image
 ```
 
-### Verify The Source Image
+### 2. Check runtime help contracts
 
-Before long runs, validate the source image you will run:
+```powershell
+python run_iter9.py --help
+python run_benchmark.py --help
+```
+
+### 3. Verify your image input
 
 ```powershell
 python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-Backward-compatible strict default check:
-
-```powershell
-python assets/image_guard.py --path <default-image-path>
-```
-
----
-
-## Quick Start
-
-### Run The Main Reconstruction Pipeline
+### 4. Run a normal Iter9 pipeline
 
 ```powershell
 python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
-Expected output location:
-
-```text
-results/iter9/
-```
-
-Typical artifacts include:
-
-```text
-metrics_iter9_<board>.json
-grid_iter9_<board>.npy
-grid_iter9_latest.npy
-iter9_<board>_FINAL.png
-iter9_<board>_FINAL_explained.png
-repair_overlay_<board>.png
-repair_overlay_<board>_explained.png
-failure_taxonomy.json
-repair_route_decision.json
-visual_delta_summary.json
-```
-
-The technical PNGs are the detailed audit view. The explained PNGs are additive first-look review artifacts for humans and LLMs, and they do not replace the technical reports.
-
-## Beginner Workflow
-
-Use this order if you are new to the project.
-
-### Step 1: Check the input image
+### 5. Run benchmark matrix mode
 
 ```powershell
-python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 420 --seeds 300 301 302 --allow-noncanonical
 ```
 
-This confirms the source image exists and passes the chosen validation mode.
-
-### Step 2: Run the main pipeline
+### 6. Run fixed regression mode
 
 ```powershell
-python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_benchmark.py --regression-only
 ```
 
-This creates a Minesweeper board attempt from the explicit source image.
+## Source Image Runtime Contract
+Normal runs are CLI image driven (`--image`).
+`assets/input_source_image.png` is only a backward-compatible default when `--image` is omitted.
 
-### Step 3: Open the results folder
+Validation model:
+- default image with default manifest
+- explicit image with explicit manifest
+- explicit image with `--allow-noncanonical` (warning mode)
 
-Look in:
+Entrypoint flags:
+- `run_iter9.py`: `--image`, `--out-dir`, `--board-w`, `--seed`, `--allow-noncanonical`, `--image-manifest`, `--run-tag`
+- `run_benchmark.py`: `--image`, `--widths`, `--seeds`, `--out-dir`, `--allow-noncanonical`, `--image-manifest`, `--regression-only`, `--include-regressions`
+
+`--regression-only` is intentionally constrained: explicit normal-mode flags are rejected in this mode.
+
+## Repository Layout
 
 ```text
-results/iter9/
+.
+|-- AGENTS.md
+|-- README.md
+|-- board_sizing.py
+|-- core.py
+|-- corridors.py
+|-- pipeline.py
+|-- repair.py
+|-- report.py
+|-- run_iter9.py
+|-- run_benchmark.py
+|-- run_repair_only_from_grid.py
+|-- test_runtime_entrypoint_source_image_contracts_and_deprecated_paths.py
+|-- sa.py
+|-- solver.py
+|-- source_config.py
+|-- assets/
+|-- docs/
+|-- tests/
+`-- results/
 ```
 
-Start with:
+## Pipeline Summary
+`run_iter9.py` and benchmark child runs use this sequence:
+1. Resolve source config and validate image integrity.
+2. Derive board height from source-image aspect ratio (`board_sizing.py`).
+3. Build target field and zone-aware weights (`core.py`).
+4. Build adaptive corridors (`corridors.py`).
+5. Run coarse/fine/refine SA (`sa.py`).
+6. Run deterministic solver (`solver.py`).
+7. Run Phase 1 repair (`repair.py`).
+8. Route late-stage unresolved failures (`pipeline.py`) through phase2/last100 logic when appropriate.
+9. Render technical and explained reports (`report.py`).
+10. Persist metrics/artifacts under `results/`.
 
-```text
-iter9_<board>_FINAL_explained.png
-iter9_<board>_FINAL.png
-metrics_iter9_<board>.json
-```
+## Output Artifacts
+### Iter9 run directory (`results/iter9/<run_id>/`)
+- `metrics_iter9_<board>.json`
+- `grid_iter9_<board>.npy`
+- `grid_iter9_latest.npy`
+- `iter9_<board>_FINAL.png`
+- `iter9_<board>_FINAL_explained.png`
+- `repair_overlay_<board>.png`
+- `repair_overlay_<board>_explained.png`
+- `failure_taxonomy.json`
+- `repair_route_decision.json`
+- `visual_delta_summary.json`
 
-### Step 4: Read the key numbers
+### Benchmark root (`results/benchmark/<benchmark_run_id>/`)
+- child dirs named `<board_width>x<board_height>_seed<seed>/`
+- benchmark summaries:
+  - `benchmark_summary.json`
+  - `benchmark_summary.csv`
+  - `benchmark_summary.md`
+  - `benchmark_results.json`
 
-In the metrics file, focus on:
+## Explained vs Technical Reports
+Technical PNGs are detailed audit/debug artifacts.
+Explained PNGs are beginner-readable first-look artifacts and do not replace technical artifacts.
 
-| Metric           | Beginner meaning                                                        |
-| ---------------- | ----------------------------------------------------------------------- |
-| `coverage`       | How much of the board the solver could reveal. Higher is better.        |
-| `n_unknown`      | How many safe cells remain unrevealed. Lower is better.                 |
-| `mean_abs_error` | How far the number field is from the target image. Lower is better.     |
-| `mine_accuracy`  | Whether mines are correctly identified by the solver. Higher is better. |
-| `solvable`       | Whether the solver considers the board logically solved enough.         |
-
-### Step 5: Run benchmarks before trusting a change
+## Iter9 Image Sweep Mode
+Use image-sweep mode to run Iter9 across discovered images in one batch.
 
 ```powershell
-python run_benchmark.py
+python run_iter9.py --image-dir assets --image-glob "*.png" --seed 11 --allow-noncanonical --out-root results/iter9_manual_explained_validation --max-images 2
 ```
 
-Do not trust a change from one seed or one board size only.
+Core sweep flags:
+- `--image-dir` activates sweep mode.
+- `--image-glob` selects files (default `*.png`).
+- `--recursive` includes nested folders.
+- `--out-root` sets the batch root. If omitted, output defaults to `results/iter9/<batch_id>/`.
+- `--continue-on-error` keeps processing after failed child runs.
+- `--skip-existing` skips children when expected metrics already exist.
+- `--max-images` limits discovered files after sorting.
 
----
+Batch root outputs:
+- `iter9_image_sweep_summary.json`
+- `iter9_image_sweep_summary.csv`
+- `iter9_image_sweep_summary.md`
 
-## Key Concepts
+Per-child metrics behavior:
+- Single-image runs include top-level `source_image_validation` and omit `batch_context`.
+- Sweep child runs include top-level `source_image_validation` and populated `batch_context`.
 
-### Mine Grid
+Required explained labels include:
+- `Target value: 0 background -> 8 strongest line`
+- `Generated number: 0 no nearby mines -> 8 surrounded`
+- `Difference: 0 match -> 4+ large mismatch`
+- `Visual change: negative better -> positive worse`
 
-A 2D array where:
+Explained optimization chart must use:
+- title: `Optimizer progress: lower is better`
+- x-axis text including `Optimizer work, in millions of attempted mine changes` and `1 plotted point = 50,000 attempted changes`
+- y-axis: `Match error score (lower is better)`
 
-```text
-0 = no mine
-1 = mine
-```
-
-### Number Field
-
-The Minesweeper numbers produced by the mine grid. Each safe cell gets a number from `0` to `8` based on nearby mines.
-
-### Target Field
-
-The image converted into number-like values. The optimizer tries to make the Minesweeper number field match this target.
-
-### Simulated Annealing
-
-The optimization method that repeatedly moves mines around and keeps changes that improve the result.
-
-### Solver Coverage
-
-The fraction of safe cells that the deterministic solver can reveal.
-
-### `n_unknown`
-
-The number of safe cells still unrevealed after solving. This is one of the most important metrics.
-
-### Repair
-
-A post-processing step that changes small parts of the mine grid to help the solver finish.
-
----
-
-## Latest Campaign Finding: Repair-Only Last-100 Campaign
-
-The latest major campaign was:
-
-```text
-line_art_robustness_campaign_2_line_art_irl_9_repair_only_last100
-```
-
-### Campaign Scope
-
-* Source image: `line_art_irl_9.png`
-* Board: `300x942`
-* Cells: `282,600`
-* Seeds: `11`, `22`, `33`
-* Attempts: `12`
-* Policy: no `sa3x_adaptive`, no SA reruns, immutable campaign 2 `global46` baselines
-
-### Repair Variants Tested
-
-| Variant                        | Purpose                                          |
-| ------------------------------ | ------------------------------------------------ |
-| `baseline_recheck`             | Re-run the near-pass baseline for comparison.    |
-| `phase2_extended_only`         | Test Phase 2 repair alone.                       |
-| `last100_only`                 | Test Last-100 repair alone.                      |
-| `phase2_extended_then_last100` | Try Phase 2 first, then Last-100 only if needed. |
-
-### Main Result
-
-The baseline rechecks still had unresolved cells:
-
-| Seed | Baseline `n_unknown` |
-| ---: | -------------------: |
-|   11 |                   89 |
-|   22 |                   20 |
-|   33 |                   37 |
-
-All repair variants solved the board numerically:
-
-| Variant                        | Attempts | Promoted | Max `n_unknown` |
-| ------------------------------ | -------: | -------: | --------------: |
-| `baseline_recheck`             |        3 |        0 |              89 |
-| `phase2_extended_only`         |        3 |        3 |               0 |
-| `last100_only`                 |        3 |        3 |               0 |
-| `phase2_extended_then_last100` |        3 |        3 |               0 |
-
-The final best-per-seed result was `3 / 3` promoted with `0` final unresolved cells.
-
-### Practical Lesson
-
-The campaign showed that this late-stage failure family was repair-resolvable without rerunning simulated annealing.
-
-The strongest next architecture direction is:
-
-```text
-solve → diagnose unresolved failure type → route to targeted repair → measure → audit visual change
-```
-
-Instead of treating every solver stall as a generic optimization failure, the pipeline should classify the remaining unknown-cell structure and choose the cheapest targeted intervention.
-
-### Important Visual Caveat
-
-The campaign also recorded a `P1 background leakage` watch finding. This should be treated as a visual-risk signal, not as proof that one repair method alone caused the artifact.
-
-Future repair work should add visual-delta evidence around each accepted repair move.
-
----
-
-## Pipeline Direction
-
-The project is currently moving toward this routing model:
-
-```text
-1. Run simulated annealing.
-2. Run deterministic solver.
-3. If n_unknown == 0, accept the result.
-4. If unresolved cells remain, classify the failure type.
-5. If sealed clusters dominate, run Phase 2 full repair.
-6. If Phase 2 fails and unknown count is small, run Last-100 repair.
-7. If repair still fails, mark the run as needing broader SA/adaptive rerun.
-8. Emit repair logs, visual overlays, and route-decision artifacts.
-```
-
-Target future artifacts:
-
-```text
-failure_taxonomy.json
-repair_route_decision.json
-visual_delta_summary.json
-repair_overlay_<board>.png
-```
-
----
-
-## Metrics Guide
-
-| Metric           | Technical meaning                                    | Desired direction              |
-| ---------------- | ---------------------------------------------------- | ------------------------------ |
-| `loss`           | Weighted optimization loss.                          | Lower                          |
-| `loss_per_cell`  | Loss normalized by board size.                       | Lower                          |
-| `mean_abs_error` | Mean absolute error between target and number field. | Lower                          |
-| `coverage`       | Fraction of safe cells revealed by solver.           | Higher                         |
-| `n_unknown`      | Count of unrevealed safe cells.                      | Lower                          |
-| `mine_accuracy`  | Accuracy of solver mine identification.              | Higher                         |
-| `solvable`       | Solver success boolean.                              | `true`                         |
-| `total_time_s`   | Runtime in seconds.                                  | Lower, if quality is preserved |
-
----
-
-## Generated Artifacts to expect
-
-| Artifact                   | Meaning                                           |
-| -------------------------- | ------------------------------------------------- |
-| `grid_iter9_<board>.npy`   | Iter9 binary mine grid.                           |
-| `metrics_iter9_<board>.json` | Iter9 machine-readable run metrics.             |
-| `iter9_<board>_FINAL.png`  | Iter9 technical final visual for detailed audit.  |
-| `iter9_<board>_FINAL_explained.png` | Iter9 explained final visual for first-look review. |
-| `repair_overlay_<board>.png` | Technical repair-route overlay in Iter9 and benchmark child run directories. |
-| `repair_overlay_<board>_explained.png` | Iter9 explained repair overlay for first-look review. |
-| `metrics_<board>.json`     | Benchmark child-run machine-readable metrics.     |
-| `visual_<board>.png`       | Benchmark child-run technical final visual.       |
-| `visual_<board>_explained.png` | Benchmark child-run explained final visual.   |
-| `repair_overlay_<board>_explained.png` | Benchmark child-run explained repair overlay. |
-| `benchmark_summary.json`   | Benchmark run-root summary (JSON).                |
-| `benchmark_summary.csv`    | Benchmark run-root summary (CSV).                 |
-| `benchmark_summary.md`     | Benchmark run-root summary (Markdown).            |
-| `repair_checkpoint.npy`    | Intermediate repair grid checkpoint when emitted. |
-| `repair_move_log.jsonl`    | Accepted/rejected repair moves.                   |
-| `campaign_summary.md`      | Human-readable campaign summary.                  |
-| `campaign_summary.json`    | Machine-readable campaign summary.                |
-| `campaign_runs.csv`        | Per-run campaign table.                           |
-| `visual_anomaly_review.md` | Visual review findings.                           |
-
-Generated outputs should live under:
-
-```text
-results/
-```
-
-## How to Read Explained Report PNGs
-
-Explained PNGs are the first file to open when you want a human-readable overview.
-
-| Report element | Meaning |
-|---|---|
-| Target value colorbar | `0` means background. `8` means the strongest line area from the source image. |
-| Generated number colorbar | `0` means a safe cell has no touching mines. `8` means a safe cell is surrounded by mines. |
-| Difference colorbar | `0` means the generated number matched the target. Higher values mean a larger visual mismatch. `4+` means a large mismatch. |
-| Solver colors | Gray means revealed safe cells. Orange means flagged mines. Blue means unresolved cells. |
-| Optimizer progress | Lower is better. The x-axis is shown in **millions of attempted mine changes** and also states that `1 plotted point = 50,000 attempted changes`. This axis shows optimizer work, not clock time. |
-
-### Explained vs Technical Report Terms
-
-The explained report intentionally uses beginner language:
-
-- `Optimizer progress: lower is better`
-- `Optimizer work, in millions of attempted mine changes`
-- `1 plotted point = 50,000 attempted changes`
-- `Match error score (lower is better)`
-
-The technical report keeps audit/debug wording:
-
+Technical report wording remains:
 - `Loss curve (log)`
 - `x50k iters`
 - `Weighted loss`
 
----
-
-## Development Rules
-
-Follow these rules when modifying the codebase.
-
-### Reproducibility
-
-* Use fixed seeds (11 22 33 etc)
-* Record exact metrics.
-* Keep generated outputs under `results/`.
-* Prefer machine-readable JSON/CSV logs for experiments.
-
-### Solver and Optimization Changes
-
-* Must not claim improvement(s) from one seed.
-* Compare median behavior across seeds.
-* Check both visual fidelity and solver coverage.
-* Do not trade a large coverage regression for a small loss improvement.
-
-### Code Style
-
-* Use PEP 8 style.
-* Use 4-space indentation.
-* Use `snake_case` for functions and variables.
-* Use `UPPER_CASE` for constants.
-* Add type hints for public functions.
-* Keep Numba-heavy logic isolated in `sa.py` and `solver.py`.
-
----
-
-## Benchmark Expectations
-
-Use at least three seeds per meaningful comparison.
-
-Important board sizes used in historical benchmarking include:
-
-```text
-200x125
-250x156
-250x250
-```
-
-Report at minimum:
-
-```text
-loss_per_cell
-mean_abs_error
-coverage
-n_unknown
-mine_accuracy
-runtime
-```
-
-A candidate change should be treated as risky if it improves image loss but increases unresolved unknown cells or lowers solver coverage.
-
----
-
-## Troubleshooting
-
-### `Board sizing mismatch`
-
-Cause: the source image dimensions changed, or board sizing logic changed.
-
-Action:
+## Tests and Validation
+Default test suite:
 
 ```powershell
-python assets/image_guard.py --path <same path passed to --image> --allow-noncanonical
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
-Then inspect `board_sizing.py` and the relevant metrics file.
+Contract-focused tests include:
+- `tests/test_source_image_cli_contract.py`
+- `tests/test_benchmark_layout.py`
+- `tests/test_report_explanations.py`
+- `tests/test_repair_route_decision.py`
+- `tests/test_route_artifact_metadata.py`
+- `tests/test_solver_failure_taxonomy.py`
 
-### `n_unknown` remains high
+## Contributor Rules
+- Keep generated artifacts under `results/`.
+- Preserve existing metric fields unless an explicit schema migration is performed.
+- Keep ownership boundaries:
+  - `solver.py`: unresolved-cell classification
+  - `pipeline.py`: route selection and route artifacts
+  - `repair.py`: repair mutations and move logs
+  - `report.py`: visual proof artifacts
+  - `sa.py`: optimization kernel only, no repair routing logic
 
-Cause: the solver is stuck with unresolved safe cells.
-
-Action:
-
-1. Inspect `metrics_iter9_<board>.json` (or benchmark `metrics_<board>.json`).
-2. Check `coverage` and `n_unknown`.
-3. Inspect repair logs if present.
-4. Run benchmark before changing repair logic.
-
-### Visual output looks worse after repair
-
-Cause: repair may have improved logical solvability while changing visual fidelity. Logical Solvability is a machine readable value where visual fidelity is the human element.
-
-Action:
-
-1. Compare `iter9_<board>_FINAL.png` (or benchmark `visual_<board>.png`) before and after repair.
-2. Check `mean_abs_error`.
-3. Inspect `repair_move_log.jsonl`.
-4. Prefer future visual-delta instrumentation before changing repair policy.
-
-### Run is slow
-
-Cause: large boards, high SA iteration counts, full solver passes, or expensive repair search.
-
-Action:
-
-1. Check `total_time_s` in metrics.
-2. Reduce experiment scope before changing algorithm logic.
-3. Use benchmarks to compare before/after behavior.
-
----
-
-## Recommended Reading Order
-
-### For Beginners
-
-1. This `README.md`
-2. `docs/implement_clarified_source_image_runtime_contract.md`
-3. `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
-4. Latest benchmark summary under `results/benchmark/.../benchmark_summary.md`
-5. `metrics_iter9_<board>.json` from a recent run
-
-### For Advanced Contributors
-
-1. `AGENTS.md`
-2. `core.py`
-3. `sa.py`
-4. `solver.py`
-5. `repair.py`
-6. `run_iter9.py`
-7. `run_benchmark.py`
-8. Latest campaign reports under `results/`
-
----
-
-## Roadmap
-
-High value next improvements:
-
-1. Adding unresolved-cell failure taxonomy to `solver.py`.
-2. Adding late stage repair routing to `pipeline.py` / `run_iter9.py`.
-3. Making `run_phase2_full_repair()` emit stronger before/after visual evidence.
-4. Adding `repair_overlay_<board>.png` reports.
-5. Promoting the `line_art_irl_9.png` repair-only result into a regression benchmark.
-6. Add visual delta gates so repair cannot silently damage image fidelity (this is controversial based off the interpretive nature of image fidelity)
-
+## Active Documentation
+Use `docs/DOCS_INDEX.md` to determine active vs archived docs before editing.

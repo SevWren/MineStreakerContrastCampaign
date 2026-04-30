@@ -8,6 +8,8 @@ Production Iter9 pipeline with explicit source-image runtime contract.
 from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
 import json
 import os
 import platform
@@ -50,6 +52,26 @@ DEFAULT_BOARD_W = 300
 DEFAULT_SEED = 42
 RESULTS_ROOT = "results/iter9"
 SCHEMA_VERSION = "metrics.v2.source_image_runtime_contract"
+IMAGE_SWEEP_SUMMARY_FIELDS = [
+    "batch_index",
+    "image_path",
+    "image_name",
+    "image_stem",
+    "source_image_sha256",
+    "status",
+    "child_run_dir",
+    "metrics_path",
+    "best_artifact_to_open_first",
+    "board",
+    "seed",
+    "n_unknown",
+    "coverage",
+    "solvable",
+    "mean_abs_error",
+    "repair_route_selected",
+    "error_type",
+    "error_message",
+]
 
 # Pipeline config (existing Iter9 settings preserved)
 DENSITY = 0.22
@@ -92,6 +114,23 @@ def _atomic_save_json(data: dict, path: Path) -> None:
     os.replace(tmp, path)
 
 
+def _atomic_save_text(text: str, path: Path) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    os.replace(tmp, path)
+
+
+def _atomic_save_csv(rows: list[dict], fieldnames: list[str], path: Path) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field) for field in fieldnames})
+    os.replace(tmp, path)
+
+
 def _atomic_save_npy(array: np.ndarray, path: Path) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp.npy")
     np.save(tmp, array)
@@ -124,6 +163,16 @@ def _sanitize_run_tag(value: str) -> str:
     return sanitize_run_tag(value)
 
 
+def _sanitize_path_token(value: str, *, fallback: str = "item") -> str:
+    token = sanitize_run_tag(value)
+    return token if token else fallback
+
+
+def _path_hash_token(path: Path, *, length: int = 8) -> str:
+    text = path.resolve().as_posix().encode("utf-8")
+    return hashlib.sha256(text).hexdigest()[: int(length)]
+
+
 def _build_run_id(image_stem: str, board_w: int, seed: int, run_tag: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{stamp}_{image_stem}_{board_w}w_seed{seed}"
@@ -131,6 +180,24 @@ def _build_run_id(image_stem: str, board_w: int, seed: int, run_tag: str) -> str
     if safe_tag:
         run_id = f"{run_id}_{safe_tag}"
     return run_id
+
+
+def _build_image_sweep_batch_id(
+    *,
+    image_dir: Path,
+    image_glob: str,
+    board_w: int,
+    seed: int,
+    run_tag: str,
+) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dir_token = _sanitize_path_token(image_dir.name, fallback="images")
+    glob_token = _sanitize_path_token(image_glob, fallback="glob")
+    batch_id = f"{stamp}_{dir_token}_{glob_token}_{int(board_w)}w_seed{int(seed)}"
+    safe_tag = sanitize_run_tag(run_tag)
+    if safe_tag:
+        batch_id = f"{batch_id}_{safe_tag}"
+    return batch_id
 
 
 def _git_cmd(project_root: Path, args: list[str]) -> str | None:
@@ -241,6 +308,73 @@ def _relative_or_absolute(path: Path, project_root: Path) -> str:
         return path.resolve().as_posix()
 
 
+def discover_source_images(
+    image_dir: Path,
+    image_glob: str,
+    *,
+    recursive: bool = False,
+    max_images: int | None = None,
+) -> list[Path]:
+    image_dir = Path(image_dir).resolve()
+    if not image_dir.exists():
+        raise FileNotFoundError(f"Image sweep directory not found: {image_dir}")
+    if not image_dir.is_dir():
+        raise NotADirectoryError(f"Image sweep path is not a directory: {image_dir}")
+
+    matches = image_dir.rglob(image_glob) if recursive else image_dir.glob(image_glob)
+    images = [path for path in matches if path.is_file()]
+    images = sorted(images, key=lambda path: path.resolve().as_posix())
+
+    if max_images is not None:
+        images = images[: int(max_images)]
+
+    if not images:
+        raise ValueError(f"No source images matched {image_glob!r} under {image_dir.as_posix()}")
+
+    return images
+
+
+def _colliding_sanitized_stem_tokens(paths: list[Path]) -> set[str]:
+    counts: dict[str, int] = {}
+    for path in paths:
+        token = _sanitize_path_token(path.stem, fallback="image").casefold()
+        counts[token] = counts.get(token, 0) + 1
+    return {token for token, count in counts.items() if count > 1}
+
+
+def build_image_sweep_child_out_dir(
+    out_root: Path,
+    *,
+    source_cfg: SourceImageConfig,
+    board_label: str,
+    seed: int,
+    colliding_stem_tokens: set[str],
+) -> Path:
+    stem_token = _sanitize_path_token(source_cfg.stem, fallback="image")
+    if stem_token.casefold() in colliding_stem_tokens:
+        stem_token = f"{stem_token}_{source_cfg.sha256[:12]}_{_path_hash_token(source_cfg.absolute_path)}"
+    child_name = f"{stem_token}_{board_label}_seed{int(seed)}"
+    return out_root / child_name
+
+
+def _md_table_cell(value) -> str:
+    text = "" if value is None else str(value)
+    text = text.replace("\\", "\\\\")
+    text = text.replace("|", "\\|")
+    text = text.replace("\r", " ")
+    text = text.replace("\n", " ")
+    return text
+
+
+def _explicit_flag_present(raw_argv: list[str], flag: str) -> bool:
+    for token in raw_argv:
+        if token == "--":
+            break
+        if token == flag or token.startswith(flag + "="):
+            return True
+    return False
+
+
 def build_metrics_document(
     flat_metrics: dict,
     *,
@@ -268,6 +402,7 @@ def build_metrics_document(
     warnings_and_exceptions: list[dict],
     llm_review_summary: dict,
     source_image_validation: dict | None = None,
+    batch_context: dict | None = None,
 ) -> dict:
     document = dict(flat_metrics)
     document.update(
@@ -299,11 +434,16 @@ def build_metrics_document(
             "source_image_validation": dict(source_image_validation or {}),
         }
     )
+    if batch_context is not None:
+        document["batch_context"] = dict(batch_context)
     return document
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Iter9 reconstruction pipeline.")
+    parser = argparse.ArgumentParser(
+        description="Run Iter9 reconstruction pipeline.",
+        allow_abbrev=False,
+    )
     parser.add_argument("--image", default=DEFAULT_IMAGE, help="Input image path.")
     parser.add_argument("--out-dir", default=None, help="Exact output run directory.")
     parser.add_argument("--board-w", type=int, default=DEFAULT_BOARD_W, help="Board width.")
@@ -311,49 +451,67 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--allow-noncanonical", action="store_true", help="Allow noncanonical image.")
     parser.add_argument("--image-manifest", default=None, help="Path to image manifest JSON.")
     parser.add_argument("--run-tag", default="", help="Optional run tag appended to run id.")
-    return parser.parse_args(argv)
+    parser.add_argument("--image-dir", default=None, help="Directory of source images for Iter9 image-sweep mode.")
+    parser.add_argument("--image-glob", default="*.png", help="Glob pattern used inside --image-dir. Default: *.png.")
+    parser.add_argument("--recursive", action="store_true", help="Recursively discover images under --image-dir.")
+    parser.add_argument("--out-root", default=None, help="Parent output directory for image-sweep child runs.")
+    parser.add_argument("--continue-on-error", action="store_true", help="Continue image sweep after a failed child run.")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip child runs whose expected metrics file already exists.")
+    parser.add_argument("--max-images", type=int, default=None, help="Limit image sweep to the first N discovered images after sorting.")
 
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(raw_argv)
 
-def main() -> int:
-    args = parse_args()
-    started_wall = time.perf_counter()
-    started_at_utc = _utc_now_z()
-    project_root = Path(__file__).resolve().parent
+    if args.max_images is not None and int(args.max_images) < 1:
+        parser.error("--max-images must be >= 1")
 
-    source_cfg = resolve_source_image_config(
-        args.image,
-        project_root=project_root,
-        allow_noncanonical=args.allow_noncanonical,
-        manifest_path=args.image_manifest,
-    )
-
-    image_validation = verify_source_image(
-        str(source_cfg.absolute_path),
-        halt_on_failure=True,
-        verbose=True,
-        allow_noncanonical=args.allow_noncanonical,
-        manifest_path=args.image_manifest,
-        return_details=True,
-    )
-
-    run_id = _build_run_id(source_cfg.stem, int(args.board_w), int(args.seed), args.run_tag)
-    if args.out_dir:
-        out_dir_path = Path(args.out_dir).expanduser().resolve()
+    if args.image_dir is None:
+        sweep_only_flags = [
+            "--image-glob",
+            "--recursive",
+            "--out-root",
+            "--continue-on-error",
+            "--skip-existing",
+            "--max-images",
+        ]
+        for flag in sweep_only_flags:
+            if _explicit_flag_present(raw_argv, flag):
+                parser.error(f"{flag} requires --image-dir")
     else:
-        out_dir_path = (project_root / RESULTS_ROOT / run_id).resolve()
-    os.makedirs(out_dir_path, exist_ok=True)
+        if args.out_dir is not None:
+            parser.error("--out-dir cannot be used with --image-dir; use --out-root")
+        if _explicit_flag_present(raw_argv, "--image"):
+            parser.error("--image cannot be explicitly supplied with --image-dir")
+        if _explicit_flag_present(raw_argv, "--image-manifest"):
+            parser.error("--image-manifest cannot be used with --image-dir")
+
+    return args
+
+
+def run_iter9_single(
+    args: argparse.Namespace,
+    *,
+    source_cfg: SourceImageConfig,
+    source_validation: dict,
+    out_dir_path: Path,
+    project_root: Path,
+    sa_fn,
+    raw_argv: list[str],
+    started_wall: float,
+    started_at_utc: str,
+    warmup_s: float,
+    batch_context: dict | None = None,
+) -> dict:
+    image_validation = dict(source_validation)
+    phase_timers: dict[str, float] = {"warmup": float(warmup_s)}
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+    run_id = _build_run_id(source_cfg.stem, int(args.board_w), int(args.seed), args.run_tag)
 
     print("\n" + "=" * 60)
     print("Mine-Streaker - Iteration 9 - Production Pipeline")
     print("  Phase 1 repair + late-stage repair routing")
     print(f"  source_image={source_cfg.absolute_path.as_posix()}")
     print("=" * 60)
-
-    phase_timers: dict[str, float] = {}
-    phase_start = time.perf_counter()
-    sa_fn = compile_sa_kernel()
-    ensure_solver_warmed()
-    phase_timers["warmup"] = time.perf_counter() - phase_start
 
     phase_start = time.perf_counter()
     sizing = derive_board_from_width(
@@ -703,7 +861,7 @@ def main() -> int:
     project_identity = _git_metadata(project_root)
     command_invocation = {
         "entry_point": "run_iter9.py",
-        "argv": [str(arg) for arg in sys.argv],
+        "argv": ["run_iter9.py", *[str(arg) for arg in raw_argv]],
     }
     source_image_block = source_cfg.to_metrics_dict()
     source_image_analysis = _source_image_analysis(source_cfg.absolute_path)
@@ -874,12 +1032,540 @@ def main() -> int:
         warnings_and_exceptions=warnings_and_exceptions,
         llm_review_summary=llm_review,
         source_image_validation=image_validation,
+        batch_context=batch_context,
     )
     _atomic_save_json(metrics_doc, metrics_path)
 
     print(f"\n  Results written to: {out_dir_path.as_posix()}")
     print(f"  Route: {route.selected_route}  n_unknown={sr_final.n_unknown}  coverage={sr_final.coverage:.5f}")
     print(f"  Total time: {duration_wall_s:.2f}s")
+    return metrics_doc
+
+
+def _image_sweep_success_row(
+    *,
+    batch_index: int,
+    source_cfg: SourceImageConfig,
+    child_run_dir: Path,
+    metrics_doc: dict,
+    project_root: Path,
+) -> dict:
+    artifact_inventory = metrics_doc.get("artifact_inventory", {})
+    llm_review = metrics_doc.get("llm_review_summary", {})
+    row = {
+        "batch_index": int(batch_index),
+        "image_path": source_cfg.absolute_path.resolve().as_posix(),
+        "image_name": source_cfg.name,
+        "image_stem": source_cfg.stem,
+        "source_image_sha256": source_cfg.sha256,
+        "status": "succeeded",
+        "child_run_dir": _relative_or_absolute(child_run_dir, project_root),
+        "metrics_path": artifact_inventory.get("metrics_json"),
+        "best_artifact_to_open_first": llm_review.get("best_artifact_to_open_first"),
+        "board": metrics_doc.get("board"),
+        "seed": metrics_doc.get("seed"),
+        "n_unknown": metrics_doc.get("n_unknown"),
+        "coverage": metrics_doc.get("coverage"),
+        "solvable": metrics_doc.get("solvable"),
+        "mean_abs_error": metrics_doc.get("mean_abs_error"),
+        "repair_route_selected": metrics_doc.get("repair_route_selected"),
+        "error_type": None,
+        "error_message": None,
+    }
+    return {field: row.get(field) for field in IMAGE_SWEEP_SUMMARY_FIELDS}
+
+
+def _image_sweep_failure_row(
+    *,
+    batch_index: int,
+    image_path: Path,
+    source_cfg: SourceImageConfig | None,
+    child_run_dir: Path | None,
+    board_label: str | None,
+    seed: int,
+    error: BaseException,
+    project_root: Path,
+) -> dict:
+    if source_cfg is not None:
+        resolved_image_path = source_cfg.absolute_path.resolve().as_posix()
+        image_name = source_cfg.name
+        image_stem = source_cfg.stem
+        source_sha = source_cfg.sha256
+    else:
+        resolved_image_path = str(image_path)
+        image_name = None
+        image_stem = None
+        source_sha = None
+    row = {
+        "batch_index": int(batch_index),
+        "image_path": resolved_image_path,
+        "image_name": image_name,
+        "image_stem": image_stem,
+        "source_image_sha256": source_sha,
+        "status": "failed",
+        "child_run_dir": _relative_or_absolute(child_run_dir, project_root) if child_run_dir is not None else None,
+        "metrics_path": None,
+        "best_artifact_to_open_first": None,
+        "board": board_label,
+        "seed": int(seed),
+        "n_unknown": None,
+        "coverage": None,
+        "solvable": None,
+        "mean_abs_error": None,
+        "repair_route_selected": None,
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+    }
+    return {field: row.get(field) for field in IMAGE_SWEEP_SUMMARY_FIELDS}
+
+
+def _image_sweep_skipped_existing_row(
+    *,
+    batch_index: int,
+    source_cfg: SourceImageConfig,
+    child_run_dir: Path,
+    metrics_path: Path,
+    board_label: str,
+    seed: int,
+    project_root: Path,
+) -> dict:
+    hydrated = {
+        "best_artifact_to_open_first": None,
+        "n_unknown": None,
+        "coverage": None,
+        "solvable": None,
+        "mean_abs_error": None,
+        "repair_route_selected": None,
+    }
+    try:
+        existing = json.loads(metrics_path.read_text(encoding="utf-8"))
+        llm_review = existing.get("llm_review_summary", {})
+        hydrated["best_artifact_to_open_first"] = llm_review.get("best_artifact_to_open_first")
+        hydrated["n_unknown"] = existing.get("n_unknown")
+        hydrated["coverage"] = existing.get("coverage")
+        hydrated["solvable"] = existing.get("solvable")
+        hydrated["mean_abs_error"] = existing.get("mean_abs_error")
+        hydrated["repair_route_selected"] = existing.get("repair_route_selected")
+    except Exception:
+        pass
+
+    row = {
+        "batch_index": int(batch_index),
+        "image_path": source_cfg.absolute_path.resolve().as_posix(),
+        "image_name": source_cfg.name,
+        "image_stem": source_cfg.stem,
+        "source_image_sha256": source_cfg.sha256,
+        "status": "skipped_existing",
+        "child_run_dir": _relative_or_absolute(child_run_dir, project_root),
+        "metrics_path": _relative_or_absolute(metrics_path, project_root),
+        "best_artifact_to_open_first": hydrated["best_artifact_to_open_first"],
+        "board": board_label,
+        "seed": int(seed),
+        "n_unknown": hydrated["n_unknown"],
+        "coverage": hydrated["coverage"],
+        "solvable": hydrated["solvable"],
+        "mean_abs_error": hydrated["mean_abs_error"],
+        "repair_route_selected": hydrated["repair_route_selected"],
+        "error_type": None,
+        "error_message": None,
+    }
+    return {field: row.get(field) for field in IMAGE_SWEEP_SUMMARY_FIELDS}
+
+
+def write_iter9_image_sweep_summaries(
+    *,
+    out_root: Path,
+    batch_id: str,
+    image_dir: str,
+    image_glob: str,
+    recursive: bool,
+    board_w: int,
+    seed: int,
+    started_at_utc: str,
+    finished_at_utc: str,
+    duration_wall_s: float,
+    batch_warmup_s: float,
+    rows: list[dict],
+    images_discovered: int,
+) -> dict:
+    normalized_rows = [
+        {field: row.get(field) for field in IMAGE_SWEEP_SUMMARY_FIELDS}
+        for row in rows
+    ]
+    runs_succeeded = sum(1 for row in normalized_rows if row.get("status") == "succeeded")
+    runs_failed = sum(1 for row in normalized_rows if row.get("status") == "failed")
+    runs_skipped = sum(1 for row in normalized_rows if row.get("status") == "skipped_existing")
+    runs_attempted = runs_succeeded + sum(
+        1
+        for row in normalized_rows
+        if row.get("status") == "failed" and int(row.get("batch_index") or 0) > 0
+    )
+
+    summary_doc = {
+        "schema_version": "iter9_image_sweep.v1",
+        "batch_identity": {
+            "batch_id": batch_id,
+            "entry_point": "run_iter9.py",
+            "image_dir": image_dir,
+            "image_glob": image_glob,
+            "recursive": bool(recursive),
+            "out_root": out_root.resolve().as_posix(),
+            "board_width": int(board_w),
+            "seed": int(seed),
+        },
+        "batch_timing": {
+            "started_at_utc": started_at_utc,
+            "finished_at_utc": finished_at_utc,
+            "duration_wall_s": float(duration_wall_s),
+            "batch_warmup_s": float(batch_warmup_s),
+        },
+        "images_discovered": int(images_discovered),
+        "rows_recorded": len(normalized_rows),
+        "runs_attempted": int(runs_attempted),
+        "runs_succeeded": int(runs_succeeded),
+        "runs_failed": int(runs_failed),
+        "runs_skipped": int(runs_skipped),
+        "rows": normalized_rows,
+    }
+
+    out_root.mkdir(parents=True, exist_ok=True)
+    summary_json_path = out_root / "iter9_image_sweep_summary.json"
+    summary_csv_path = out_root / "iter9_image_sweep_summary.csv"
+    summary_md_path = out_root / "iter9_image_sweep_summary.md"
+
+    _atomic_save_json(summary_doc, summary_json_path)
+    _atomic_save_csv(normalized_rows, IMAGE_SWEEP_SUMMARY_FIELDS, summary_csv_path)
+
+    md_lines = [
+        "# Iter9 Image Sweep Summary",
+        "",
+        f"- batch_id: `{batch_id}`",
+        f"- image_dir: `{image_dir}`",
+        f"- image_glob: `{image_glob}`",
+        f"- recursive: `{bool(recursive)}`",
+        f"- board_width: `{int(board_w)}`",
+        f"- seed: `{int(seed)}`",
+        f"- images_discovered: `{int(images_discovered)}`",
+        f"- runs_attempted: `{int(runs_attempted)}`",
+        f"- runs_succeeded: `{int(runs_succeeded)}`",
+        f"- runs_failed: `{int(runs_failed)}`",
+        f"- runs_skipped: `{int(runs_skipped)}`",
+        "",
+        "| batch_index | status | image_path | board | seed | n_unknown | coverage | solvable | repair_route_selected | best_artifact_to_open_first | error_message |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in normalized_rows:
+        md_lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _md_table_cell(row.get("batch_index")),
+                    _md_table_cell(row.get("status")),
+                    _md_table_cell(row.get("image_path")),
+                    _md_table_cell(row.get("board")),
+                    _md_table_cell(row.get("seed")),
+                    _md_table_cell(row.get("n_unknown")),
+                    _md_table_cell(row.get("coverage")),
+                    _md_table_cell(row.get("solvable")),
+                    _md_table_cell(row.get("repair_route_selected")),
+                    _md_table_cell(row.get("best_artifact_to_open_first")),
+                    _md_table_cell(row.get("error_message")),
+                ]
+            )
+            + " |"
+        )
+    _atomic_save_text("\n".join(md_lines) + "\n", summary_md_path)
+    return summary_doc
+
+
+def run_iter9_image_sweep(
+    args: argparse.Namespace,
+    *,
+    raw_argv: list[str],
+    project_root: Path,
+) -> int:
+    started_wall = time.perf_counter()
+    started_at_utc = _utc_now_z()
+    image_dir_path = Path(args.image_dir).expanduser().resolve()
+    batch_id = _build_image_sweep_batch_id(
+        image_dir=image_dir_path,
+        image_glob=args.image_glob,
+        board_w=int(args.board_w),
+        seed=int(args.seed),
+        run_tag=args.run_tag,
+    )
+    out_root = (
+        Path(args.out_root).expanduser().resolve()
+        if args.out_root
+        else (project_root / RESULTS_ROOT / batch_id).resolve()
+    )
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    rows: list[dict] = []
+    images_discovered = 0
+    batch_warmup_s = 0.0
+    any_failed = False
+
+    try:
+        images = discover_source_images(
+            image_dir_path,
+            args.image_glob,
+            recursive=bool(args.recursive),
+            max_images=args.max_images,
+        )
+        images_discovered = len(images)
+    except Exception as error:
+        rows.append(
+            _image_sweep_failure_row(
+                batch_index=0,
+                image_path=Path(args.image_dir).expanduser(),
+                source_cfg=None,
+                child_run_dir=None,
+                board_label=None,
+                seed=int(args.seed),
+                error=error,
+                project_root=project_root,
+            )
+        )
+        write_iter9_image_sweep_summaries(
+            out_root=out_root,
+            batch_id=batch_id,
+            image_dir=_relative_or_absolute(image_dir_path, project_root),
+            image_glob=args.image_glob,
+            recursive=bool(args.recursive),
+            board_w=int(args.board_w),
+            seed=int(args.seed),
+            started_at_utc=started_at_utc,
+            finished_at_utc=_utc_now_z(),
+            duration_wall_s=(time.perf_counter() - started_wall),
+            batch_warmup_s=0.0,
+            rows=rows,
+            images_discovered=0,
+        )
+        return 1
+
+    colliding_stem_tokens = _colliding_sanitized_stem_tokens(images)
+
+    try:
+        warmup_start = time.perf_counter()
+        sa_fn = compile_sa_kernel()
+        ensure_solver_warmed()
+        batch_warmup_s = time.perf_counter() - warmup_start
+    except Exception as error:
+        rows.append(
+            {
+                "batch_index": 0,
+                "image_path": _relative_or_absolute(image_dir_path, project_root),
+                "image_name": None,
+                "image_stem": None,
+                "source_image_sha256": None,
+                "status": "failed",
+                "child_run_dir": None,
+                "metrics_path": None,
+                "best_artifact_to_open_first": None,
+                "board": None,
+                "seed": int(args.seed),
+                "n_unknown": None,
+                "coverage": None,
+                "solvable": None,
+                "mean_abs_error": None,
+                "repair_route_selected": None,
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+            }
+        )
+        write_iter9_image_sweep_summaries(
+            out_root=out_root,
+            batch_id=batch_id,
+            image_dir=_relative_or_absolute(image_dir_path, project_root),
+            image_glob=args.image_glob,
+            recursive=bool(args.recursive),
+            board_w=int(args.board_w),
+            seed=int(args.seed),
+            started_at_utc=started_at_utc,
+            finished_at_utc=_utc_now_z(),
+            duration_wall_s=(time.perf_counter() - started_wall),
+            batch_warmup_s=batch_warmup_s,
+            rows=rows,
+            images_discovered=images_discovered,
+        )
+        return 1
+
+    for batch_index, image_path in enumerate(images, start=1):
+        source_cfg: SourceImageConfig | None = None
+        child_out_dir: Path | None = None
+        board_label: str | None = None
+        try:
+            source_cfg = resolve_source_image_config(
+                str(image_path),
+                project_root=project_root,
+                allow_noncanonical=args.allow_noncanonical,
+                manifest_path=None,
+            )
+            source_validation = verify_source_image(
+                str(source_cfg.absolute_path),
+                halt_on_failure=False,
+                verbose=True,
+                allow_noncanonical=args.allow_noncanonical,
+                manifest_path=None,
+                return_details=True,
+            )
+            if not source_validation.get("ok"):
+                raise ValueError(f"Source image validation failed: {source_cfg.absolute_path.as_posix()}")
+            sizing = derive_board_from_width(
+                str(source_cfg.absolute_path), int(args.board_w), min_width=300, ratio_tolerance=0.005
+            )
+            board_label = f"{int(sizing['board_width'])}x{int(sizing['board_height'])}"
+            child_out_dir = build_image_sweep_child_out_dir(
+                out_root,
+                source_cfg=source_cfg,
+                board_label=board_label,
+                seed=int(args.seed),
+                colliding_stem_tokens=colliding_stem_tokens,
+            )
+            expected_metrics_path = child_out_dir / f"metrics_iter9_{board_label}.json"
+            if args.skip_existing and expected_metrics_path.exists():
+                rows.append(
+                    _image_sweep_skipped_existing_row(
+                        batch_index=batch_index,
+                        source_cfg=source_cfg,
+                        child_run_dir=child_out_dir,
+                        metrics_path=expected_metrics_path,
+                        board_label=board_label,
+                        seed=int(args.seed),
+                        project_root=project_root,
+                    )
+                )
+                continue
+
+            batch_context = {
+                "schema_version": "iter9_image_sweep_context.v1",
+                "batch_mode": "iter9_image_sweep",
+                "batch_id": batch_id,
+                "batch_index": int(batch_index),
+                "batch_total": int(images_discovered),
+                "images_discovered": int(images_discovered),
+                "image_dir": _relative_or_absolute(image_dir_path, project_root),
+                "image_glob": args.image_glob,
+                "recursive": bool(args.recursive),
+                "batch_out_root": _relative_or_absolute(out_root, project_root),
+                "child_run_dir": _relative_or_absolute(child_out_dir, project_root),
+                "continue_on_error": bool(args.continue_on_error),
+                "skip_existing": bool(args.skip_existing),
+                "max_images": int(args.max_images) if args.max_images is not None else None,
+                "batch_warmup_s": float(batch_warmup_s),
+                "child_warmup_s": 0.0,
+            }
+            metrics_doc = run_iter9_single(
+                args,
+                source_cfg=source_cfg,
+                source_validation=source_validation,
+                out_dir_path=child_out_dir,
+                project_root=project_root,
+                sa_fn=sa_fn,
+                raw_argv=raw_argv,
+                started_wall=time.perf_counter(),
+                started_at_utc=_utc_now_z(),
+                warmup_s=0.0,
+                batch_context=batch_context,
+            )
+            rows.append(
+                _image_sweep_success_row(
+                    batch_index=batch_index,
+                    source_cfg=source_cfg,
+                    child_run_dir=child_out_dir,
+                    metrics_doc=metrics_doc,
+                    project_root=project_root,
+                )
+            )
+        except KeyboardInterrupt:
+            raise
+        except Exception as error:
+            any_failed = True
+            rows.append(
+                _image_sweep_failure_row(
+                    batch_index=batch_index,
+                    image_path=image_path,
+                    source_cfg=source_cfg,
+                    child_run_dir=child_out_dir,
+                    board_label=board_label,
+                    seed=int(args.seed),
+                    error=error,
+                    project_root=project_root,
+                )
+            )
+            print(f"[image-sweep] failed child {batch_index}/{images_discovered}: {error}")
+            if not args.continue_on_error:
+                break
+
+    write_iter9_image_sweep_summaries(
+        out_root=out_root,
+        batch_id=batch_id,
+        image_dir=_relative_or_absolute(image_dir_path, project_root),
+        image_glob=args.image_glob,
+        recursive=bool(args.recursive),
+        board_w=int(args.board_w),
+        seed=int(args.seed),
+        started_at_utc=started_at_utc,
+        finished_at_utc=_utc_now_z(),
+        duration_wall_s=(time.perf_counter() - started_wall),
+        batch_warmup_s=batch_warmup_s,
+        rows=rows,
+        images_discovered=images_discovered,
+    )
+    return 1 if any_failed else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = parse_args(raw_argv)
+    started_wall = time.perf_counter()
+    started_at_utc = _utc_now_z()
+    project_root = Path(__file__).resolve().parent
+
+    if args.image_dir is not None:
+        return run_iter9_image_sweep(args, raw_argv=raw_argv, project_root=project_root)
+
+    source_cfg = resolve_source_image_config(
+        args.image,
+        project_root=project_root,
+        allow_noncanonical=args.allow_noncanonical,
+        manifest_path=args.image_manifest,
+    )
+    source_validation = verify_source_image(
+        str(source_cfg.absolute_path),
+        halt_on_failure=True,
+        verbose=True,
+        allow_noncanonical=args.allow_noncanonical,
+        manifest_path=args.image_manifest,
+        return_details=True,
+    )
+
+    run_id = _build_run_id(source_cfg.stem, int(args.board_w), int(args.seed), args.run_tag)
+    out_dir_path = (
+        Path(args.out_dir).expanduser().resolve()
+        if args.out_dir
+        else (project_root / RESULTS_ROOT / run_id).resolve()
+    )
+
+    phase_start = time.perf_counter()
+    sa_fn = compile_sa_kernel()
+    ensure_solver_warmed()
+    warmup_s = time.perf_counter() - phase_start
+
+    run_iter9_single(
+        args,
+        source_cfg=source_cfg,
+        source_validation=source_validation,
+        out_dir_path=out_dir_path,
+        project_root=project_root,
+        sa_fn=sa_fn,
+        raw_argv=raw_argv,
+        started_wall=started_wall,
+        started_at_utc=started_at_utc,
+        warmup_s=warmup_s,
+        batch_context=None,
+    )
     return 0
 
 

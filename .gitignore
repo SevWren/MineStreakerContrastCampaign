@@ -5,6 +5,15 @@ docs/result_reports/
 Larger_boards_fidelity_iteration/
 assets/WIP/
 digest.txt
+number_gitingest.py
+digest.line_numbered.txt
+minesweeper_timeout_boolean_patch
+patch*
+assets/line_art_irl_14.png
+assets/line_art_irl_15.png
+assets/line_art_irl_16.png
+assets/line_art_irl_17.png
+
 
 # Generated conversation artifacts
 conversations.json

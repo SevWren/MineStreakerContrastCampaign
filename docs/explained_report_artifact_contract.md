@@ -1,4 +1,4 @@
-# Explained Report Artifact Contract
+# Explained Report Visual Artifact Contract
 
 ## Purpose
 Define the required beginner-readable labels, helper behavior, optimization-chart wording, and compatibility rules for explained report PNGs.
