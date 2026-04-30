@@ -10,11 +10,6 @@ Primary workflows:
 - `run_iter9.py` for single image reconstruction
 - `run_benchmark.py` for benchmark matrices and regression-only checks
 
-Important legacy notes:
-- `pipeline.py::run_board(...)` exists but is deprecated.
-- `test_runtime_entrypoint_source_image_contracts_and_deprecated_paths.py` is a historical replay script, not a primary runtime path.
-- `run_repair_only_from_grid.py` is currently a stub marker file.
-
 ## Quick Start
 
 ### 1. Create environment and install dependencies
@@ -59,7 +54,6 @@ python run_benchmark.py --regression-only
 
 ## Source Image Runtime Contract
 Normal runs are CLI image driven (`--image`).
-`assets/input_source_image.png` is only a backward-compatible default when `--image` is omitted.
 
 Validation model:
 - default image with default manifest
@@ -69,8 +63,6 @@ Validation model:
 Entrypoint flags:
 - `run_iter9.py`: `--image`, `--out-dir`, `--board-w`, `--seed`, `--allow-noncanonical`, `--image-manifest`, `--run-tag`
 - `run_benchmark.py`: `--image`, `--widths`, `--seeds`, `--out-dir`, `--allow-noncanonical`, `--image-manifest`, `--regression-only`, `--include-regressions`
-
-`--regression-only` is intentionally constrained: explicit normal-mode flags are rejected in this mode.
 
 ## Repository Layout
 
@@ -86,8 +78,6 @@ Entrypoint flags:
 |-- report.py
 |-- run_iter9.py
 |-- run_benchmark.py
-|-- run_repair_only_from_grid.py
-|-- test_runtime_entrypoint_source_image_contracts_and_deprecated_paths.py
 |-- sa.py
 |-- solver.py
 |-- source_config.py
@@ -193,7 +183,6 @@ Contract-focused tests include:
 
 ## Contributor Rules
 - Keep generated artifacts under `results/`.
-- Preserve existing metric fields unless an explicit schema migration is performed.
 - Keep ownership boundaries:
   - `solver.py`: unresolved-cell classification
   - `pipeline.py`: route selection and route artifacts

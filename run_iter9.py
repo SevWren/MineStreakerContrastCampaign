@@ -73,33 +73,148 @@ IMAGE_SWEEP_SUMMARY_FIELDS = [
     "error_message",
 ]
 
-# Pipeline config (existing Iter9 settings preserved)
+# Reset these back closer to the original values then run the board test one more time & compare results
+# T_COARSE = 10.0 # (Default)
+# T_REFINE1 = 2.0 (default)
+# T_REFINE2 = 1.7 (default)
+
+# Pipeline config
+# What this controls: How many mine cells the coarse starting board begins with.
+# In this pipeline: It sets the first rough guess before optimization starts.
+# In practice: Higher values start with more mines; lower values start with fewer mines.
 DENSITY = 0.22
+
+# What this controls: The safety margin near edges where mine placement is restricted.
+# In this pipeline: It is passed into corridor and optimization rules to protect border behavior.
+# In practice: Higher values protect a wider edge area; lower values allow tighter edge fitting.
 BORDER = 3
+
+# What this controls: How long the first broad search phase runs.
+# In this pipeline: It sets the number of trial changes in the coarse optimization stage.
+# In practice: Higher values can improve rough alignment but take longer to run.
 COARSE_ITERS = 2_000_000
+
+# What this controls: The starting "freedom to explore" in coarse search.
+# In this pipeline: It sets the initial search temperature for large early moves.
+# In practice: Higher values explore more aggressively; lower values stay conservative earlier.
+# T_COARSE = 10.0 # (Default)
 T_COARSE = 10.0
+
+# What this controls: How quickly coarse search cools down over time.
+# In this pipeline: It is the per-step cooling factor during coarse optimization.
+# In practice: Values closer to 1 cool more slowly (more exploration); smaller values cool faster.
 ALPHA_COARSE = 0.99998
+
+# What this controls: How long the main high-detail search phase runs.
+# In this pipeline: It sets the number of trial changes in fine optimization.
+# In practice: Higher values usually improve final detail but increase runtime.
 FINE_ITERS = 8_000_000
+
+# What this controls: The starting exploration level for fine search.
+# In this pipeline: It sets the initial temperature for the fine stage.
+# In practice: Higher values allow bigger adjustments; lower values favor stable smaller adjustments.
 T_FINE = 3.5
+
+# What this controls: How quickly the fine search reduces its exploration.
+# In this pipeline: It is the cooling factor used in the fine stage.
+# In practice: Closer to 1 keeps searching broadly longer; lower values lock in sooner.
 ALPHA_FINE = 0.999996
+
+# What this controls: Length of the first refinement pass after fine search.
+# In this pipeline: It sets the number of trial changes in refine pass 1.
+# In practice: Higher values can polish more, but cost additional time.
 REFINE1_ITERS = 2_000_000
+
+# What this controls: Starting exploration level for refinement pass 1.
+# In this pipeline: It sets the initial temperature for the first polish pass.
+# In practice: Higher values allow larger corrective moves; lower values keep moves tighter.
+# T_REFINE1 = 2.0 (default)
 T_REFINE1 = 2.0
+
+# What this controls: Cooling speed for refinement pass 1.
+# In this pipeline: It is the cooling factor while refine pass 1 runs.
+# In practice: Closer to 1 extends exploration; lower values settle decisions faster.
 ALPHA_REFINE1 = 0.999997
+
+# What this controls: Length of the second refinement pass.
+# In this pipeline: It sets the number of trial changes in refine pass 2.
+# In practice: Higher values provide more cleanup time, with longer runtime.
 REFINE2_ITERS = 2_000_000
+
+# What this controls: Starting exploration level for refinement pass 2.
+# In this pipeline: It sets the initial temperature for the second polish pass.
+# In practice: Higher values permit bolder late corrections; lower values keep changes small.
+# T_REFINE2 = 1.7 (default)
 T_REFINE2 = 1.7
+
+# What this controls: Cooling speed for refinement pass 2.
+# In this pipeline: It is the cooling factor used during refine pass 2.
+# In practice: Closer to 1 cools gently; lower values make it settle sooner.
 ALPHA_REFINE2 = 0.999997
+
+# What this controls: Length of the final refinement pass.
+# In this pipeline: It sets the number of trial changes in refine pass 3.
+# In practice: Higher values spend more time polishing the final result.
 REFINE3_ITERS = 4_000_000
+
+# What this controls: Starting exploration level for refinement pass 3.
+# In this pipeline: It sets the initial temperature for the final polish pass.
+# In practice: Higher values allow bigger late moves; lower values keep final edits minimal.
 T_REFINE3 = 1.4
+
+# What this controls: Cooling speed for refinement pass 3.
+# In this pipeline: It is the cooling factor for the final pass.
+# In practice: Closer to 1 keeps flexibility longer; lower values finalize faster.
 ALPHA_REFINE3 = 0.999998
+
+# What this controls: The floor for how low optimization temperature can go.
+# In this pipeline: It prevents search temperature from dropping to zero.
+# In practice: Higher values keep some flexibility late; lower values make the end stage stricter.
 T_MIN = 0.001
+
+# What this controls: Importance weight for true background zones.
+# In this pipeline: It shapes zone-based matching priorities for clearly empty areas.
+# In practice: Higher values push stronger background fidelity; lower values relax it.
 BP_TRUE = 8.0
+
+# What this controls: Importance weight for transition background zones near stronger features.
+# In this pipeline: It balances matching pressure in boundary-like background areas.
+# In practice: Higher values enforce transitions more strongly; lower values soften that pressure.
 BP_TRANS = 1.0
+
+# What this controls: Extra emphasis for high-value target regions.
+# In this pipeline: It boosts matching priority where the target signal is strong.
+# In practice: Higher values focus more on strong features; lower values spread attention more evenly.
 HI_BOOST = 18.0
+
+# What this controls: The cutoff used to decide what counts as a high-value region.
+# In this pipeline: It defines which target cells receive high-region treatment.
+# In practice: Higher values label fewer cells as high; lower values label more cells as high.
 HI_THR = 3.0
+
+# What this controls: How strongly underfilled areas get extra attention during refinement.
+# In this pipeline: It amplifies weights where current counts are below target levels.
+# In practice: Higher values push harder to fill weak spots; lower values apply gentler correction.
 UF_FACTOR = 1.8
+
+# What this controls: The trigger point for sealing-prevention behavior.
+# In this pipeline: It helps decide when protective anti-sealing weighting should activate.
+# In practice: Higher values trigger protection less often; lower values trigger it more often.
 SEAL_THR = 0.6
+
+# What this controls: Strength of sealing-prevention pressure once triggered.
+# In this pipeline: It scales how strongly the refinement weights resist sealing patterns.
+# In practice: Higher values resist sealing more aggressively; lower values keep that effect mild.
 SEAL_STR = 20.0
+
+# What this controls: Where piecewise target-value compression begins to bend.
+# In this pipeline: It sets the knee point for remapping loaded image target values.
+# In practice: Higher values delay compression; lower values start compression earlier.
 PW_KNEE = 4.0
+
+# What this controls: The maximum cap used by piecewise target-value compression.
+# In this pipeline: It limits the top end of compressed target values before weighting and search.
+# In practice: Higher values preserve more high-end contrast; lower values flatten peaks more.
 PW_T_MAX = 6.0
 
 
@@ -500,8 +615,7 @@ def run_iter9_single(
     started_wall: float,
     started_at_utc: str,
     warmup_s: float,
-    batch_context: dict | None = None,
-) -> dict:
+    batch_context: dict | None = None,) -> dict:
     image_validation = dict(source_validation)
     phase_timers: dict[str, float] = {"warmup": float(warmup_s)}
     out_dir_path.mkdir(parents=True, exist_ok=True)
@@ -515,8 +629,9 @@ def run_iter9_single(
 
     phase_start = time.perf_counter()
     sizing = derive_board_from_width(
-        str(source_cfg.absolute_path), int(args.board_w), min_width=300, ratio_tolerance=0.005
-    )
+        
+        # str(source_cfg.absolute_path), int(args.board_w), min_width=300, ratio_tolerance=0.005      # The default value of 'min_width=' was 300 prior to testing
+        str(source_cfg.absolute_path), int(args.board_w), min_width=50, ratio_tolerance=0.005)
     bw = int(sizing["board_width"])
     bh = int(sizing["board_height"])
     target_eval = load_image_smart(str(source_cfg.absolute_path), bw, bh, invert=True)
@@ -1413,7 +1528,8 @@ def run_iter9_image_sweep(
             if not source_validation.get("ok"):
                 raise ValueError(f"Source image validation failed: {source_cfg.absolute_path.as_posix()}")
             sizing = derive_board_from_width(
-                str(source_cfg.absolute_path), int(args.board_w), min_width=300, ratio_tolerance=0.005
+                # str(source_cfg.absolute_path), int(args.board_w), min_width=300, ratio_tolerance=0.005  # Default value prior to testing
+                str(source_cfg.absolute_path), int(args.board_w), min_width=50, ratio_tolerance=0.005
             )
             board_label = f"{int(sizing['board_width'])}x{int(sizing['board_height'])}"
             child_out_dir = build_image_sweep_child_out_dir(
