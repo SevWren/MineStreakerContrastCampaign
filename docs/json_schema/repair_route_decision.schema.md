@@ -53,6 +53,8 @@ It is written for already-solved boards, phase2 repair attempts, last100 repair 
   "selected_route": "already_solved",
   "phase2_budget_s": 360.0,
   "last100_budget_s": 300.0,
+  "phase2_full_repair_hit_time_budget": false,
+  "last100_repair_hit_time_budget": false,
   "last100_invoked": false,
   "sa_rerun_invoked": false,
   "solver_n_unknown_after": 0,
@@ -62,7 +64,10 @@ It is written for already-solved boards, phase2 repair attempts, last100 repair 
     "generated_at_utc": "2026-04-29T20:47:00.000Z",
     "source_image_project_relative_path": "assets/line_art_irl_11_v2.png",
     "source_image_sha256": "<sha256>",
-    "metrics_path": "results/iter9/<run_id>/metrics_iter9_300x942.json"
+    "metrics_path": "results/iter9/<run_id>/metrics_iter9_300x942.json",
+    "phase1_repair_hit_time_budget": false,
+    "phase2_full_repair_hit_time_budget": false,
+    "last100_repair_hit_time_budget": false
   }
 }
 ```
@@ -77,6 +82,8 @@ It is written for already-solved boards, phase2 repair attempts, last100 repair 
 | `selected_route` | string enum | Yes | No | Actual route selected by `route_late_stage_failure(...)`. |
 | `phase2_budget_s` | number | Yes | No | Configured Phase2 budget in seconds. |
 | `last100_budget_s` | number | Yes | No | Configured Last100 budget in seconds. |
+| `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Set by Phase2 full repair when that phase reaches its own `time_budget_s`; default `false` when not invoked. |
+| `last100_repair_hit_time_budget` | boolean | Yes | No | Set by Last100 repair when that phase reaches its own `budget_s`; default `false` when not invoked. |
 | `last100_invoked` | boolean | Yes | No | Whether the Last100 repair branch was invoked. |
 | `sa_rerun_invoked` | boolean | Yes | No | Reserved flag for SA rerun behavior. Current code initializes this to `false` and never sets it to `true`. |
 | `solver_n_unknown_after` | integer | Yes | No | Unknown-cell count after selected route attempt. |
@@ -145,9 +152,9 @@ no_accepted_move
 
 | Route | Trigger in current code | Field changes |
 |---|---|---|
-| `already_solved` | `sr.n_unknown == 0` before routing | `route_result = "solved"`; `solver_n_unknown_after` remains `0`; `last100_invoked = false`. |
-| `phase2_full_repair` | `sealed_cluster_count > 0`, Phase2 enabled, and Phase2 fully solves the board | `route_result = "solved"`; `solver_n_unknown_after = 0`; `last100_invoked = false`. |
-| `last100_repair` | Last100 enabled and current unknown count is less than or equal to configured threshold after any Phase2 attempt | `last100_invoked = true`; `last100_stop_reason` added; `route_result` is `"solved"` if final unknown count is `0`, otherwise `"unresolved_after_repair"`. |
+| `already_solved` | `sr.n_unknown == 0` before routing | `route_result = "solved"`; `solver_n_unknown_after` remains `0`; timeout booleans remain `false`; `last100_invoked = false`. |
+| `phase2_full_repair` | `sealed_cluster_count > 0`, Phase2 enabled, and Phase2 fully solves the board | `route_result = "solved"`; `solver_n_unknown_after = 0`; `phase2_full_repair_hit_time_budget` is copied from Phase2; `last100_invoked = false`. |
+| `last100_repair` | Last100 enabled and current unknown count is less than or equal to configured threshold after any Phase2 attempt | `last100_invoked = true`; `last100_stop_reason` added; timeout booleans are copied from their phases; `route_result` is `"solved"` if final unknown count is `0`, otherwise `"unresolved_after_repair"`. |
 | `needs_sa_or_adaptive_rerun` | No selected repair branch can solve or apply | Default unresolved route. |
 
 ## Nested object definitions
@@ -161,6 +168,9 @@ no_accepted_move
 | `source_image_project_relative_path` | string | Yes | Yes | Source image path relative to project root. May be `null` for non-project paths. |
 | `source_image_sha256` | string | Yes | No | SHA-256 hash of source image. |
 | `metrics_path` | string | Yes | No | Relative or absolute path to the metrics JSON for the same run. |
+| `phase1_repair_hit_time_budget` | boolean | No | No | Current Iter9 and benchmark metadata include the Phase1 repair timeout boolean. |
+| `phase2_full_repair_hit_time_budget` | boolean | No | No | Current Iter9 and benchmark metadata include the Phase2 full repair timeout boolean. |
+| `last100_repair_hit_time_budget` | boolean | No | No | Current Iter9 and benchmark metadata include the Last100 repair timeout boolean. |
 
 ## Nullability rules
 
@@ -178,6 +188,8 @@ no_accepted_move
   "selected_route": "last100_repair",
   "phase2_budget_s": 360.0,
   "last100_budget_s": 300.0,
+  "phase2_full_repair_hit_time_budget": false,
+  "last100_repair_hit_time_budget": false,
   "last100_invoked": true,
   "sa_rerun_invoked": false,
   "solver_n_unknown_after": 2,
@@ -188,7 +200,10 @@ no_accepted_move
     "generated_at_utc": "2026-04-29T20:47:00.000Z",
     "source_image_project_relative_path": "assets/line_art_irl_11_v2.png",
     "source_image_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "metrics_path": "results/iter9/20260429T204700Z_line_art_irl_11_v2_300w_seed42/metrics_iter9_300x942.json"
+    "metrics_path": "results/iter9/20260429T204700Z_line_art_irl_11_v2_300w_seed42/metrics_iter9_300x942.json",
+    "phase1_repair_hit_time_budget": false,
+    "phase2_full_repair_hit_time_budget": false,
+    "last100_repair_hit_time_budget": false
   }
 }
 ```
@@ -197,4 +212,4 @@ no_accepted_move
 
 - This artifact is route-level state, not a full repair log. Detailed repair attempts are only represented indirectly through `visual_delta_summary.json` and rendered repair overlays.
 - `sa_rerun_invoked` is currently always `false` because `enable_sa_rerun=False` is passed and no code branch mutates the field.
-- If Phase2 is attempted but does not solve the board, the current decision object does not record a separate `phase2_invoked` boolean. Consumers must infer Phase2 activity from other artifacts or from metrics fields like `phase2_fixes`.
+- If Phase2 is attempted but does not solve the board, the current decision object does not record a separate `phase2_invoked` boolean. Consumers can still read `phase2_full_repair_hit_time_budget`; activity count remains available from metrics fields like `phase2_fixes`.

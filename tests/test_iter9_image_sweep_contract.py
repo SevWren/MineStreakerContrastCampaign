@@ -75,6 +75,14 @@ def make_success_metrics_doc(image_stem: str, *, board: str = "300x370", seed: i
         "solvable": True,
         "mean_abs_error": 0.1,
         "repair_route_selected": "already_solved",
+        "phase1_repair_hit_time_budget": False,
+        "phase2_full_repair_hit_time_budget": False,
+        "last100_repair_hit_time_budget": False,
+        "repair_route_summary": {
+            "phase1_repair_hit_time_budget": False,
+            "phase2_full_repair_hit_time_budget": False,
+            "last100_repair_hit_time_budget": False,
+        },
         "run_identity": {"output_dir": child_dir},
         "artifact_inventory": {"metrics_json": f"{child_dir}/metrics_iter9_{board}.json"},
         "llm_review_summary": {
@@ -396,6 +404,42 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
                 "warnings": [],
             },
         )
+
+    def test_build_metrics_document_includes_repair_timeout_fields(self):
+        kwargs = make_minimal_metrics_doc_kwargs()
+        kwargs["repair_route_summary"] = {
+            "phase1_repair_hit_time_budget": True,
+            "phase2_full_repair_hit_time_budget": False,
+            "last100_repair_hit_time_budget": True,
+        }
+        doc = run_iter9.build_metrics_document(
+            {
+                "board": "300x370",
+                "seed": 11,
+                "phase1_repair_hit_time_budget": True,
+                "phase2_full_repair_hit_time_budget": False,
+                "last100_repair_hit_time_budget": True,
+            },
+            **kwargs,
+        )
+
+        for field in (
+            "phase1_repair_hit_time_budget",
+            "phase2_full_repair_hit_time_budget",
+            "last100_repair_hit_time_budget",
+        ):
+            self.assertIn(field, doc)
+            self.assertIn(field, doc["repair_route_summary"])
+
+    def test_sweep_success_child_metrics_include_repair_timeout_fields(self):
+        metrics_doc = make_success_metrics_doc("sample")
+        for field in (
+            "phase1_repair_hit_time_budget",
+            "phase2_full_repair_hit_time_budget",
+            "last100_repair_hit_time_budget",
+        ):
+            self.assertIn(field, metrics_doc)
+            self.assertIn(field, metrics_doc["repair_route_summary"])
 
     def test_md_table_cell_escapes_pipes_and_newlines(self):
         escaped = run_iter9._md_table_cell("a|b\r\nc\\d")

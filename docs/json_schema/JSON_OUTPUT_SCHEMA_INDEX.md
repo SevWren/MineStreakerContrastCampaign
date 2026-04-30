@@ -10,6 +10,7 @@ Generated for the attached Mine-Streaker / Minesweeper Python codebase snapshot.
 | `metrics_iter9_<board>.json` | [`metrics_iter9.schema.md`](metrics_iter9.schema.md) | `results/iter9/<run_id>/metrics_iter9_<board_width>x<board_height>.json` | `run_iter9.py::run_iter9_single(...)` via `run_iter9.py::build_metrics_document(...)` |
 | `repair_route_decision.json` | [`repair_route_decision.schema.md`](repair_route_decision.schema.md) | `results/iter9/<run_id>/repair_route_decision.json` | `pipeline.py::route_late_stage_failure(...)` via `pipeline.py::write_repair_route_artifacts(...)` |
 | `visual_delta_summary.json` | [`visual_delta_summary.schema.md`](visual_delta_summary.schema.md) | `results/iter9/<run_id>/visual_delta_summary.json` | `repair.py::run_phase2_full_repair(...)` or `repair.py::run_last100_repair(...)` via `pipeline.py::write_repair_route_artifacts(...)` |
+| Benchmark root summaries | [`benchmark_summary.schema.md`](benchmark_summary.schema.md) | `results/benchmark/<benchmark_run_id>/benchmark_summary.*` and `benchmark_results.json` | `run_benchmark.py::write_normal_benchmark_summaries(...)` |
 
 ## Additional path patterns found
 
@@ -22,6 +23,15 @@ results/benchmark/<benchmark_run_id>/<board_width>x<board_height>_seed<seed>/vis
 ```
 
 `metrics_iter9_<board>.json` is specific to Iter9 single-image runs and Iter9 image-sweep child runs.
+
+Normal benchmark root summary artifacts are:
+
+```text
+results/benchmark/<benchmark_run_id>/benchmark_summary.json
+results/benchmark/<benchmark_run_id>/benchmark_summary.csv
+results/benchmark/<benchmark_run_id>/benchmark_summary.md
+results/benchmark/<benchmark_run_id>/benchmark_results.json
+```
 
 
 

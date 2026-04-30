@@ -1,17 +1,25 @@
+import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import numpy as np
 import report
 import run_benchmark
+from pipeline import RepairRouteResult
 from run_benchmark import (
+    _board_aggregates,
     _build_child_metrics_document,
     _child_dir_name,
     _normal_benchmark_root,
+    _rows_from_child_metrics,
     benchmark_child_artifact_filenames,
     parse_args,
     write_normal_benchmark_summaries,
 )
+from solver import SAFE, SolveResult
 from source_config import resolve_source_image_config
 
 
@@ -49,6 +57,9 @@ class BenchmarkLayoutTests(unittest.TestCase):
             "coverage": 1.0,
             "solvable": True,
             "repair_route_selected": "phase2_full_repair",
+            "phase1_repair_hit_time_budget": False,
+            "phase2_full_repair_hit_time_budget": True,
+            "last100_repair_hit_time_budget": False,
             "solver_summary": {},
         }
         doc = _build_child_metrics_document(
@@ -66,7 +77,11 @@ class BenchmarkLayoutTests(unittest.TestCase):
             source_image_validation={"ok": True, "canonical_match": None, "noncanonical_allowed": True, "warnings": []},
             board_sizing={},
             target_stats={},
-            route_summary={},
+            route_summary={
+                "phase1_repair_hit_time_budget": False,
+                "phase2_full_repair_hit_time_budget": True,
+                "last100_repair_hit_time_budget": False,
+            },
             artifact_inventory={
                 "visual_png": "results/benchmark/demo/300x370_seed11/visual_300x370.png",
                 "visual_explained_png": "results/benchmark/demo/300x370_seed11/visual_300x370_explained.png",
@@ -81,6 +96,48 @@ class BenchmarkLayoutTests(unittest.TestCase):
         self.assertIn("best_artifact_to_open_second", doc["llm_review_summary"])
         self.assertIn("best_repair_artifact_to_open_first", doc["llm_review_summary"])
         self.assertIn("best_repair_artifact_to_open_second", doc["llm_review_summary"])
+        for field in (
+            "phase1_repair_hit_time_budget",
+            "phase2_full_repair_hit_time_budget",
+            "last100_repair_hit_time_budget",
+        ):
+            self.assertIn(field, doc)
+            self.assertIn(field, doc["repair_route_summary"])
+
+    def test_rows_and_board_aggregates_include_repair_timeout_fields(self):
+        metrics_docs = [
+            {
+                "board": "300x370",
+                "seed": 11,
+                "child_run_dir": "300x370_seed11",
+                "n_unknown": 0,
+                "coverage": 1.0,
+                "solvable": True,
+                "repair_route_selected": "phase2_full_repair",
+                "repair_route_result": "solved",
+                "phase2_fixes": 1,
+                "last100_fixes": 0,
+                "phase1_repair_hit_time_budget": True,
+                "phase2_full_repair_hit_time_budget": False,
+                "last100_repair_hit_time_budget": True,
+                "visual_delta": 0.0,
+                "total_time_s": 12.3,
+                "source_image": {"name": "line.png", "stem": "line", "sha256": "abc"},
+            }
+        ]
+
+        rows = _rows_from_child_metrics(metrics_docs)
+        row = rows[0]
+        self.assertTrue(row["phase1_repair_hit_time_budget"])
+        self.assertFalse(row["phase2_full_repair_hit_time_budget"])
+        self.assertTrue(row["last100_repair_hit_time_budget"])
+
+        aggregates = _board_aggregates(rows)
+        aggregate = aggregates[0]
+        self.assertEqual(aggregate["phase1_repair_timeout_count"], 1)
+        self.assertEqual(aggregate["phase2_full_repair_timeout_count"], 0)
+        self.assertEqual(aggregate["last100_repair_timeout_count"], 1)
+        self.assertTrue(aggregate["any_repair_timeout"])
 
     def test_normal_root_derivation_default_and_out_dir(self):
         cfg = resolve_source_image_config("assets/line_art_irl_11_v2.png", project_root=PROJECT_ROOT)
@@ -113,6 +170,9 @@ class BenchmarkLayoutTests(unittest.TestCase):
                     "repair_route_result": "solved",
                     "phase2_fixes": 2,
                     "last100_fixes": 0,
+                    "phase1_repair_hit_time_budget": True,
+                    "phase2_full_repair_hit_time_budget": False,
+                    "last100_repair_hit_time_budget": True,
                     "visual_delta": 0.0,
                     "total_time_s": 12.3,
                     "source_image_name": source_cfg.name,
@@ -136,6 +196,82 @@ class BenchmarkLayoutTests(unittest.TestCase):
             self.assertTrue((root / "benchmark_results.json").exists())
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
             self.assertIn("benchmark_summary_json", paths)
+            summary = json.loads((root / "benchmark_summary.json").read_text(encoding="utf-8"))
+            row = summary["rows"][0]
+            self.assertTrue(row["phase1_repair_hit_time_budget"])
+            self.assertFalse(row["phase2_full_repair_hit_time_budget"])
+            self.assertTrue(row["last100_repair_hit_time_budget"])
+            aggregate = summary["board_aggregates"][0]
+            self.assertEqual(aggregate["phase1_repair_timeout_count"], 1)
+            self.assertEqual(aggregate["phase2_full_repair_timeout_count"], 0)
+            self.assertEqual(aggregate["last100_repair_timeout_count"], 1)
+            self.assertTrue(aggregate["any_repair_timeout"])
+            compatibility = json.loads((root / "benchmark_results.json").read_text(encoding="utf-8"))
+            self.assertIn("phase1_repair_hit_time_budget", compatibility[0])
+            with (root / "benchmark_summary.csv").open("r", encoding="utf-8", newline="") as handle:
+                csv_rows = list(csv.DictReader(handle))
+            for field in (
+                "phase1_repair_hit_time_budget",
+                "phase2_full_repair_hit_time_budget",
+                "last100_repair_hit_time_budget",
+            ):
+                self.assertIn(field, csv_rows[0])
+            md_text = (root / "benchmark_summary.md").read_text(encoding="utf-8")
+            self.assertIn("phase1_timeouts", md_text)
+            self.assertIn("phase1_timeout", md_text)
+
+    def test_regression_result_includes_route_timeout_booleans(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image_name = "fake.png"
+            board_w = 2
+            board_h = 2
+            seed = 11
+            baseline_dir = root / f"{image_name}_s{seed}"
+            baseline_dir.mkdir(parents=True)
+            grid = np.zeros((board_h, board_w), dtype=np.int8)
+            np.save(baseline_dir / f"grid_{board_w}x{board_h}.npy", grid)
+            (baseline_dir / f"metrics_{board_w}x{board_h}.json").write_text(
+                json.dumps({"n_unknown": 1, "repair_reason": "baseline"}),
+                encoding="utf-8",
+            )
+            route = RepairRouteResult(
+                grid=grid,
+                sr=SolveResult(
+                    coverage=1.0,
+                    solvable=True,
+                    mine_accuracy=1.0,
+                    n_unknown=0,
+                    state=np.full((board_h, board_w), SAFE, dtype=np.int8),
+                ),
+                selected_route="phase2_full_repair",
+                route_result="solved",
+                failure_taxonomy={"dominant_failure_class": "sealed_single_mesa", "sealed_cluster_count": 1},
+                phase2_full_repair_hit_time_budget=True,
+                last100_repair_hit_time_budget=False,
+                phase2_log=[{"visual_delta": 0.0}],
+                visual_delta_summary={"visual_delta": 0.0},
+            )
+            case = {
+                "image_path": "fake.png",
+                "image_name": image_name,
+                "board_w": board_w,
+                "board_h": board_h,
+                "baseline_root": root.as_posix(),
+            }
+
+            with mock.patch("run_benchmark.load_image_smart", return_value=np.zeros((board_h, board_w), dtype=np.float32)):
+                with mock.patch("run_benchmark.apply_piecewise_T_compression", return_value=np.zeros((board_h, board_w), dtype=np.float32)):
+                    with mock.patch("run_benchmark.compute_zone_aware_weights", return_value=np.ones((board_h, board_w), dtype=np.float32)):
+                        with mock.patch("run_benchmark.build_adaptive_corridors", return_value=(np.zeros((board_h, board_w), dtype=np.int8), 0.0, [], None)):
+                            with mock.patch("run_benchmark.assert_board_valid"):
+                                with mock.patch("run_benchmark.solve_board", return_value=route.sr):
+                                    with mock.patch("run_benchmark.route_late_stage_failure", return_value=route):
+                                        result = run_benchmark.run_regression_from_baseline(case, seed)
+
+        self.assertFalse(result["phase1_repair_hit_time_budget"])
+        self.assertTrue(result["phase2_full_repair_hit_time_budget"])
+        self.assertFalse(result["last100_repair_hit_time_budget"])
 
 
 if __name__ == "__main__":

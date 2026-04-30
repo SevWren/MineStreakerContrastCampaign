@@ -464,7 +464,7 @@ def run_normal_child(
 
     phase_start = time.perf_counter()
     phase1_budget = max(60.0, sr_pre.n_unknown * 0.15 + 30.0)
-    grid, _, phase1_reason = run_phase1_repair(
+    phase1_result = run_phase1_repair(
         grid,
         target,
         w_zone,
@@ -475,6 +475,9 @@ def run_normal_child(
         verbose=False,
         checkpoint_dir=str(child_dir),
     )
+    grid = phase1_result.grid
+    phase1_reason = phase1_result.stop_reason
+    phase1_repair_hit_time_budget = bool(phase1_result.phase1_repair_hit_time_budget)
     grid[forbidden == 1] = 0
     assert_board_valid(grid, forbidden, f"post-p1-{board}-s{seed}")
     sr_phase1 = solve_board(grid, max_rounds=300, mode="full")
@@ -525,6 +528,9 @@ def run_normal_child(
         "source_image_project_relative_path": source_cfg.project_relative_path,
         "source_image_sha256": source_cfg.sha256,
         "metrics_path": _relative_or_absolute(metrics_path, project_root),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
     }
     route_artifacts = write_repair_route_artifacts(
         str(child_dir),
@@ -632,6 +638,9 @@ def run_normal_child(
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
         "phase2_fixes": len(route.phase2_log),
         "last100_fixes": len(route.last100_log),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
         "sa_rerun_invoked": bool(route.decision.get("sa_rerun_invoked", False)),
     }
     artifact_inventory = {
@@ -686,6 +695,9 @@ def run_normal_child(
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
         "phase2_fixes": len(route.phase2_log),
         "last100_fixes": len(route.last100_log),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
         "visual_delta": route.visual_delta_summary.get("visual_delta"),
         "total_time_s": duration_s,
         "source_ratio": float(sizing["source_ratio"]),
@@ -738,6 +750,11 @@ def _rows_from_child_metrics(metrics_docs: Iterable[dict]) -> list[dict]:
                 "repair_route_result": metrics.get("repair_route_result"),
                 "phase2_fixes": metrics.get("phase2_fixes"),
                 "last100_fixes": metrics.get("last100_fixes"),
+                "phase1_repair_hit_time_budget": bool(metrics.get("phase1_repair_hit_time_budget", False)),
+                "phase2_full_repair_hit_time_budget": bool(
+                    metrics.get("phase2_full_repair_hit_time_budget", False)
+                ),
+                "last100_repair_hit_time_budget": bool(metrics.get("last100_repair_hit_time_budget", False)),
                 "visual_delta": metrics.get("visual_delta"),
                 "total_time_s": metrics.get("total_time_s"),
                 "source_image_name": source_image.get("name"),
@@ -766,6 +783,21 @@ def _board_aggregates(rows: list[dict]) -> list[dict]:
                 ),
                 "median_total_time_s": float(np.median([float(r["total_time_s"]) for r in board_rows])),
                 "all_solved": all(bool(r["solvable"]) and int(r["n_unknown"]) == 0 for r in board_rows),
+                "phase1_repair_timeout_count": sum(
+                    1 for r in board_rows if bool(r.get("phase1_repair_hit_time_budget", False))
+                ),
+                "phase2_full_repair_timeout_count": sum(
+                    1 for r in board_rows if bool(r.get("phase2_full_repair_hit_time_budget", False))
+                ),
+                "last100_repair_timeout_count": sum(
+                    1 for r in board_rows if bool(r.get("last100_repair_hit_time_budget", False))
+                ),
+                "any_repair_timeout": any(
+                    bool(r.get("phase1_repair_hit_time_budget", False))
+                    or bool(r.get("phase2_full_repair_hit_time_budget", False))
+                    or bool(r.get("last100_repair_hit_time_budget", False))
+                    for r in board_rows
+                ),
             }
         )
     return output
@@ -789,29 +821,33 @@ def _build_summary_markdown(
         "",
         "## Board Aggregates (medians)",
         "",
-        "| board | runs | median_n_unknown | median_coverage | median_visual_delta | median_total_time_s | all_solved |",
-        "|---|---:|---:|---:|---:|---:|---|",
+        "| board | runs | median_n_unknown | median_coverage | median_visual_delta | median_total_time_s | all_solved | phase1_timeouts | phase2_full_timeouts | last100_timeouts | any_repair_timeout |",
+        "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---|",
     ]
     for agg in aggregates:
         lines.append(
             f"| {agg['board']} | {agg['runs']} | {agg['median_n_unknown']:.1f} | "
             f"{agg['median_coverage']:.5f} | {agg['median_visual_delta']:.5f} | "
-            f"{agg['median_total_time_s']:.2f} | {agg['all_solved']} |"
+            f"{agg['median_total_time_s']:.2f} | {agg['all_solved']} | "
+            f"{agg['phase1_repair_timeout_count']} | {agg['phase2_full_repair_timeout_count']} | "
+            f"{agg['last100_repair_timeout_count']} | {agg['any_repair_timeout']} |"
         )
     lines.extend(
         [
             "",
             "## Child Runs",
             "",
-            "| board | seed | child_dir | n_unknown | coverage | solvable | route | phase2_fixes | last100_fixes | visual_delta | total_time_s |",
-            "|---|---:|---|---:|---:|---|---|---:|---:|---:|---:|",
+            "| board | seed | child_dir | n_unknown | coverage | solvable | route | phase2_fixes | last100_fixes | phase1_timeout | phase2_full_timeout | last100_timeout | visual_delta | total_time_s |",
+            "|---|---:|---|---:|---:|---|---|---:|---:|---|---|---|---:|---:|",
         ]
     )
     for row in rows:
         lines.append(
             f"| {row['board']} | {row['seed']} | {row['child_dir']} | {row['n_unknown']} | "
             f"{float(row['coverage']):.5f} | {row['solvable']} | {row['repair_route_selected']} | "
-            f"{row['phase2_fixes']} | {row['last100_fixes']} | {float(row['visual_delta'] or 0.0):.5f} | "
+            f"{row['phase2_fixes']} | {row['last100_fixes']} | "
+            f"{row['phase1_repair_hit_time_budget']} | {row['phase2_full_repair_hit_time_budget']} | "
+            f"{row['last100_repair_hit_time_budget']} | {float(row['visual_delta'] or 0.0):.5f} | "
             f"{float(row['total_time_s']):.2f} |"
         )
     return "\n".join(lines) + "\n"
@@ -860,6 +896,9 @@ def write_normal_benchmark_summaries(
         "repair_route_result",
         "phase2_fixes",
         "last100_fixes",
+        "phase1_repair_hit_time_budget",
+        "phase2_full_repair_hit_time_budget",
+        "last100_repair_hit_time_budget",
         "visual_delta",
         "total_time_s",
         "source_image_name",
@@ -959,6 +998,9 @@ def run_regression_from_baseline(case: dict, seed: int) -> dict:
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
         "phase2_fixes": len(route.phase2_log),
         "last100_fixes": len(route.last100_log),
+        "phase1_repair_hit_time_budget": False,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
         "visual_delta": route.visual_delta_summary.get("visual_delta"),
         "total_time_s": 0.0,
         "source_ratio": float(baseline_metrics.get("source_ratio", board_h / max(board_w, 1))),

@@ -10,11 +10,6 @@ Current primary entrypoints:
 - `run_iter9.py` (single-run reconstruction pipeline)
 - `run_benchmark.py` (normal benchmark matrix and route-aware regression mode)
 
-Legacy/compatibility entrypoints:
-- `pipeline.py::run_board(...)` exists but is explicitly deprecated.
-- `test_runtime_entrypoint_source_image_contracts_and_deprecated_paths.py` is a historical replay script, not the main runtime workflow.
-- `run_repair_only_from_grid.py` is currently a stub marker file.
-
 ## Repository Structure
 - Runtime modules: `core.py`, `sa.py`, `solver.py`, `corridors.py`, `repair.py`, `report.py`, `pipeline.py`, `board_sizing.py`, `source_config.py`
 - Entrypoints: `run_iter9.py`, `run_benchmark.py`
@@ -26,14 +21,11 @@ Legacy/compatibility entrypoints:
 Keep algorithm/runtime code in root Python modules. Keep generated artifacts under `results/`.
 Do not generate ad-hoc root-level output files.
 
-## Active vs Deprecated Docs
-Follow `docs/DOCS_INDEX.md` for active documentation.
-Do not resurrect archived/deprecated study plans unless a direct compatibility patch requires it.
 
 ## Source Image Runtime Contract
 For normal runs:
 - Source image selection is CLI-driven via `--image`.
-- `assets/input_source_image.png` is only the backward-compatible default when `--image` is omitted.
+- fallback image is opt-in only
 - Import-time image validation is forbidden in `run_iter9.py` and `run_benchmark.py`; validation happens after argument parsing.
 
 Required source provenance in metrics/document blocks:
@@ -51,6 +43,9 @@ Validation behavior:
 
 ## Iter9 Image Sweep Contract
 `run_iter9.py` supports image-sweep mode when `--image-dir` is supplied.
+
+For multi-image Iter9 work, use native image-sweep mode.
+Do not document or recommend shell loops that call `run_iter9.py --image ...` once per source image when `--image-dir` / `--image-glob` can express the same batch.
 
 Sweep CLI surface:
 - `--image-dir`
@@ -83,7 +78,7 @@ Metrics behavior:
 Normal benchmark mode writes under a benchmark-run root with child directories named:
 - `<board_width>x<board_height>_seed<seed>/`
 
-Preserve established child artifact filenames:
+Versioned artifact naming is permitted. The following names are the current v1 baseline:
 - `metrics_<board>.json`
 - `grid_<board>.npy`
 - `visual_<board>.png`
@@ -137,7 +132,7 @@ When modifying solver/repair/pipeline behavior:
 - `report.py` owns visual proof artifacts.
 - `sa.py` must not contain repair routing logic.
 
-Do not remove existing metrics fields without an explicit migration plan.
+Metrics field removals are allowed when they improve the runtime/data model. When a change may affect external consumers, document applicability, impact, and transition notes in `for_user_review.md`.
 
 ## Build and Validation Commands
 Use a local virtual environment and runtime dependencies (`numpy`, `scipy`, `numba`, `Pillow`, `matplotlib`, optional `scikit-image`).
@@ -161,7 +156,7 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 Extended runtime validation (expensive):
 
 ```powershell
-python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --max-images 2 --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11"
 python run_benchmark.py --regression-only
 ```
 

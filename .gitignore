@@ -93,7 +93,7 @@ __pycache__/
 *.swp
 *.swo
 *~
-
+temp/
 7a592fcd_conversation.md
 
 # Git ignore cannot enforce file-size caps. Use a pre-commit or CI check
