@@ -44,6 +44,9 @@ Validation behavior:
 ## Iter9 Image Sweep Contract
 `run_iter9.py` supports image-sweep mode when `--image-dir` is supplied.
 
+For multi-image Iter9 work, use native image-sweep mode.
+Do not document or recommend shell loops that call `run_iter9.py --image ...` once per source image when `--image-dir` / `--image-glob` can express the same batch.
+
 Sweep CLI surface:
 - `--image-dir`
 - `--image-glob` (default `*.png`)
@@ -153,7 +156,7 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 Extended runtime validation (expensive):
 
 ```powershell
-python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
+python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --max-images 2 --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11"
 python run_benchmark.py --regression-only
 ```
 

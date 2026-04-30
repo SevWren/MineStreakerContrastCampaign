@@ -40,6 +40,8 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 python run_iter9.py --image assets/line_art_irl_11_v2.png --allow-noncanonical
 ```
 
+For multi-image Iter9 experiments, use native image-sweep mode instead of shell-looping `--image` once per file.
+
 ### 5. Run benchmark matrix mode
 
 ```powershell
@@ -63,6 +65,10 @@ Validation model:
 Entrypoint flags:
 - `run_iter9.py`: `--image`, `--out-dir`, `--board-w`, `--seed`, `--allow-noncanonical`, `--image-manifest`, `--run-tag`
 - `run_benchmark.py`: `--image`, `--widths`, `--seeds`, `--out-dir`, `--allow-noncanonical`, `--image-manifest`, `--regression-only`, `--include-regressions`
+
+Batch-image guidance:
+- For native multi-image Iter9 runs, use `run_iter9.py --image-dir ... --image-glob ...`.
+- Do not use a shell loop over `run_iter9.py --image ...` for batches that image-sweep mode can express directly.
 
 ## Repository Layout
 
@@ -120,6 +126,7 @@ Entrypoint flags:
   - `benchmark_summary.csv`
   - `benchmark_summary.md`
   - `benchmark_results.json`
+- summary rows expose `phase1_repair_hit_time_budget`, `phase2_full_repair_hit_time_budget`, and `last100_repair_hit_time_budget`; board aggregates include per-phase timeout counts and `any_repair_timeout`
 
 ## Explained vs Technical Reports
 Technical PNGs are detailed audit/debug artifacts.
@@ -129,7 +136,13 @@ Explained PNGs are beginner-readable first-look artifacts and do not replace tec
 Use image-sweep mode to run Iter9 across discovered images in one batch.
 
 ```powershell
-python run_iter9.py --image-dir assets --image-glob "*.png" --seed 11 --allow-noncanonical --out-root results/iter9_manual_explained_validation --max-images 2
+python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11" --max-images 2
+```
+
+Filtered research-image sweep:
+
+```powershell
+foreach ($seed in 11,12,13) { python run_iter9.py --image-dir assets --image-glob "input_source_image_research_irl[1-9].png" --board-w 300 --seed $seed --allow-noncanonical --run-tag "research_irl1_9_w300_s$seed" --out-root "results/iter9/sweep_research_irl1_9_w300_s$seed" }
 ```
 
 Core sweep flags:

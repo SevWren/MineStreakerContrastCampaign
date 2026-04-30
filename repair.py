@@ -5,6 +5,7 @@ final accuracy measurement. Parallel candidate evaluation via process pool.
 """
 import os
 import time
+from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from scipy.ndimage import convolve, label as nd_label
@@ -14,6 +15,45 @@ try:
 except ImportError:
     from core import compute_N, assert_board_valid
     from solver import SAFE, UNKNOWN, solve_board
+
+
+@dataclass
+class _EvalRemovalResult:
+    coverage: float
+    trial_grid: np.ndarray
+
+
+@dataclass
+class Phase1RepairResult:
+    grid: np.ndarray
+    sr: object
+    stop_reason: str
+    phase1_repair_hit_time_budget: bool = False
+
+
+@dataclass
+class Phase2MesaRepairResult:
+    grid: np.ndarray
+    n_fixed: int
+    mesa_list: list = field(default_factory=list)
+
+
+@dataclass
+class Last100RepairResult:
+    grid: np.ndarray
+    sr: object
+    n_fixes: int
+    move_log: list = field(default_factory=list)
+    stop_reason: str = "no_effect"
+    last100_repair_hit_time_budget: bool = False
+
+
+@dataclass
+class Phase2FullRepairResult:
+    grid: np.ndarray
+    n_fixed: int
+    log: list = field(default_factory=list)
+    phase2_full_repair_hit_time_budget: bool = False
 
 
 def _score_candidates(grid, state, search_radius=6):
@@ -38,12 +78,12 @@ def _score_candidates(grid, state, search_radius=6):
 
 
 def _eval_removal(grid, forbidden, y, x, max_rounds=50):
-    """Trial solve after removing mine at (y,x). Returns coverage float."""
+    """Trial solve after removing mine at (y,x)."""
     trial = grid.copy()
     trial[y, x] = 0
     trial[forbidden == 1] = 0
     sr = solve_board(trial, max_rounds=max_rounds, mode='trial')
-    return sr.coverage, trial
+    return _EvalRemovalResult(coverage=sr.coverage, trial_grid=trial)
 
 
 def run_phase1_repair(grid, target, weights, forbidden,
@@ -54,6 +94,7 @@ def run_phase1_repair(grid, target, weights, forbidden,
                       parallel_eval: bool = True,
                       max_workers: int = None):
     t_start = time.perf_counter()
+    phase1_repair_hit_time_budget = False
     best_grid = grid.copy()
     best_grid[forbidden == 1] = 0
 
@@ -71,6 +112,7 @@ def run_phase1_repair(grid, target, weights, forbidden,
     for rnd in range(10000):
         elapsed = time.perf_counter() - t_start
         if elapsed >= time_budget_s:
+            phase1_repair_hit_time_budget = True
             stop_reason = f'timeout {elapsed:.0f}s'
             break
 
@@ -102,24 +144,26 @@ def run_phase1_repair(grid, target, weights, forbidden,
                 }
                 for fut in as_completed(future_map):
                     if (time.perf_counter() - t_start) >= time_budget_s:
+                        phase1_repair_hit_time_budget = True
                         break
                     cy, cx = future_map[fut]
-                    cov, trial_grid = fut.result()
-                    delta = cov - sr_cur.coverage
+                    result = fut.result()
+                    delta = result.coverage - sr_cur.coverage
                     if delta > best_delta:
                         best_delta = delta
                         best_cand = (cy, cx)
-                        best_trial = trial_grid
+                        best_trial = result.trial_grid
         else:
             for (_, cy, cx) in slice_cands:
                 if (time.perf_counter() - t_start) >= time_budget_s:
+                    phase1_repair_hit_time_budget = True
                     break
-                cov, trial_grid = _eval_removal(best_grid, forbidden, cy, cx)
-                delta = cov - sr_cur.coverage
+                result = _eval_removal(best_grid, forbidden, cy, cx)
+                delta = result.coverage - sr_cur.coverage
                 if delta > best_delta:
                     best_delta = delta
                     best_cand = (cy, cx)
-                    best_trial = trial_grid
+                    best_trial = result.trial_grid
 
         if best_cand is None or best_delta <= 0:
             stagnation += 1
@@ -158,13 +202,18 @@ def run_phase1_repair(grid, target, weights, forbidden,
         print(f"  Repair done ({stop_reason}): coverage={final_sr.coverage:.4f} "
               f"n_unknown={final_sr.n_unknown}", flush=True)
 
-    return best_grid, final_sr, stop_reason
+    return Phase1RepairResult(
+        grid=best_grid,
+        sr=final_sr,
+        stop_reason=stop_reason,
+        phase1_repair_hit_time_budget=phase1_repair_hit_time_budget,
+    )
 
 
 def run_phase2_mesa_repair(grid: np.ndarray,
                             target: np.ndarray,
                             forbidden: np.ndarray,
-                            verbose: bool = True) -> tuple:
+                            verbose: bool = True) -> Phase2MesaRepairResult:
     """
     Phase 2: Mine-Enclosed Safe-Island (MESA) repair.
 
@@ -179,7 +228,7 @@ def run_phase2_mesa_repair(grid: np.ndarray,
     Cost per MESA fix: ~0.001 MAE (negligible).
     Safety: verified to not cascade into new MESAs.
 
-    Returns (grid, n_fixed, mesa_list)
+    Returns a Phase2MesaRepairResult.
     """
     grid = grid.copy()
     H, W = grid.shape
@@ -235,7 +284,7 @@ def run_phase2_mesa_repair(grid: np.ndarray,
     if verbose:
         print(f"  Phase2 complete: {n_fixed} MESA(s) fixed", flush=True)
 
-    return grid, n_fixed, mesa_history
+    return Phase2MesaRepairResult(grid=grid, n_fixed=int(n_fixed), mesa_list=mesa_history)
 
 
 def compute_repair_visual_delta(
@@ -352,12 +401,14 @@ def run_last100_repair(
     move_log = []
     n_fixes = 0
     stop_reason = "no_effect"
+    last100_repair_hit_time_budget = False
 
     def elapsed() -> float:
         return time.perf_counter() - t_start
 
     for iteration in range(1, int(max_outer_iterations) + 1):
         if elapsed() >= budget_s:
+            last100_repair_hit_time_budget = True
             stop_reason = "timeout"
             break
 
@@ -384,6 +435,7 @@ def run_last100_repair(
         iteration_progress = False
         for comp_size, comp_id in comp_sizes:
             if elapsed() >= budget_s:
+                last100_repair_hit_time_budget = True
                 stop_reason = "timeout"
                 break
             comp_mask = labels == comp_id
@@ -468,6 +520,7 @@ def run_last100_repair(
 
             for my, mx in candidate_pool:
                 if elapsed() >= budget_s:
+                    last100_repair_hit_time_budget = True
                     stop_reason = "timeout"
                     break
                 maybe_consider("single", [(int(my), int(mx))], int(comp_id), int(comp_size))
@@ -483,6 +536,7 @@ def run_last100_repair(
                         if tested >= int(pair_combo_limit):
                             break
                         if elapsed() >= budget_s:
+                            last100_repair_hit_time_budget = True
                             stop_reason = "timeout"
                             break
                         tested += 1
@@ -516,7 +570,14 @@ def run_last100_repair(
             break
 
     sr_final = solve_board(work_grid, max_rounds=solve_max_rounds, mode="full")
-    return work_grid, sr_final, int(n_fixes), move_log, stop_reason
+    return Last100RepairResult(
+        grid=work_grid,
+        sr=sr_final,
+        n_fixes=int(n_fixes),
+        move_log=move_log,
+        stop_reason=stop_reason,
+        last100_repair_hit_time_budget=last100_repair_hit_time_budget,
+    )
 
 
 def run_phase2_full_repair(grid: np.ndarray,
@@ -530,7 +591,7 @@ def run_phase2_full_repair(grid: np.ndarray,
                             trial_max_rounds: int = 60,
                             solve_max_rounds: int = 200,
                             pair_trial_limit: int = 12,
-                            pair_combo_limit: int = 24) -> tuple:
+                            pair_combo_limit: int = 24) -> Phase2FullRepairResult:
     """
     Phase 2 (full): Detect ALL sealed unknown clusters and break enclosures.
 
@@ -546,16 +607,18 @@ def run_phase2_full_repair(grid: np.ndarray,
     Both types are unreachable because the solver only uses N values of
     REVEALED cells; these clusters have no revealed cell adjacent to them.
 
-    Returns (grid, n_fixed, log). Work is bounded by time_budget_s and
+    Returns a Phase2FullRepairResult. Work is bounded by time_budget_s and
     per-iteration candidate caps to keep wall-clock predictable.
     """
     grid = grid.copy()
     n_fixed = 0
     log = []
     t_start = time.perf_counter()
+    phase2_full_repair_hit_time_budget = False
 
     for iteration in range(max_outer_iterations):
         if (time.perf_counter() - t_start) >= time_budget_s:
+            phase2_full_repair_hit_time_budget = True
             if verbose:
                 print(f"  Phase2 full timeout at {time_budget_s:.1f}s", flush=True)
             break
@@ -577,6 +640,7 @@ def run_phase2_full_repair(grid: np.ndarray,
         made_progress = False
         for cluster in sealed_clusters:
             if (time.perf_counter() - t_start) >= time_budget_s:
+                phase2_full_repair_hit_time_budget = True
                 break
 
             ext_mines = [tuple(item) for item in cluster["external_mines"]]
@@ -597,6 +661,7 @@ def run_phase2_full_repair(grid: np.ndarray,
 
             for (my, mx) in ext_mines:
                 if (time.perf_counter() - t_start) >= time_budget_s:
+                    phase2_full_repair_hit_time_budget = True
                     break
                 trial = grid.copy()
                 trial[my, mx] = 0
@@ -621,6 +686,7 @@ def run_phase2_full_repair(grid: np.ndarray,
                         if n_pairs_tested >= int(pair_combo_limit):
                             break
                         if (time.perf_counter() - t_start) >= time_budget_s:
+                            phase2_full_repair_hit_time_budget = True
                             break
                         (m1y, m1x) = pair_pool[i]
                         (m2y, m2x) = pair_pool[j]
@@ -678,4 +744,9 @@ def run_phase2_full_repair(grid: np.ndarray,
         print(f"  Phase2 full complete: {n_fixed} enclosures broken  "
               f"n_unknown={sr_final.n_unknown}", flush=True)
 
-    return grid, n_fixed, log
+    return Phase2FullRepairResult(
+        grid=grid,
+        n_fixed=int(n_fixed),
+        log=log,
+        phase2_full_repair_hit_time_budget=phase2_full_repair_hit_time_budget,
+    )

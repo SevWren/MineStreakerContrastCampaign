@@ -58,6 +58,8 @@ class RepairRouteResult:
     selected_route: str
     route_result: str
     failure_taxonomy: dict
+    phase2_full_repair_hit_time_budget: bool = False
+    last100_repair_hit_time_budget: bool = False
     phase2_log: list = field(default_factory=list)
     last100_log: list = field(default_factory=list)
     visual_delta_summary: dict = field(default_factory=dict)
@@ -84,6 +86,8 @@ def route_late_stage_failure(
         "selected_route": "needs_sa_or_adaptive_rerun",
         "phase2_budget_s": float(config.phase2_budget_s),
         "last100_budget_s": float(config.last100_budget_s),
+        "phase2_full_repair_hit_time_budget": False,
+        "last100_repair_hit_time_budget": False,
         "last100_invoked": False,
         "sa_rerun_invoked": False,
         "solver_n_unknown_after": int(sr.n_unknown),
@@ -103,7 +107,7 @@ def route_late_stage_failure(
         )
 
     if config.enable_phase2 and int(failure_taxonomy.get("sealed_cluster_count", 0)) > 0:
-        routed_grid, _, phase2_log = run_phase2_full_repair(
+        phase2_result = run_phase2_full_repair(
             grid,
             target,
             forbidden,
@@ -111,6 +115,11 @@ def route_late_stage_failure(
             time_budget_s=float(config.phase2_budget_s),
             trial_max_rounds=int(config.trial_max_rounds),
             solve_max_rounds=int(config.solve_max_rounds),
+        )
+        routed_grid = phase2_result.grid
+        phase2_log = phase2_result.log
+        decision["phase2_full_repair_hit_time_budget"] = bool(
+            phase2_result.phase2_full_repair_hit_time_budget
         )
         routed_sr = solve_board(routed_grid, max_rounds=int(config.solve_max_rounds), mode="full")
         if int(routed_sr.n_unknown) == 0:
@@ -124,6 +133,7 @@ def route_late_stage_failure(
                 selected_route="phase2_full_repair",
                 route_result="solved",
                 failure_taxonomy=failure_taxonomy,
+                phase2_full_repair_hit_time_budget=bool(phase2_result.phase2_full_repair_hit_time_budget),
                 phase2_log=phase2_log,
                 visual_delta_summary=visual_delta_summary,
                 decision=decision,
@@ -132,7 +142,7 @@ def route_late_stage_failure(
         sr = routed_sr
 
     if config.enable_last100 and int(sr.n_unknown) <= int(config.last100_unknown_threshold):
-        routed_grid, routed_sr, _, last100_log, stop_reason = run_last100_repair(
+        last100_result = run_last100_repair(
             grid,
             target,
             target,
@@ -142,11 +152,16 @@ def route_late_stage_failure(
             solve_max_rounds=int(config.solve_max_rounds),
             verbose=True,
         )
+        routed_grid = last100_result.grid
+        routed_sr = last100_result.sr
+        last100_log = last100_result.move_log
+        stop_reason = last100_result.stop_reason
         decision["selected_route"] = "last100_repair"
         decision["last100_invoked"] = True
         decision["solver_n_unknown_after"] = int(routed_sr.n_unknown)
         decision["route_result"] = "solved" if int(routed_sr.n_unknown) == 0 else "unresolved_after_repair"
         decision["last100_stop_reason"] = stop_reason
+        decision["last100_repair_hit_time_budget"] = bool(last100_result.last100_repair_hit_time_budget)
         visual_delta_summary = last100_log[-1] if last100_log else {}
         return RepairRouteResult(
             grid=routed_grid,
@@ -154,6 +169,8 @@ def route_late_stage_failure(
             selected_route="last100_repair",
             route_result=decision["route_result"],
             failure_taxonomy=failure_taxonomy,
+            phase2_full_repair_hit_time_budget=bool(decision["phase2_full_repair_hit_time_budget"]),
+            last100_repair_hit_time_budget=bool(last100_result.last100_repair_hit_time_budget),
             last100_log=last100_log,
             visual_delta_summary=visual_delta_summary,
             decision=decision,
@@ -165,6 +182,8 @@ def route_late_stage_failure(
         selected_route="needs_sa_or_adaptive_rerun",
         route_result="unresolved_after_repair",
         failure_taxonomy=failure_taxonomy,
+        phase2_full_repair_hit_time_budget=bool(decision["phase2_full_repair_hit_time_budget"]),
+        last100_repair_hit_time_budget=bool(decision["last100_repair_hit_time_budget"]),
         decision=decision,
     )
 
@@ -185,6 +204,14 @@ def write_repair_route_artifacts(
     visual_delta_summary_path = os.path.join(out_dir, "visual_delta_summary.json")
     failure_taxonomy = dict(route_result.failure_taxonomy)
     repair_route_decision = dict(route_result.decision)
+    repair_route_decision.setdefault(
+        "phase2_full_repair_hit_time_budget",
+        bool(route_result.phase2_full_repair_hit_time_budget),
+    )
+    repair_route_decision.setdefault(
+        "last100_repair_hit_time_budget",
+        bool(route_result.last100_repair_hit_time_budget),
+    )
     visual_delta_summary = dict(route_result.visual_delta_summary)
     if artifact_metadata is not None:
         failure_taxonomy["artifact_metadata"] = dict(artifact_metadata)
@@ -312,10 +339,13 @@ def run_board(board_w, board_h, label, sa_fn, img_path, out_dir,
     repair_budget = max(60.0, sr_pre.n_unknown * 0.15 + 30.0)
     print(f"[{label}] Repair budget={repair_budget:.0f}s  n_unknown={sr_pre.n_unknown}…", flush=True)
 
-    grid, sr, repair_reason = run_phase1_repair(
+    phase1_result = run_phase1_repair(
         grid, target, weights, forbidden,
         time_budget_s=min(repair_budget, 120.0), max_rounds=300,
         search_radius=6, verbose=verbose, checkpoint_dir=out_dir)
+    grid = phase1_result.grid
+    sr = phase1_result.sr
+    repair_reason = phase1_result.stop_reason
     grid[forbidden == 1] = 0
 
     # ── Step 8: validate post-repair ────────────────────────────────────

@@ -750,7 +750,7 @@ def run_iter9_single(
     phase_start = time.perf_counter()
     sr_trial = solve_board(grid, max_rounds=50, mode="trial")
     phase1_budget = max(60.0, sr_trial.n_unknown * 0.15 + 30.0)
-    grid, _, phase1_reason = run_phase1_repair(
+    phase1_result = run_phase1_repair(
         grid,
         target,
         w_zone,
@@ -761,6 +761,9 @@ def run_iter9_single(
         verbose=True,
         checkpoint_dir=str(out_dir_path),
     )
+    grid = phase1_result.grid
+    phase1_reason = phase1_result.stop_reason
+    phase1_repair_hit_time_budget = bool(phase1_result.phase1_repair_hit_time_budget)
     grid[forbidden == 1] = 0
     assert_board_valid(grid, forbidden, "post-phase1")
     sr_phase1 = solve_board(grid, max_rounds=300, mode="full")
@@ -812,6 +815,9 @@ def run_iter9_single(
         "source_image_project_relative_path": source_cfg.project_relative_path,
         "source_image_sha256": source_cfg.sha256,
         "metrics_path": _relative_or_absolute(metrics_path, project_root),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
     }
     route_artifacts = write_repair_route_artifacts(
         str(out_dir_path),
@@ -949,6 +955,9 @@ def run_iter9_single(
         "sealed_multi_cell_cluster_count": route.failure_taxonomy.get("sealed_multi_cell_cluster_count"),
         "phase2_fixes": len(route.phase2_log),
         "last100_fixes": len(route.last100_log),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
         "visual_delta": route.visual_delta_summary.get("visual_delta"),
         "failure_taxonomy_path": _relative_or_absolute(Path(route_artifacts["failure_taxonomy"]), project_root),
         "repair_route_decision_path": _relative_or_absolute(
@@ -1059,6 +1068,9 @@ def run_iter9_single(
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
         "phase2_fixes": len(route.phase2_log),
         "last100_fixes": len(route.last100_log),
+        "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
+        "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
+        "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
         "sa_rerun_invoked": bool(route.decision.get("sa_rerun_invoked", False)),
     }
     visual_quality_summary = {

@@ -85,6 +85,9 @@ The top-level object contains:
   "mine_accuracy": 1.0,
   "n_unknown": 0,
   "repair_reason": "phase1=converged+route=already_solved",
+  "phase1_repair_hit_time_budget": false,
+  "phase2_full_repair_hit_time_budget": false,
+  "last100_repair_hit_time_budget": false,
   "total_time_s": 123.45,
   "seed": 42,
   "iter": 9,
@@ -166,6 +169,9 @@ The top-level object contains:
 | `sealed_multi_cell_cluster_count` | integer | Yes | Yes | From `failure_taxonomy`. Nullable only if taxonomy key missing unexpectedly. |
 | `phase2_fixes` | integer | Yes | No | Length of `route.phase2_log`. |
 | `last100_fixes` | integer | Yes | No | Length of `route.last100_log`. Note this is log-entry count, not necessarily accepted-fix count. |
+| `phase1_repair_hit_time_budget` | boolean | Yes | No | Phase1 repair timeout boolean persisted from `Phase1RepairResult`. |
+| `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Phase2 route timeout boolean persisted from `RepairRouteResult`. |
+| `last100_repair_hit_time_budget` | boolean | Yes | No | Last100 route timeout boolean persisted from `RepairRouteResult`. |
 | `visual_delta` | number | Yes | Yes | From route visual summary; may be `null` if no summary field exists. |
 | `failure_taxonomy_path` | string | Yes | No | Path to `failure_taxonomy.json`. |
 | `repair_route_decision_path` | string | Yes | No | Path to `repair_route_decision.json`. |
@@ -400,6 +406,9 @@ Each `solver_summary` child object has:
 | `sealed_cluster_count` | integer | Yes | No | Sealed-cluster count coerced to integer fallback `0`. |
 | `phase2_fixes` | integer | Yes | No | Length of Phase2 log. |
 | `last100_fixes` | integer | Yes | No | Length of Last100 log. |
+| `phase1_repair_hit_time_budget` | boolean | Yes | No | Phase1 timeout boolean. |
+| `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Phase2 full repair timeout boolean. |
+| `last100_repair_hit_time_budget` | boolean | Yes | No | Last100 repair timeout boolean. |
 | `sa_rerun_invoked` | boolean | Yes | No | Current code emits `false`. |
 
 ### `visual_quality_summary`
@@ -663,6 +672,9 @@ ordinary_ambiguous_unknown
   "mine_accuracy": 1.0,
   "n_unknown": 0,
   "repair_reason": "phase1=converged+route=already_solved",
+  "phase1_repair_hit_time_budget": false,
+  "phase2_full_repair_hit_time_budget": false,
+  "last100_repair_hit_time_budget": false,
   "total_time_s": 123.45,
   "seed": 42,
   "iter": 9,
@@ -827,6 +839,9 @@ ordinary_ambiguous_unknown
     "sealed_cluster_count": 0,
     "phase2_fixes": 0,
     "last100_fixes": 0,
+    "phase1_repair_hit_time_budget": false,
+    "phase2_full_repair_hit_time_budget": false,
+    "last100_repair_hit_time_budget": false,
     "sa_rerun_invoked": false
   },
   "visual_quality_summary": {
