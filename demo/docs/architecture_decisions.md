@@ -324,7 +324,7 @@ Any change to config tooling requires a superseding ADR and migration notes.
 | Date | 2026-05-01 |
 | Owner | Source architecture |
 | Decision scope | Source layout |
-| Traceability IDs | DEMO-REQ-009, DEMO-REQ-013 |
+| Traceability IDs | DEMO-REQ-009, DEMO-REQ-013, DEMO-REQ-014 |
 
 ### Context
 
@@ -423,7 +423,7 @@ A repository-wide refactor requires a separate approved architecture plan and mu
 | Date | 2026-05-01 |
 | Owner | LLM development governance |
 | Decision scope | Planning, docs, implementation sequence |
-| Traceability IDs | DEMO-REQ-001 through DEMO-REQ-013 |
+| Traceability IDs | DEMO-REQ-001 through DEMO-REQ-014 |
 
 ### Context
 

@@ -8,7 +8,7 @@
 | Owner | Demo architecture |
 | Applies to | `demos/iter9_visual_solver/` |
 | Required before | Any demo runtime source module |
-| Traceability IDs | DEMO-REQ-009, DEMO-REQ-010, DEMO-REQ-013 |
+| Traceability IDs | DEMO-REQ-009, DEMO-REQ-010, DEMO-REQ-013, DEMO-REQ-014 |
 | Change rule | New package areas or ownership changes require updating this file, `architecture_decisions.md`, `architecture_boundary_tests.md`, and `traceability_matrix.md`. |
 
 ---
@@ -69,6 +69,7 @@ demos/
       args.py
       commands.py
       launch_from_iter9.py
+      prompted_launcher.py
 
     config/
       __init__.py
@@ -163,7 +164,7 @@ Rationale: package imports must be safe and side-effect free.
 
 | Package | Owns | Must Not Own | Required Test Coverage |
 |---|---|---|---|
-| `cli/` | CLI args, command orchestration, thin launch wrappers | pygame drawing, config validation rules, pixel loops, playback math | `test_cli_args.py`, `test_cli_commands.py`, `test_run_iter9_launch_hook.py` |
+| `cli/` | CLI args, command orchestration, thin launch wrappers, prompted launcher delegation | pygame drawing, config validation rules, pixel loops, playback math | `test_cli_args.py`, `test_cli_commands.py`, `test_run_iter9_launch_hook.py`, `test_prompted_launcher.py` |
 | `config/` | Pydantic models, config loading, schema export, validation errors | rendering, replay state, artifact parsing, pygame | `test_config_models.py`, `test_config_loader.py`, `test_config_schema_contract.py` |
 | `contracts/` | executable constants mirroring accepted docs | runtime behavior, pygame, file loading | `test_artifact_paths.py`, architecture tests |
 | `domain/` | pure data models and pure domain calculations | pygame, pydantic, file I/O, JSON loading | `test_board_dimensions.py`, `test_playback_event.py` |
@@ -285,6 +286,56 @@ def run_demo_from_completed_iter9_run(
 
 ```text
 test_run_iter9_launch_hook.py
+```
+
+---
+
+## 7.3.1 `cli/prompted_launcher.py`
+
+### Purpose
+
+Interactive wrapper for launching the demo from a completed Iter9 run directory.
+
+### Public API
+
+```python
+def parse_speed_modifier(value: str) -> float: ...
+def parse_yes_no(value: str) -> bool: ...
+def build_prompted_config_dict(default_config: dict, *, speed_modifier: float, auto_close: bool) -> dict: ...
+def build_demo_argv(*, artifacts: DemoArtifactPaths, config_path: Path) -> list[str]: ...
+def prompted_main(...) -> int: ...
+```
+
+### Required Prompts
+
+```text
+completed results/run directory
+playback speed modifier such as 50x, 100x, 150x, 200x, or 300x
+auto-close on completion, Y/N
+```
+
+### Required Behavior
+
+- Resolve `grid_iter9_latest.npy` and `metrics_iter9_<board>.json` through
+  `io/artifact_paths.py`.
+- Include `solver_event_trace.jsonl` when present.
+- Generate a temporary config under `temp/` by copying the default config and
+  applying the requested speed modifier and finish behavior.
+- Delegate to `cli/commands.py` with explicit `--grid`, `--metrics`,
+  `--config`, and optional `--event-trace` arguments.
+
+### Forbidden
+
+- pygame imports.
+- Direct pygame display creation.
+- Pixel drawing.
+- Reimplementing artifact loading.
+- Reimplementing the playback speed formula from `speed_policy.py`.
+
+### Tests
+
+```text
+test_prompted_launcher.py
 ```
 
 ---
@@ -1173,6 +1224,7 @@ test_architecture_boundaries.py
 | `cli/args.py` | `test_cli_args.py` |
 | `cli/commands.py` | `test_cli_commands.py` |
 | `cli/launch_from_iter9.py` | `test_run_iter9_launch_hook.py` |
+| `cli/prompted_launcher.py` | `test_prompted_launcher.py` |
 | `config/models.py` | `test_config_models.py` |
 | `config/loader.py` | `test_config_loader.py` |
 | `config/schema_export.py` | `test_config_schema_contract.py` |

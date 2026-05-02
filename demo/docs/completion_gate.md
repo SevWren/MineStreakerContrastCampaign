@@ -144,6 +144,7 @@ tests/demo/iter9_visual_solver/test_event_trace_loader.py
 | RUNTIME-GATE-006 | `run_iter9.py` hook is thin and optional | Test + diff review | `test_run_iter9_launch_hook.py` | pygame/config/playback logic added directly to `run_iter9.py` | Integration owner | Blocking |
 | RUNTIME-GATE-007 | Existing `run_iter9.py --help` still works | CLI smoke command | command output/exit code | command fails | Integration owner | Blocking |
 | RUNTIME-GATE-008 | Existing `run_benchmark.py --help` still works | CLI smoke command | command output/exit code | command fails | Integration owner | Blocking |
+| RUNTIME-GATE-009 | Prompted wrapper resolves a completed run directory and delegates to demo CLI | Unit test + smoke command | `test_prompted_launcher.py` and prompted launcher smoke | wrapper cannot resolve artifacts, apply prompt config, or delegate | CLI owner | Blocking |
 
 ---
 

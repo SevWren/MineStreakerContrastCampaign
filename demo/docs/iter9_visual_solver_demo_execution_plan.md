@@ -47,8 +47,8 @@ Results:
 
 ```text
 run_iter9 hook delegation test: 3 tests passed.
-Demo test suite: 56 tests passed.
-Full repository unittest discovery: 160 tests passed.
+Demo test suite: 60 tests passed.
+Full repository unittest discovery: 164 tests passed.
 Compileall gate: passed.
 Entrypoint help commands: passed.
 Image guard smoke: passed.
@@ -56,6 +56,7 @@ Demo CLI help: passed.
 pygame import: passed with pygame-ce 2.5.7 providing the pygame module.
 Headless standalone pygame launch smoke: passed against temp/demo_contract_smoke artifacts.
 Headless hook launch smoke: passed against temp/demo_contract_smoke artifacts.
+Headless prompted wrapper smoke: passed against results/iter9/line_art_a2_w300_demo_s42.
 Whitespace/diff check: passed with line-ending warnings only for AGENTS.md and run_iter9.py.
 ```
 
@@ -1312,6 +1313,18 @@ python run_iter9.py --image assets/line_art_irl_11_v2.png --board-w 300 --seed 1
 ```powershell
 python -m demos.iter9_visual_solver.cli.commands --grid results/iter9/<run_id>/grid_iter9_latest.npy --metrics results/iter9/<run_id>/metrics_iter9_<board>.json --config configs/demo/iter9_visual_solver_demo.default.json
 ```
+
+**Prompted wrapper command:**
+
+```powershell
+.\demo\run_iter9_visual_solver_demo_prompted.ps1
+```
+
+The prompted wrapper asks for a completed results directory, a playback speed
+modifier such as `50x`, `100x`, `150x`, `200x`, or `300x`, and whether the demo
+should automatically close when playback finishes. It writes the generated
+config under `temp/` and delegates to the standalone demo CLI with explicit
+artifact paths.
 
 **Pass checklist:**
 

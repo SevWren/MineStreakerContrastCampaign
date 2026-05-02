@@ -176,6 +176,7 @@ demos/
       args.py
       commands.py
       launch_from_iter9.py
+      prompted_launcher.py
     config/
       __init__.py
       models.py
@@ -297,6 +298,7 @@ tests/demo/iter9_visual_solver/
   test_playback_event.py
   test_pygame_adapter_contract.py
   test_pygame_loop_with_fakes.py
+  test_prompted_launcher.py
   test_replay_state.py
   test_run_iter9_launch_hook.py
   test_source_file_modularity.py
@@ -1187,6 +1189,18 @@ python run_iter9.py --image assets/line_art_irl_11_v2.png --board-w 300 --seed 1
 python -m demos.iter9_visual_solver.cli.commands --grid results/iter9/<run_id>/grid_iter9_latest.npy --metrics results/iter9/<run_id>/metrics_iter9_<board>.json --config configs/demo/iter9_visual_solver_demo.default.json
 ```
 
+### Prompted wrapper command
+
+```powershell
+.\demo\run_iter9_visual_solver_demo_prompted.ps1
+```
+
+The prompted wrapper asks for the completed results directory, accepts playback
+speed modifiers such as `50x`, `100x`, `150x`, `200x`, and `300x`, asks whether
+the demo should automatically close when playback finishes, writes a generated
+config under `temp/`, and delegates to the standalone demo CLI with resolved
+artifact paths.
+
 If a trace file exists:
 
 ```powershell
@@ -1233,6 +1247,7 @@ python run_iter9.py --image assets/line_art_irl_11_v2.png --board-w 300 --seed 1
 | Pydantic isolation | `config_contract.md` | `config/` | `test_architecture_boundaries.py` |
 | Status panel real values | `status_panel_contract.md` | `domain/status_snapshot.py`, `rendering/status_text.py`, `rendering/status_panel.py` | `test_status_text.py`, `test_status_panel.py` |
 | Thin optional Iter9 hook | `runtime_package_contract.md`, `acceptance_criteria.md` | `cli/launch_from_iter9.py`, `run_iter9.py` | `test_run_iter9_launch_hook.py`, CLI smoke |
+| Prompted run-directory wrapper | `runtime_package_contract.md`, `artifact_consumption_contract.md`, `config_contract.md` | `cli/prompted_launcher.py`, `demo/run_iter9_visual_solver_demo_prompted.ps1` | `test_prompted_launcher.py` |
 
 ---
 
@@ -1335,8 +1350,8 @@ implemented, one hook-based manual GUI validation.
 Current automated evidence from 2026-05-02:
 
 ```text
-python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py" -> 56 tests passed.
-python -m unittest discover -s tests -p "test_*.py" -> 160 tests passed.
+python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py" -> 60 tests passed.
+python -m unittest discover -s tests -p "test_*.py" -> 164 tests passed.
 python -m compileall -q demos tests/demo tests/__init__.py run_iter9.py -> passed.
 python run_iter9.py --help -> passed.
 python run_benchmark.py --help -> passed.
@@ -1344,6 +1359,7 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 python -m demos.iter9_visual_solver.cli.commands --help -> passed.
 headless standalone pygame launch smoke with temp/demo_contract_smoke -> passed.
 headless hook launch smoke with temp/demo_contract_smoke -> passed.
+headless prompted wrapper smoke with results/iter9/line_art_a2_w300_demo_s42 -> passed.
 git diff --check over demo/runtime/test surfaces -> passed with line-ending warnings only.
 ```
 

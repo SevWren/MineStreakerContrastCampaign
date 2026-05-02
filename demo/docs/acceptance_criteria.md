@@ -8,7 +8,7 @@
 | Owner | Demo QA/release gate |
 | Applies to | Full Iter9 Visual Solver Demo MVP |
 | Required before | Implementation signoff, manual demo review, final completion gate |
-| Traceability IDs | DEMO-REQ-001 through DEMO-REQ-013 |
+| Traceability IDs | DEMO-REQ-001 through DEMO-REQ-014 |
 | Change rule | Any acceptance criterion change must update `completion_gate.md`, `traceability_matrix.md`, relevant contracts, and tests. |
 
 ---

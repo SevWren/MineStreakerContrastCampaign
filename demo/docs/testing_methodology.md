@@ -84,6 +84,7 @@ tests/
       test_cli_args.py
       test_cli_commands.py
       test_run_iter9_launch_hook.py
+      test_prompted_launcher.py
       test_architecture_boundaries.py
       test_source_file_modularity.py
 ```
@@ -1340,6 +1341,45 @@ This file tests that integration with the existing pipeline remains thin.
 ### What must not belong in this file
 
 Do not test full Iter9 pipeline here. Do not draw GUI.
+
+---
+
+## 4.25.1 `test_prompted_launcher.py`
+
+### Ownership
+
+Prompted run-directory launcher contract
+
+### Runtime module(s) under test
+
+- `demos/iter9_visual_solver/cli/prompted_launcher.py`
+- `demo/run_iter9_visual_solver_demo_prompted.ps1` by command documentation
+
+### Allowed shared test support
+
+- `fixtures/temp_runs.py`
+- `builders/config_builder.py`
+- `builders/grid_builder.py`
+- `builders/metrics_builder.py`
+
+### What belongs in this file
+
+This file tests that the interactive wrapper resolves completed run artifacts,
+parses prompt values, writes a temporary config override, and delegates to the
+standalone demo CLI.
+
+### Required test cases
+
+- [ ] speed modifiers accept values such as `50x`, `100x`, and `300x`
+- [ ] Y/N prompt values map to close-immediately or stay-open finish behavior
+- [ ] wrapper resolves `grid_iter9_latest.npy` and `metrics_iter9_<board>.json`
+- [ ] wrapper includes `solver_event_trace.jsonl` when present
+- [ ] generated config applies speed modifier and finish behavior
+- [ ] wrapper delegates to `cli.commands.main(...)`
+
+### What must not belong in this file
+
+Do not open a real pygame window. Do not test the full Iter9 pipeline.
 
 ---
 

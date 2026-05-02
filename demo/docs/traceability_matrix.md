@@ -24,6 +24,7 @@ Maps requirements to contracts, modules, tests, fixtures/builders/helpers, and c
 | DEMO-REQ-011 | Pydantic is isolated to config | `config_contract.md` | `config/` | `test_architecture_boundaries.py` | `import_boundary_assertions.py` | import test passes |
 | DEMO-REQ-012 | Tests use fixtures/builders/helpers | `testing_methodology.md` | tests | `test_source_file_modularity.py` | all test support dirs | no large duplicate setup |
 | DEMO-REQ-013 | `run_iter9.py` hook is thin and optional | `runtime_package_contract.md`, `acceptance_criteria.md` | `run_iter9.py`, `cli/launch_from_iter9.py` | `test_run_iter9_launch_hook.py` | CLI fakes | existing behavior unchanged |
+| DEMO-REQ-014 | Prompted wrapper launches from a completed results directory with speed and finish prompts | `runtime_package_contract.md`, `artifact_consumption_contract.md`, `config_contract.md` | `cli/prompted_launcher.py`, `demo/run_iter9_visual_solver_demo_prompted.ps1` | `test_prompted_launcher.py` | `TempIter9Run`, `DemoConfigBuilder` | wrapper delegates with resolved artifacts and generated config |
 
 ## Review checklist
 - [ ] Every requirement has a contract.
