@@ -39,18 +39,25 @@ not move demo contracts into the base repository documentation tree.
 Demo source-of-truth priority:
 1. Current user correction for the task.
 2. `demo/docs/json_schemas/*.schema.json` for machine-checkable JSON shape.
-3. `demo/docs/*.md` contracts for runtime behavior and ownership boundaries.
-4. `demo/iter9_visual_solver_demo_plan.md` for background sequencing and design
+3. `demo/docs/*.md` contracts, requirements, and gates for runtime behavior and
+   ownership boundaries.
+4. `demo/docs/iter9_visual_solver_demo_ui_polish_implementation_plan.md` and
+   `demo/docs/iter9_visual_solver_responsive_layout_refactor_requirements.md`
+   when work touches the current GUI/layout direction.
+5. `demo/iter9_visual_solver_demo_plan.md` for background sequencing and design
    rationale, interpreted through the dedicated `demo/docs/` layout.
-5. `tests/demo/iter9_visual_solver/` when tests agree with the demo contracts.
-6. `demo/docs/iter9_visual_solver_demo_implementation_plan.md` and
+6. `tests/demo/iter9_visual_solver/` when tests agree with the demo contracts.
+7. `demo/docs/iter9_visual_solver_demo_implementation_plan.md` and
    `demo/docs/iter9_visual_solver_demo_execution_plan.md` as the current
    execution maps.
 
 Canonical demo contract set:
-- Plans: `demo/docs/iter9_visual_solver_demo_implementation_plan.md`,
-  `demo/docs/iter9_visual_solver_demo_execution_plan.md`, and
-  `demo/iter9_visual_solver_demo_plan.md`
+- Plans and current layout work:
+  `demo/docs/iter9_visual_solver_demo_implementation_plan.md`,
+  `demo/docs/iter9_visual_solver_demo_execution_plan.md`,
+  `demo/docs/iter9_visual_solver_demo_ui_polish_implementation_plan.md`,
+  `demo/docs/iter9_visual_solver_responsive_layout_refactor_requirements.md`,
+  and `demo/iter9_visual_solver_demo_plan.md`
 - Runtime contracts: `demo/docs/runtime_package_contract.md`,
   `demo/docs/artifact_consumption_contract.md`,
   `demo/docs/config_contract.md`, `demo/docs/playback_speed_contract.md`,
@@ -73,6 +80,9 @@ Demo development boundaries:
 - Demo tests live under `tests/demo/iter9_visual_solver/`.
 - The default demo config lives at
   `configs/demo/iter9_visual_solver_demo.default.json`.
+- The prompted playback wrapper lives at
+  `demos/iter9_visual_solver/cli/prompted_launcher.py` with the PowerShell
+  entrypoint `demo/run_iter9_visual_solver_demo_prompted.ps1`.
 - Demo docs and schema docs stay under `demo/docs/` and
   `demo/docs/json_schemas/`.
 - Do not create root-level `demo_config.py`, `demo_visualizer.py`,
@@ -90,6 +100,9 @@ Demo development boundaries:
   `demos/iter9_visual_solver/io/`, not in playback or rendering.
 - The standalone CLI orchestrates existing modules; it does not draw pixels or
   own business rules.
+- The prompted wrapper only gathers a results directory, playback speed, and
+  finish choice, then delegates to the standalone CLI with resolved artifacts
+  and a generated temp config.
 - `run_iter9.py` may only expose optional demo flags and delegate through
   `demos.iter9_visual_solver.cli.launch_from_iter9` after a successful Iter9
   run. It must not import pygame or own demo rendering behavior.
@@ -98,6 +111,7 @@ Minimum validation for demo changes:
 
 ```powershell
 python -m unittest tests.demo.iter9_visual_solver.test_architecture_boundaries
+python -m unittest tests.demo.iter9_visual_solver.test_prompted_launcher
 python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 python -m compileall -q demos tests/demo tests/__init__.py run_iter9.py
 python -m demos.iter9_visual_solver.cli.commands --help
@@ -109,6 +123,7 @@ For demo integration or optional hook changes, also run:
 python -m unittest discover -s tests -p "test_*.py"
 python run_iter9.py --help
 python run_benchmark.py --help
+powershell -NoProfile -ExecutionPolicy Bypass -File .\demo\run_iter9_visual_solver_demo_prompted.ps1
 ```
 
 On Python 3.14, if the `pygame` package attempts a source build instead of
