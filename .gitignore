@@ -13,7 +13,11 @@ assets/line_art_irl_14.png
 assets/line_art_irl_15.png
 assets/line_art_irl_16.png
 assets/line_art_irl_17.png
-
+repair_result_dataclass_migration_plan.md
+PATCH_SUMMARY.md
+example_commands_before_pipeline_improvement_native_iter9_image_sweep_mode.md
+demo/docs/archive
+demo/docs/archive/
 
 # Generated conversation artifacts
 conversations.json
@@ -31,6 +35,8 @@ archives
 # Reports and data exports
 *.csv
 *.json
+!demo/docs/json_schemas/*.schema.json
+!configs/demo/iter9_visual_solver_demo.default.json
 *.jsonl
 
 # Media and other binary assets

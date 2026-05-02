@@ -15,11 +15,105 @@ Current primary entrypoints:
 - Entrypoints: `run_iter9.py`, `run_benchmark.py`
 - Assets and image integrity: `assets/`
 - Tests: `tests/`
+- Demo documentation: `demo/docs/`
+- Demo runtime package: `demos/iter9_visual_solver/`
+- Demo config: `configs/demo/`
 - Generated artifacts: `results/`
 - Active docs index: `docs/DOCS_INDEX.md`
 
 Keep algorithm/runtime code in root Python modules. Keep generated artifacts under `results/`.
 Do not generate ad-hoc root-level output files.
+
+## Iter9 Visual Solver Demo Contract
+The Iter9 visual solver demo is a bounded additive feature, not a monolithic
+repository refactor. When work touches `demo/`, `demos/iter9_visual_solver/`,
+`tests/demo/iter9_visual_solver/`, `configs/demo/`, or the optional
+`run_iter9.py` demo hook, treat `demo/docs/` as the dedicated demo source of
+truth.
+
+Before changing demo code, docs, tests, config, schemas, or hook behavior, read
+the relevant files under `demo/docs/` and keep the implementation aligned with
+them. Do not use stale root-level `docs/` paths as the demo contract, and do
+not move demo contracts into the base repository documentation tree.
+
+Demo source-of-truth priority:
+1. Current user correction for the task.
+2. `demo/docs/json_schemas/*.schema.json` for machine-checkable JSON shape.
+3. `demo/docs/*.md` contracts for runtime behavior and ownership boundaries.
+4. `demo/iter9_visual_solver_demo_plan.md` for background sequencing and design
+   rationale, interpreted through the dedicated `demo/docs/` layout.
+5. `tests/demo/iter9_visual_solver/` when tests agree with the demo contracts.
+6. `demo/docs/iter9_visual_solver_demo_implementation_plan.md` and
+   `demo/docs/iter9_visual_solver_demo_execution_plan.md` as the current
+   execution maps.
+
+Canonical demo contract set:
+- Plans: `demo/docs/iter9_visual_solver_demo_implementation_plan.md`,
+  `demo/docs/iter9_visual_solver_demo_execution_plan.md`, and
+  `demo/iter9_visual_solver_demo_plan.md`
+- Runtime contracts: `demo/docs/runtime_package_contract.md`,
+  `demo/docs/artifact_consumption_contract.md`,
+  `demo/docs/config_contract.md`, `demo/docs/playback_speed_contract.md`,
+  `demo/docs/finish_behavior_contract.md`,
+  `demo/docs/pygame_rendering_contract.md`,
+  `demo/docs/status_panel_contract.md`, and
+  `demo/docs/window_sizing_contract.md`
+- Governance and gates: `demo/docs/acceptance_criteria.md`,
+  `demo/docs/architecture_boundary_tests.md`,
+  `demo/docs/architecture_decisions.md`,
+  `demo/docs/completion_gate.md`,
+  `demo/docs/source_modularity_standard.md`,
+  `demo/docs/testing_methodology.md`, and
+  `demo/docs/traceability_matrix.md`
+- Schema docs and baselines: `demo/docs/schema_docs_specs.md` and
+  `demo/docs/json_schemas/`
+
+Demo development boundaries:
+- Runtime code lives under `demos/iter9_visual_solver/`.
+- Demo tests live under `tests/demo/iter9_visual_solver/`.
+- The default demo config lives at
+  `configs/demo/iter9_visual_solver_demo.default.json`.
+- Demo docs and schema docs stay under `demo/docs/` and
+  `demo/docs/json_schemas/`.
+- Do not create root-level `demo_config.py`, `demo_visualizer.py`,
+  `visual_solver_demo.py`, or `iter9_visual_solver_demo.py`.
+- Do not refactor existing root reconstruction modules for demo work.
+- Pygame imports are allowed only in pygame rendering adapter/loop modules and
+  pygame-specific tests/fakes.
+- Pydantic imports are allowed only in `demos/iter9_visual_solver/config/` and
+  config-focused tests.
+- `jsonschema` is test/tooling only for the MVP; runtime config validation is
+  Pydantic-driven.
+- Playback speed, batching, scheduling, replay, and finish policy belong in
+  `demos/iter9_visual_solver/playback/`, not in pygame code.
+- Artifact path resolution and file loading belong in
+  `demos/iter9_visual_solver/io/`, not in playback or rendering.
+- The standalone CLI orchestrates existing modules; it does not draw pixels or
+  own business rules.
+- `run_iter9.py` may only expose optional demo flags and delegate through
+  `demos.iter9_visual_solver.cli.launch_from_iter9` after a successful Iter9
+  run. It must not import pygame or own demo rendering behavior.
+
+Minimum validation for demo changes:
+
+```powershell
+python -m unittest tests.demo.iter9_visual_solver.test_architecture_boundaries
+python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
+python -m compileall -q demos tests/demo tests/__init__.py run_iter9.py
+python -m demos.iter9_visual_solver.cli.commands --help
+```
+
+For demo integration or optional hook changes, also run:
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
+python run_iter9.py --help
+python run_benchmark.py --help
+```
+
+On Python 3.14, if the `pygame` package attempts a source build instead of
+installing a wheel, install `pygame-ce`; it provides the `pygame` import used by
+the demo runtime.
 
 
 ## Source Image Runtime Contract

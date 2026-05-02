@@ -50,6 +50,7 @@ from source_config import SourceImageConfig, resolve_source_image_config
 DEFAULT_IMAGE = "assets/input_source_image.png"
 DEFAULT_BOARD_W = 300
 DEFAULT_SEED = 42
+DEFAULT_DEMO_CONFIG = "configs/demo/iter9_visual_solver_demo.default.json"
 RESULTS_ROOT = "results/iter9"
 SCHEMA_VERSION = "metrics.v2.source_image_runtime_contract"
 IMAGE_SWEEP_SUMMARY_FIELDS = [
@@ -573,6 +574,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--continue-on-error", action="store_true", help="Continue image sweep after a failed child run.")
     parser.add_argument("--skip-existing", action="store_true", help="Skip child runs whose expected metrics file already exists.")
     parser.add_argument("--max-images", type=int, default=None, help="Limit image sweep to the first N discovered images after sorting.")
+    parser.add_argument("--demo-gui", action="store_true", help="Launch the Iter9 visual solver demo after a successful single-image run.")
+    parser.add_argument("--demo-config", default=DEFAULT_DEMO_CONFIG, help="Visual solver demo config path used with --demo-gui.")
 
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(raw_argv)
@@ -599,6 +602,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--image cannot be explicitly supplied with --image-dir")
         if _explicit_flag_present(raw_argv, "--image-manifest"):
             parser.error("--image-manifest cannot be used with --image-dir")
+        if args.demo_gui:
+            parser.error("--demo-gui cannot be used with --image-dir")
+        if _explicit_flag_present(raw_argv, "--demo-config"):
+            parser.error("--demo-config cannot be used with --image-dir")
+
+    if not args.demo_gui and _explicit_flag_present(raw_argv, "--demo-config"):
+        parser.error("--demo-config requires --demo-gui")
 
     return args
 
@@ -1681,7 +1691,7 @@ def main(argv: list[str] | None = None) -> int:
     ensure_solver_warmed()
     warmup_s = time.perf_counter() - phase_start
 
-    run_iter9_single(
+    metrics_doc = run_iter9_single(
         args,
         source_cfg=source_cfg,
         source_validation=source_validation,
@@ -1694,6 +1704,21 @@ def main(argv: list[str] | None = None) -> int:
         warmup_s=warmup_s,
         batch_context=None,
     )
+    if args.demo_gui:
+        from demos.iter9_visual_solver.cli.launch_from_iter9 import run_demo_from_completed_iter9_run
+
+        board_label = str(metrics_doc["board"])
+        demo_config_path = Path(args.demo_config).expanduser()
+        if not demo_config_path.is_absolute():
+            demo_config_path = (project_root / demo_config_path).resolve()
+        return int(
+            run_demo_from_completed_iter9_run(
+                grid_path=out_dir_path / "grid_iter9_latest.npy",
+                metrics_path=out_dir_path / f"metrics_iter9_{board_label}.json",
+                config_path=demo_config_path,
+                event_trace_path=None,
+            )
+        )
     return 0
 
 
