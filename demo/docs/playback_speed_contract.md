@@ -32,12 +32,15 @@ demos/iter9_visual_solver/playback/event_scheduler.py
 demos/iter9_visual_solver/playback/replay_state.py
 demos/iter9_visual_solver/rendering/pygame_loop.py
 demos/iter9_visual_solver/rendering/status_text.py
+demos/iter9_visual_solver/cli/commands.py
 tests/demo/iter9_visual_solver/test_speed_policy.py
 tests/demo/iter9_visual_solver/test_event_batching.py
 tests/demo/iter9_visual_solver/test_event_scheduler.py
 tests/demo/iter9_visual_solver/test_replay_state.py
 tests/demo/iter9_visual_solver/test_pygame_loop_with_fakes.py
 tests/demo/iter9_visual_solver/test_status_text.py
+tests/demo/iter9_visual_solver/test_cli_commands.py
+tests/demo/iter9_visual_solver/test_architecture_boundaries.py
 ```
 
 This contract does not own config loading, artifact loading, pygame window creation, board geometry, or status panel drawing.
@@ -433,10 +436,21 @@ tying speed to static board height
 - [ ] pygame loop does not calculate speed formula.
 - [ ] pygame loop remains responsive to quit event during high speed playback.
 
-## 15.5 `test_status_text.py`
+## 15.5 `test_replay_state.py`
+
+- [ ] replay state tracks applied event count.
+- [ ] replay state exposes total event count.
+- [ ] replay state status snapshot includes resolved playback speed.
+
+## 15.6 `test_status_text.py`
 
 - [ ] status line displays calculated playback speed.
 - [ ] status line does not display placeholder speed.
+
+## 15.7 CLI and architecture tests
+
+- [ ] `test_cli_commands.py` verifies the CLI passes resolved events/sec and events/frame to the pygame loop.
+- [ ] `test_architecture_boundaries.py` verifies playback-speed ownership stays out of forbidden layers.
 
 ---
 
@@ -448,7 +462,12 @@ Required commands:
 python -m unittest tests.demo.iter9_visual_solver.test_speed_policy
 python -m unittest tests.demo.iter9_visual_solver.test_event_batching
 python -m unittest tests.demo.iter9_visual_solver.test_event_scheduler
+python -m unittest tests.demo.iter9_visual_solver.test_replay_state
 python -m unittest tests.demo.iter9_visual_solver.test_pygame_loop_with_fakes
+python -m unittest tests.demo.iter9_visual_solver.test_status_text
+python -m unittest tests.demo.iter9_visual_solver.test_cli_commands
+python -m unittest tests.demo.iter9_visual_solver.test_architecture_boundaries
+python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 python -m unittest discover -s tests -p "test_*.py"
 ```
 

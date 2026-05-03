@@ -13,11 +13,21 @@ class EventScheduler:
     _index: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
-        self.events_per_frame = max(1, int(self.events_per_frame))
+        if self.events_per_frame <= 0:
+            raise ValueError(f"events_per_frame={self.events_per_frame} must be > 0")
+        self.events_per_frame = int(self.events_per_frame)
 
     @property
     def finished(self) -> bool:
         return self._index >= len(self.events)
+
+    @property
+    def applied_count(self) -> int:
+        return self._index
+
+    @property
+    def total_count(self) -> int:
+        return len(self.events)
 
     def next_batch(self) -> list[Any]:
         if self.finished:
@@ -26,4 +36,3 @@ class EventScheduler:
         end = min(len(self.events), start + self.events_per_frame)
         self._index = end
         return self.events[start:end]
-

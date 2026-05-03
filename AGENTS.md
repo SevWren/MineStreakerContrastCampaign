@@ -41,23 +41,12 @@ Demo source-of-truth priority:
 2. `demo/docs/json_schemas/*.schema.json` for machine-checkable JSON shape.
 3. `demo/docs/*.md` contracts, requirements, and gates for runtime behavior and
    ownership boundaries.
-4. `demo/docs/iter9_visual_solver_demo_ui_polish_implementation_plan.md` and
-   `demo/docs/iter9_visual_solver_responsive_layout_refactor_requirements.md`
-   when work touches the current GUI/layout direction.
-5. `demo/iter9_visual_solver_demo_plan.md` for background sequencing and design
+4. `demo/iter9_visual_solver_demo_plan.md` for background sequencing and design
    rationale, interpreted through the dedicated `demo/docs/` layout.
-6. `tests/demo/iter9_visual_solver/` when tests agree with the demo contracts.
-7. `demo/docs/iter9_visual_solver_demo_implementation_plan.md` and
-   `demo/docs/iter9_visual_solver_demo_execution_plan.md` as the current
-   execution maps.
+5. `tests/demo/iter9_visual_solver/` when tests agree with the demo contracts.
 
 Canonical demo contract set:
-- Plans and current layout work:
-  `demo/docs/iter9_visual_solver_demo_implementation_plan.md`,
-  `demo/docs/iter9_visual_solver_demo_execution_plan.md`,
-  `demo/docs/iter9_visual_solver_demo_ui_polish_implementation_plan.md`,
-  `demo/docs/iter9_visual_solver_responsive_layout_refactor_requirements.md`,
-  and `demo/iter9_visual_solver_demo_plan.md`
+- Plan: `demo/iter9_visual_solver_demo_plan.md`
 - Runtime contracts: `demo/docs/runtime_package_contract.md`,
   `demo/docs/artifact_consumption_contract.md`,
   `demo/docs/config_contract.md`, `demo/docs/playback_speed_contract.md`,
@@ -74,6 +63,92 @@ Canonical demo contract set:
   `demo/docs/traceability_matrix.md`
 - Schema docs and baselines: `demo/docs/schema_docs_specs.md` and
   `demo/docs/json_schemas/`
+
+### Demo Playback Speed SSOT
+For every visual-demo playback-speed, batching, scheduler, replay-counter,
+pygame-loop playback, and playback-speed status-text change,
+`demo/docs/playback_speed_contract.md` is the binding source of truth after the
+current user correction for the task.
+
+This applies to:
+- `demos/iter9_visual_solver/playback/speed_policy.py`
+- `demos/iter9_visual_solver/playback/event_batching.py`
+- `demos/iter9_visual_solver/playback/event_scheduler.py`
+- `demos/iter9_visual_solver/playback/replay_state.py`
+- `demos/iter9_visual_solver/rendering/pygame_loop.py`
+- `demos/iter9_visual_solver/rendering/status_text.py`
+- `demos/iter9_visual_solver/cli/commands.py` when it wires playback speed
+- `tests/demo/iter9_visual_solver/test_speed_policy.py`
+- `tests/demo/iter9_visual_solver/test_event_batching.py`
+- `tests/demo/iter9_visual_solver/test_event_scheduler.py`
+- `tests/demo/iter9_visual_solver/test_replay_state.py`
+- `tests/demo/iter9_visual_solver/test_pygame_loop_with_fakes.py`
+- `tests/demo/iter9_visual_solver/test_status_text.py`
+- any architecture or CLI tests needed to enforce the contract
+
+When implementation, tests, config docs, or other demo docs conflict with
+`demo/docs/playback_speed_contract.md`, refresh the conflicting artifact to
+match the playback contract. Do not weaken the playback contract to preserve
+current loose implementation or incomplete tests.
+
+Playback-speed work must be TDD-first:
+- Add or update failing tests for the exact contract rule before changing
+  runtime code.
+- Cover every required test item in the contract's Required Tests section.
+- Keep tests in the contract-owned test files unless a CLI or architecture
+  boundary test is needed to enforce flow or forbidden imports.
+- Treat "tests pass" as insufficient when a required contract rule has no
+  explicit assertion.
+
+Required playback behavior to preserve:
+- `calculate_events_per_second()` accepts a validated `PlaybackConfig` object,
+  not raw JSON or dicts.
+- The speed formula is exactly
+  `round(clamp(base_events_per_second + total_mines * mine_count_multiplier,
+  min_events_per_second, max_events_per_second))`.
+- `calculate_events_per_frame()` uses
+  `max(1, ceil(events_per_second / target_fps))` when batching is enabled, and
+  returns `1` when batching is disabled.
+- `EventScheduler` preserves event order, emits final partial batches, finishes
+  immediately for empty events, and exposes `finished`, `applied_count`, and
+  `total_count`.
+- `ReplayState` owns applied event counters and status snapshot values.
+- `pygame_loop.py` may consume resolved `events_per_second` for display and
+  resolved `events_per_frame` for scheduling, but must not calculate the
+  mine-count speed formula.
+- `status_text.py` must display the resolved numeric line exactly as
+  `Playback speed: <events_per_second> cells/sec` and must not calculate speed.
+
+Forbidden playback-speed shortcuts:
+- Do not hardcode final playback speed as `50`, `50+`, or any static board-size
+  rule.
+- Do not tie playback speed to static board width or static board height.
+- Do not put speed formula ownership in `pygame_loop.py`, `status_panel.py`,
+  `cli/commands.py`, `run_iter9.py`, config loading, artifact loading, or event
+  trace loading.
+- Do not add pygame, file I/O, JSON loading, NumPy loading, or sleeps/timing
+  ownership to `speed_policy.py`, `event_batching.py`, or `event_scheduler.py`.
+
+Minimum validation for playback-speed changes:
+
+```powershell
+python -m unittest tests.demo.iter9_visual_solver.test_speed_policy
+python -m unittest tests.demo.iter9_visual_solver.test_event_batching
+python -m unittest tests.demo.iter9_visual_solver.test_event_scheduler
+python -m unittest tests.demo.iter9_visual_solver.test_replay_state
+python -m unittest tests.demo.iter9_visual_solver.test_pygame_loop_with_fakes
+python -m unittest tests.demo.iter9_visual_solver.test_status_text
+python -m unittest tests.demo.iter9_visual_solver.test_cli_commands
+python -m unittest tests.demo.iter9_visual_solver.test_architecture_boundaries
+python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
+```
+
+For playback-speed behavior changes, also run the full repo suite before
+completion:
+
+```powershell
+python -m unittest discover -s tests -p "test_*.py"
+```
 
 Demo development boundaries:
 - Runtime code lives under `demos/iter9_visual_solver/`.

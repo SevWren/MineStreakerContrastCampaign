@@ -841,6 +841,8 @@ Playback speed policy
 ### What belongs in this file
 
 This file tests playback speed math independently from pygame.
+It must pass a validated `PlaybackConfig` object to the speed policy and assert
+that raw playback dictionaries are rejected.
 
 ### Required test cases
 
@@ -850,7 +852,10 @@ This file tests playback speed math independently from pygame.
 - [ ] zero mines returns at least min speed
 - [ ] large mine count does not exceed max speed
 - [ ] speed calculation returns integer or documented numeric type
+- [ ] raw dict playback config is rejected
+- [ ] negative mine count is rejected
 - [ ] unsupported playback mode is rejected
+- [ ] speed policy does not import pygame
 
 ### What must not belong in this file
 
@@ -882,6 +887,7 @@ This file tests converting playback speed into per-frame batch sizes.
 - [ ] events per frame uses events_per_second / target_fps
 - [ ] batch size is at least 1 when events remain
 - [ ] fractional remainder behavior follows contract
+- [ ] events_per_second <= 0 is rejected
 - [ ] target_fps <= 0 is rejected
 - [ ] batching can be disabled if config supports it
 
@@ -951,6 +957,9 @@ This file tests in-memory replay counters and completion state.
 - [ ] applying mine event increments flagged mine count
 - [ ] applying safe event increments safe solved count
 - [ ] unknown remaining updates according to contract
+- [ ] applied event count is exposed
+- [ ] total event count is exposed
+- [ ] status snapshot includes resolved playback speed
 - [ ] finished is true after all events applied
 - [ ] duplicate event handling follows contract
 
@@ -1300,6 +1309,7 @@ This file tests command-level orchestration seams.
 
 - [ ] main function exists
 - [ ] command wires parsed args into loader/playback/rendering orchestration
+- [ ] command passes resolved events_per_second and events_per_frame into the pygame loop
 - [ ] command returns success code on valid run
 - [ ] command returns nonzero or raises typed error on invalid config
 - [ ] command does not contain business logic directly
@@ -1411,6 +1421,7 @@ This file is an architecture fitness test suite.
 - [ ] jsonschema imports are test/schema-helper only
 - [ ] domain modules do not import pygame/pydantic/file I/O
 - [ ] playback modules do not import pygame
+- [ ] pygame loop does not own playback speed formula fields
 - [ ] io modules do not import pygame
 - [ ] rendering modules do not import Pydantic
 - [ ] CLI does not draw pixels or create pygame window directly

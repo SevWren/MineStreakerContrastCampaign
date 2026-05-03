@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from tests.demo.iter9_visual_solver.fixtures.configs import default_demo_config_dict
+from demos.iter9_visual_solver.config.models import DemoConfig
 
 
 class DemoConfigBuilder:
@@ -29,5 +30,16 @@ class DemoConfigBuilder:
         self._config["playback"]["max_events_per_second"] = int(value)
         return self
 
+    def with_min_events_per_second(self, value: int) -> "DemoConfigBuilder":
+        self._config["playback"]["min_events_per_second"] = int(value)
+        return self
+
+    def with_playback_mode(self, value: str) -> "DemoConfigBuilder":
+        self._config["playback"]["mode"] = value
+        return self
+
     def build_dict(self) -> dict[str, Any]:
         return deepcopy(self._config)
+
+    def build(self) -> DemoConfig:
+        return DemoConfig.model_validate(self.build_dict())

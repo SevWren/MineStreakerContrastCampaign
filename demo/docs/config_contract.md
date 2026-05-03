@@ -669,7 +669,7 @@ load config file
 | `test_config_models.py` | field types, defaults, enums, numeric ranges, cross-field rules |
 | `test_config_loader.py` | missing file, malformed JSON, invalid config, typed errors |
 | `test_config_schema_contract.py` | schema validity, default config validity, invalid examples |
-| `test_speed_policy.py` | playback fields consumed correctly |
+| `test_speed_policy.py` | playback fields consumed through validated `PlaybackConfig`, raw dict rejection, mine-count formula, and min/max clamps |
 | `test_finish_policy.py` | finish fields consumed correctly |
 | `test_window_geometry.py` | window fields consumed correctly |
 | `test_color_palette.py` | RGB fields consumed correctly |

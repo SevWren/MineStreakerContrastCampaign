@@ -12,9 +12,9 @@ def calculate_events_per_frame(
     batch_events_per_frame: bool = True,
 ) -> int:
     if events_per_second <= 0:
-        raise ValueError("events_per_second must be positive")
+        raise ValueError(f"events_per_second={events_per_second} must be > 0")
     if target_fps <= 0:
-        raise ValueError("target_fps must be positive")
+        raise ValueError(f"target_fps={target_fps} must be > 0")
     if not batch_events_per_frame:
         return 1
     return max(1, int(math.ceil(events_per_second / target_fps)))

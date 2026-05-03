@@ -323,7 +323,12 @@ Every schema doc MUST include a table like:
 
 | JSON Path | Runtime Owner | Test File |
 |---|---|---|
+| `$.playback.min_events_per_second` | `playback/speed_policy.py` | `test_speed_policy.py` |
+| `$.playback.base_events_per_second` | `playback/speed_policy.py` | `test_speed_policy.py` |
 | `$.playback.mine_count_multiplier` | `playback/speed_policy.py` | `test_speed_policy.py` |
+| `$.playback.max_events_per_second` | `playback/speed_policy.py` | `test_speed_policy.py` |
+| `$.playback.target_fps` | `playback/event_batching.py` | `test_event_batching.py` |
+| `$.playback.batch_events_per_frame` | `playback/event_batching.py` | `test_event_batching.py` |
 | `$.window.finish_behavior.mode` | `playback/finish_policy.py` | `test_finish_policy.py` |
 | `$.visuals.flagged_mine_rgb` | `rendering/color_palette.py` | `test_color_palette.py` |
 

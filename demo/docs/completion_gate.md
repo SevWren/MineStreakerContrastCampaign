@@ -185,10 +185,10 @@ tests/demo/iter9_visual_solver/test_event_trace_loader.py
 | PLAYBACK-GATE-001 | Playback speed is calculated from validated config | Unit test | `test_speed_policy.py` | speed hardcoded or ignores config | Playback owner | Blocking |
 | PLAYBACK-GATE-002 | Playback speed uses mine-count multiplier | Unit test | `test_speed_policy.py` | multiplier has no effect | Playback owner | Blocking |
 | PLAYBACK-GATE-003 | Playback speed clamps to min and max | Unit test | `test_speed_policy.py` | out-of-range speed returned | Playback owner | Blocking |
-| PLAYBACK-GATE-004 | pygame loop does not calculate speed formula | Architecture test | `test_runtime_files_do_not_mix_layer_keywords` | formula appears in pygame loop | Architecture owner | Blocking |
+| PLAYBACK-GATE-004 | pygame loop does not calculate speed formula | Architecture/source test | `test_pygame_loop_with_fakes.py`, `test_architecture_boundaries.py` | formula appears in pygame loop | Architecture owner | Blocking |
 | PLAYBACK-GATE-005 | Event batching is tested independently from pygame | Unit test | `test_event_batching.py` | batching requires pygame clock | Playback owner | Blocking |
 | PLAYBACK-GATE-006 | Scheduler preserves event order | Unit test | `test_event_scheduler.py` | events dropped, duplicated, or reordered | Playback owner | Blocking |
-| PLAYBACK-GATE-007 | Replay state tracks mine/safe/unknown counters | Unit test | `test_replay_state.py` | counters wrong | Playback owner | Blocking |
+| PLAYBACK-GATE-007 | Replay state tracks mine/safe/unknown counters and playback snapshot values | Unit test | `test_replay_state.py` | counters or resolved speed snapshot wrong | Playback owner | Blocking |
 | PLAYBACK-GATE-008 | Finish behavior is independent from pygame | Unit test | `test_finish_policy.py` | finish policy requires pygame loop | Playback owner | Blocking |
 | PLAYBACK-GATE-009 | Default finish behavior is `stay_open` | Config + policy test | `test_config_models.py`, `test_finish_policy.py` | default closes window | Playback owner | Blocking |
 

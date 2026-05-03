@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 from demos.iter9_visual_solver.domain.playback_event import PlaybackEvent
 from tests.demo.iter9_visual_solver.fixtures.pygame_fakes import FakePygameModule
@@ -82,6 +83,17 @@ class PygameLoopWithFakesTests(unittest.TestCase):
         result = run_pygame_loop(pygame_module=fake, events=[], max_frames=5)
         self.assertEqual(result.exit_reason, "user_closed_window")
         self.assertTrue(result.closed_by_user)
+
+    def test_loop_does_not_calculate_speed_formula(self):
+        source = Path("demos/iter9_visual_solver/rendering/pygame_loop.py").read_text(encoding="utf-8")
+        forbidden = [
+            "base_events_per_second",
+            "mine_count_multiplier",
+            "max_events_per_second",
+            "min_events_per_second",
+        ]
+        for token in forbidden:
+            self.assertNotIn(token, source)
 
 
 if __name__ == "__main__":

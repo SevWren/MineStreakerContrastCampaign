@@ -41,6 +41,16 @@ class ReplayState:
         return self._applied >= len(self.events)
 
     @property
+    def applied_count(self) -> int:
+        return self._applied
+
+    @property
+    def total_count(self) -> int:
+        if self.total_events is not None:
+            return self.total_events
+        return len(self.events)
+
+    @property
     def board(self) -> BoardState:
         return self._board
 

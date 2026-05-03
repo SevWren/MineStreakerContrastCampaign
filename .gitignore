@@ -18,6 +18,11 @@ PATCH_SUMMARY.md
 example_commands_before_pipeline_improvement_native_iter9_image_sweep_mode.md
 demo/docs/archive
 demo/docs/archive/
+demo_documentation_files.txt
+minesweep_codebase.txt
+iter9_visual_solver_codebase.txt
+
+
 
 # Generated conversation artifacts
 conversations.json
@@ -104,3 +109,15 @@ temp/
 
 # Git ignore cannot enforce file-size caps. Use a pre-commit or CI check
 # if the repository must reject tracked files larger than 50 KB.
+
+
+assets/Easter 2025-2.png 
+assets/Easter 2025.jfif 
+assets/line_art_a6.jpg 
+assets/line_art_a7.jpg 
+assets/line_art_irl_14_optimized.png 
+assets/line_art_irl_14_optimized_V2.png 
+assets/line_art_irl_18.jpg 
+assets/line_art_irl_18.png 
+assets/line_art_irl_18v2.png 
+demo/demo_screenshot_notes.png 
