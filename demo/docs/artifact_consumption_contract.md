@@ -655,3 +655,36 @@ Manual evidence:
 - [ ] Optional solver trace path is supported.
 - [ ] Missing required artifact errors are typed and clear.
 - [ ] I/O modules do not import pygame.
+
+---
+
+## 18. Typed Trace Loading and Lazy Final-Grid Replay
+
+Runtime playback may consume typed event stores instead of materialized
+`PlaybackEvent` lists. `load_event_trace()` remains a compatibility API that
+returns playback events; optimized runtime paths should use the typed trace
+loader and pass the store through event source selection.
+
+Required optimized APIs:
+
+```python
+def load_typed_event_trace(path: Path, *, board_width: int | None = None, board_height: int | None = None) -> PlaybackEventStore: ...
+def build_lazy_playback_events_from_final_grid(grid: np.ndarray) -> PlaybackEventStore: ...
+```
+
+Typed storage rules:
+
+- `step`, `y`, and `x` use `np.uint32`.
+- state codes use `np.uint8`.
+- aggregate counts may use Python `int` or `np.uint64`.
+- coordinate, board-size, and step overflow must be rejected before playback.
+- final-grid replay must compute mine count from the grid, not by scanning
+  materialized event objects.
+
+Trace loader rules:
+
+- read JSONL line by line.
+- preserve file order.
+- require strictly increasing `step` values.
+- reject duplicate or decreasing steps.
+- reject out-of-bounds coordinates when dimensions are supplied.

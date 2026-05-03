@@ -477,3 +477,19 @@ Manual evidence:
 - [ ] No placeholder text is displayed.
 - [ ] Status panel does not own playback/config/I/O logic.
 - [ ] Unit tests and architecture tests pass.
+
+---
+
+## 15. Status View-Model Cache Rule
+
+`status_view_model.py` may provide a factory that caches static view-model
+parts such as legend items and card structure. Dynamic values from
+`StatusSnapshot` must still update every frame.
+
+Required behavior:
+
+- [ ] cached static fields do not change playback counters.
+- [ ] dynamic fields reflect the latest snapshot.
+- [ ] status view-model code remains pygame-free.
+- [ ] speed text remains owned by `status_text.py` and displays
+      `Playback speed: <events_per_second> cells/sec`.

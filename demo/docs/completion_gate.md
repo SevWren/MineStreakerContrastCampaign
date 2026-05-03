@@ -324,3 +324,24 @@ all standard unittest discovery passes,
 the existing Iter9 CLI smoke checks pass,
 and manual GUI review confirms the visual demo behavior.
 ```
+
+---
+
+## 19. Runtime Optimization Gates
+
+| Gate ID | Requirement | Verification | Evidence | Failure condition | Owner | Severity |
+|---|---|---|---|---|---|---|
+| PERF-GATE-001 | Final-grid replay does not materialize one event object per cell for runtime metadata | Unit test | `test_final_grid_store_does_not_materialize_cell_events_for_metadata` | metadata path constructs per-cell `PlaybackEvent` objects | Playback owner | Blocking |
+| PERF-GATE-002 | Scheduler uses indexed typed batch views when available | Unit test | `test_scheduler_returns_typed_batch_views_without_list_slicing` | typed source is sliced into lists | Playback owner | Blocking |
+| PERF-GATE-003 | Replay status snapshot is counter-based | Unit test | `test_snapshot_uses_counters_without_scanning_cells` | snapshot scans board cells | Playback owner | Blocking |
+| PERF-GATE-004 | Board rendering reuses a logical surface across resize/maximize | Unit test | `test_loop_reuses_logical_board_surface_when_resized` | resize recreates logical board surface for unchanged board dimensions | Rendering owner | Blocking |
+| PERF-GATE-005 | Trace loader streams into typed storage and rejects non-monotonic steps | Unit test | `test_load_typed_event_trace_streams_rows_into_typed_store`, duplicate/decreasing step tests | loader sorts after full read or accepts duplicate/decreasing steps | I/O owner | Blocking |
+
+Manual runtime acceptance remains required for a completed demo release:
+
+- [ ] launch with a representative completed Iter9 run.
+- [ ] confirm large-board startup allocates materially fewer Python event objects
+      or starts faster by inspection/fake-call counts.
+- [ ] confirm resize/maximize changes rendered layout.
+- [ ] confirm close events remain responsive.
+- [ ] confirm the final board visual state matches pre-optimization behavior.

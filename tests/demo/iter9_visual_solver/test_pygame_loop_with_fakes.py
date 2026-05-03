@@ -132,6 +132,27 @@ class PygameLoopWithFakesTests(unittest.TestCase):
         self.assertEqual(result.events_applied, 1)
         self.assertEqual(fake.display.created_windows[-1], (1920, 1080))
 
+    def test_loop_reuses_logical_board_surface_when_resized(self):
+        from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
+
+        fake = FakePygameModule()
+        fake.event.events.append(type("FakeResizeEvent", (), {"type": fake.VIDEORESIZE, "w": 80, "h": 80})())
+        run_pygame_loop(
+            pygame_module=fake,
+            events=[
+                PlaybackEvent(step=0, y=0, x=0, state="MINE", display="flag"),
+                PlaybackEvent(step=1, y=0, x=1, state="SAFE", display="reveal"),
+            ],
+            events_per_frame=1,
+            board_width=2,
+            board_height=1,
+            status_panel_width_px=20,
+            resizable=True,
+            max_frames=2,
+        )
+        self.assertEqual(fake.surface_calls.count((2, 1)), 1)
+        self.assertEqual(len(fake.transform.scale_calls), 2)
+
     def test_loop_ignores_resize_when_resizable_false(self):
         from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
 

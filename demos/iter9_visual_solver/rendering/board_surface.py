@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from demos.iter9_visual_solver.playback.event_source import STATE_MINE, STATE_SAFE, STATE_UNKNOWN
+
 
 @dataclass(frozen=True)
 class BoardSurfaceModel:
@@ -99,3 +101,58 @@ def draw_scaled_board_state(
         scaled_surface,
         (int(getattr(destination_rect, "x")), int(getattr(destination_rect, "y"))),
     )
+
+
+@dataclass
+class CachedBoardSurfaceRenderer:
+    board_width: int
+    board_height: int
+    adapter: Any
+    palette: Any
+    show_safe_cells: bool = False
+    show_unknown_cells: bool = True
+    logical_surface: Any = None
+
+    def __post_init__(self) -> None:
+        self.board_width = int(self.board_width)
+        self.board_height = int(self.board_height)
+        self.logical_surface = self.adapter.create_surface(width=self.board_width, height=self.board_height)
+        if self.logical_surface is not None and hasattr(self.logical_surface, "fill"):
+            self.logical_surface.fill(tuple(self.palette.background_rgb))
+
+    def apply_batch(self, events: Any) -> None:
+        if self.logical_surface is None:
+            return
+        if hasattr(events, "y") and hasattr(events, "x") and hasattr(events, "state_codes"):
+            iterator = zip(events.y, events.x, events.state_codes)
+            for y, x, code in iterator:
+                self._draw_cell(int(y), int(x), int(code))
+            return
+        for event in events:
+            state = getattr(event, "state")
+            code = STATE_MINE if state == "MINE" else STATE_SAFE if state == "SAFE" else STATE_UNKNOWN
+            self._draw_cell(int(event.y), int(event.x), code)
+
+    def draw_scaled(self, *, surface: Any, destination_rect: Any) -> None:
+        if self.logical_surface is None:
+            return
+        scaled_surface = self.adapter.scale_surface_nearest(
+            self.logical_surface,
+            width=int(getattr(destination_rect, "width")),
+            height=int(getattr(destination_rect, "height")),
+        )
+        self.adapter.blit_surface(
+            surface,
+            scaled_surface,
+            (int(getattr(destination_rect, "x")), int(getattr(destination_rect, "y"))),
+        )
+
+    def _draw_cell(self, y: int, x: int, code: int) -> None:
+        color = tuple(self.palette.background_rgb)
+        if code == STATE_MINE:
+            color = tuple(self.palette.flagged_mine_rgb)
+        elif code == STATE_SAFE and self.show_safe_cells:
+            color = tuple(self.palette.safe_cell_rgb)
+        elif code == STATE_UNKNOWN and self.show_unknown_cells:
+            color = tuple(self.palette.unknown_cell_rgb)
+        self.adapter.draw_rect(self.logical_surface, color, (x, y, 1, 1))

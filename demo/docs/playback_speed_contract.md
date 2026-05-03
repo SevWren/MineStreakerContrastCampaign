@@ -490,3 +490,39 @@ Manual evidence:
 - [ ] Pygame loop does not own speed formula.
 - [ ] Status text displays resolved speed.
 - [ ] Unit and architecture tests enforce ownership.
+
+---
+
+## 18. Runtime Optimization Addendum
+
+Large-board playback may use typed event stores and lazy batch views instead of
+`list[PlaybackEvent]` as the scheduler input. This does not change speed
+ownership, ordering, batching math, finish behavior, or status text.
+
+Allowed optimized scheduler input:
+
+```python
+class PlaybackEventStore:
+    total_count: int
+    mine_count: int
+    board_width: int
+    board_height: int
+    def batch(self, start: int, end: int) -> PlaybackEventBatch: ...
+```
+
+`EventScheduler.next_batch()` may return a lightweight batch view when the input
+supports `batch(start, end)`. It must continue to return list slices for
+list-backed compatibility inputs and must preserve the required behavior in
+section 8.3.
+
+`ReplayState` must derive status snapshots from incremental counters, not by
+scanning all cells each frame. The pygame loop may consume resolved
+`events_per_second` for display and resolved `events_per_frame` for scheduling,
+but it remains forbidden from calculating the mine-count speed formula.
+
+Additional required tests:
+
+- [ ] typed event-store batches preserve row-major order.
+- [ ] scheduler returns typed batch views without list slicing.
+- [ ] list-backed scheduler behavior remains unchanged.
+- [ ] replay snapshots are O(1) from counters.

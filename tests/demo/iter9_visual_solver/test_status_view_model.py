@@ -70,6 +70,21 @@ class StatusViewModelTests(unittest.TestCase):
         source = Path("demos/iter9_visual_solver/rendering/status_view_model.py").read_text(encoding="utf-8")
         self.assertNotIn("pygame", source)
 
+    def test_status_view_model_factory_reuses_static_legend_and_updates_dynamic_values(self):
+        from demos.iter9_visual_solver.rendering.status_view_model import StatusPanelViewModelFactory
+
+        factory = StatusPanelViewModelFactory(
+            status_config=None,
+            palette=self._palette(),
+            show_safe_cells=True,
+            show_unknown_cells=True,
+        )
+        first = factory.build(StatusSnapshotBuilder().with_unknowns(3).build())
+        second = factory.build(StatusSnapshotBuilder().with_unknowns(0).with_finish_state("complete - staying open").build())
+        self.assertIs(first.legend_items, second.legend_items)
+        self.assertEqual(first.badge.label, "RUNNING")
+        self.assertEqual(second.badge.label, "SOLVED")
+
 
 if __name__ == "__main__":
     unittest.main()

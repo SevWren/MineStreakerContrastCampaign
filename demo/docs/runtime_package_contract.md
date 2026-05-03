@@ -1263,3 +1263,24 @@ test_architecture_boundaries.py
 - [ ] Import boundary tests pass.
 - [ ] `run_iter9.py` hook is thin and optional.
 - [ ] Existing base project root modules are not refactored by demo work.
+
+---
+
+## 11. Runtime Optimization Ownership
+
+The demo runtime may optimize playback without refactoring root reconstruction
+modules. Ownership remains:
+
+| Concern | Owner |
+|---|---|
+| typed/lazy event stores | `playback/event_source.py` |
+| streaming JSONL-to-typed-store loading | `io/event_trace_loader.py` |
+| ordered batch indexing | `playback/event_scheduler.py` |
+| compact replay counters | `domain/board_state.py`, `playback/replay_state.py` |
+| dirty logical board surface | `rendering/board_surface.py` |
+| frame-loop orchestration and resize reuse | `rendering/pygame_loop.py` |
+| cached status view-model static fields | `rendering/status_view_model.py` |
+
+Optimization work must not add pygame imports outside rendering, file I/O to
+playback modules, JSON loading to playback modules, or speed-formula ownership
+outside `playback/speed_policy.py`.

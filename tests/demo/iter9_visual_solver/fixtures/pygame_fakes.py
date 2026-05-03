@@ -125,8 +125,10 @@ class FakePygameModule:
     WINDOWSIZECHANGED: int = 32780
     WINDOWMAXIMIZED: int = 32781
     RESIZABLE: int = 16
+    surface_calls: list[tuple[int, int]] = field(default_factory=list)
 
     def Surface(self, size):
+        self.surface_calls.append(tuple(size))
         return FakeSurface(tuple(size))
 
     def init(self) -> None:

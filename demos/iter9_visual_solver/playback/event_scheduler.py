@@ -19,7 +19,7 @@ class EventScheduler:
 
     @property
     def finished(self) -> bool:
-        return self._index >= len(self.events)
+        return self._index >= self.total_count
 
     @property
     def applied_count(self) -> int:
@@ -27,12 +27,14 @@ class EventScheduler:
 
     @property
     def total_count(self) -> int:
-        return len(self.events)
+        return int(getattr(self.events, "total_count", len(self.events)))
 
-    def next_batch(self) -> list[Any]:
+    def next_batch(self) -> Any:
         if self.finished:
             return []
         start = self._index
-        end = min(len(self.events), start + self.events_per_frame)
+        end = min(self.total_count, start + self.events_per_frame)
         self._index = end
+        if hasattr(self.events, "batch"):
+            return self.events.batch(start, end)
         return self.events[start:end]

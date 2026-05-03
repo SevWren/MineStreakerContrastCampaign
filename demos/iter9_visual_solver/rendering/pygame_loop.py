@@ -8,11 +8,11 @@ from typing import Any
 from demos.iter9_visual_solver.playback.finish_policy import should_auto_close
 from demos.iter9_visual_solver.playback.event_scheduler import EventScheduler
 from demos.iter9_visual_solver.playback.replay_state import ReplayState
-from demos.iter9_visual_solver.rendering.board_surface import draw_scaled_board_state
+from demos.iter9_visual_solver.rendering.board_surface import CachedBoardSurfaceRenderer
 from demos.iter9_visual_solver.rendering.color_palette import ColorPalette
 from demos.iter9_visual_solver.rendering.pygame_adapter import PygameAdapter
 from demos.iter9_visual_solver.rendering.status_panel import draw_status_panel_view_model
-from demos.iter9_visual_solver.rendering.status_view_model import build_status_panel_view_model
+from demos.iter9_visual_solver.rendering.status_view_model import StatusPanelViewModelFactory
 from demos.iter9_visual_solver.rendering.window_chrome import draw_board_border, draw_header_strip, draw_vertical_divider
 from demos.iter9_visual_solver.rendering.window_geometry import (
     DisplayBounds,
@@ -103,7 +103,7 @@ def run_pygame_loop(
     title: str = "Mine-Streaker Iter9 Visual Solver Demo",
     resizable: bool = False,
 ) -> PygameLoopResult:
-    event_list = list(events or [])
+    event_source = events if events is not None else []
     adapter = PygameAdapter(pygame_module=pygame_module)
     display_bounds = adapter.get_display_bounds()
     if window_config is not None:
@@ -135,9 +135,9 @@ def run_pygame_loop(
         placement=placement,
     )
     font = adapter.create_font()
-    scheduler = EventScheduler(events=event_list, events_per_frame=events_per_frame)
+    scheduler = EventScheduler(events=event_source, events_per_frame=events_per_frame)
     replay_state = ReplayState(
-        events=event_list,
+        events=event_source,
         board_width=board_width or width,
         board_height=board_height or height,
         source_image_name=source_image_name,
@@ -153,6 +153,20 @@ def run_pygame_loop(
         background_rgb=(10, 10, 10),
     )
     finish_config = finish_config or {"mode": "close_immediately", "close_after_seconds": None}
+    board_renderer = CachedBoardSurfaceRenderer(
+        board_width=geometry.board_width,
+        board_height=geometry.board_height,
+        adapter=adapter,
+        palette=palette,
+        show_safe_cells=show_safe_cells,
+        show_unknown_cells=show_unknown_cells,
+    )
+    status_view_models = StatusPanelViewModelFactory(
+        status_config=status_config,
+        palette=palette,
+        show_safe_cells=show_safe_cells,
+        show_unknown_cells=show_unknown_cells,
+    )
     board_pixel_width = int(board_pixel_width if board_pixel_width is not None else geometry.board_pixel_width)
     status_panel_width_px = max(0, int(status_panel_width_px or geometry.status_panel_width_px))
     frames = 0
@@ -199,6 +213,7 @@ def run_pygame_loop(
             if not scheduler.finished:
                 batch = scheduler.next_batch()
                 replay_state.apply_batch(batch)
+                board_renderer.apply_batch(batch)
                 events_applied += len(batch)
             if scheduler.finished and finish_started_s is None:
                 finish_started_s = elapsed_time_s
@@ -214,13 +229,7 @@ def run_pygame_loop(
                 finish_state=finish_state,
                 elapsed_seconds=elapsed_time_s,
             )
-            view_model = build_status_panel_view_model(
-                snapshot=snapshot,
-                status_config=status_config,
-                palette=palette,
-                show_safe_cells=show_safe_cells,
-                show_unknown_cells=show_unknown_cells,
-            )
+            view_model = status_view_models.build(snapshot)
             draw_header_strip(
                 surface,
                 adapter=adapter,
@@ -230,16 +239,9 @@ def run_pygame_loop(
                 text_rgb=(230, 230, 230),
                 font=font,
             )
-            draw_scaled_board_state(
+            board_renderer.draw_scaled(
                 surface=surface,
-                adapter=adapter,
-                board_state=replay_state.board,
-                palette=palette,
-                board_width=geometry.board_width,
-                board_height=geometry.board_height,
                 destination_rect=geometry.board_draw_rect,
-                show_safe_cells=show_safe_cells,
-                show_unknown_cells=show_unknown_cells,
             )
             draw_board_border(
                 surface,

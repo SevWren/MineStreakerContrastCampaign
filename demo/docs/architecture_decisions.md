@@ -978,3 +978,51 @@ Invalid instruction:
 ```text
 Implement the visual demo.
 ```
+
+---
+
+## ADR-013: Large-Board Playback Uses Compact Stores and Dirty Rendering
+
+| Field | Value |
+|---|---|
+| Status | Accepted |
+| Date | 2026-05-03 |
+| Owner | Demo playback and rendering architecture |
+| Decision scope | Runtime optimization inside `demos/iter9_visual_solver/` |
+| Traceability IDs | DEMO-REQ-015 |
+
+### Context
+
+Large final-grid boards can contain hundreds of thousands of cells. Building one
+Python event object per cell and redrawing every known cell on every frame adds
+startup latency and avoidable per-frame allocation.
+
+### Decision
+
+Use typed/lazy playback event stores, indexed scheduler batch views,
+counter-based replay snapshots, streaming JSONL trace loading, cached static
+status view-model fields, and one persistent logical board surface updated by
+dirty event batches.
+
+### Consequences
+
+- `PlaybackEvent` remains the validation and compatibility model.
+- Runtime playback paths may pass typed event stores through the scheduler and
+  replay state.
+- `pygame_loop.py` remains an imperative shell and must not own speed formulas,
+  event parsing, or artifact loading.
+- Resize/maximize may reopen the window surface but must reuse the logical board
+  surface while board dimensions are unchanged.
+
+### Risks
+
+- Typed event batches can bypass compatibility assumptions that expect lists.
+- Dirty rendering can leave stale pixels after state changes if hidden safe or
+  unknown cells are not redrawn as background.
+
+### Mitigations
+
+- Preserve list-backed scheduler tests.
+- Add typed event-source, scheduler, replay-state, board-surface, loop,
+  status-view-model, and trace-loader tests.
+- Keep optimization modules within existing package ownership boundaries.

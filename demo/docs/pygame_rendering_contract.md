@@ -471,3 +471,25 @@ The implementation fails this contract if:
 - [ ] rendering tests use fakes.
 - [ ] architecture tests enforce pygame isolation.
 - [ ] manual smoke criteria are documented.
+
+---
+
+## 14. Dirty Board Surface Optimization
+
+Large-board playback must keep one persistent logical board surface for the
+current grid dimensions. The logical surface is initialized once with the
+background color, updated only for cells in the applied event batch, then
+nearest-neighbor scaled/blitted into the current `board_draw_rect`.
+
+Resize and maximize events must not recreate the logical board surface when the
+board dimensions are unchanged. They may reopen the window surface and must
+reuse the logical board surface for the new destination rectangle.
+
+Required behavior:
+
+- [ ] batch application draws only changed cells on the logical surface.
+- [ ] safe cells draw as background when `show_safe_cells` is false.
+- [ ] unknown cells draw as background when `show_unknown_cells` is false.
+- [ ] resize/maximize changes scale/blit destination without resetting replay
+      state or recreating the logical board surface.
+- [ ] pygame imports remain confined to rendering modules and pygame fakes.

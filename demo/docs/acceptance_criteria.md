@@ -464,3 +464,26 @@ Final decision: accepted / rejected
 - [ ] Existing Iter9 CLI smoke commands pass.
 - [ ] Demo GUI manual scenario passes.
 - [ ] Acceptance signoff template is completed.
+
+---
+
+## 18. Large-Board Optimization Acceptance
+
+The optimized runtime is acceptable only if visible playback behavior remains
+unchanged while structural allocation/redraw work is reduced.
+
+Required evidence:
+
+- [ ] final-grid runtime can expose total count, mine count, board dimensions,
+      and row-major batches without materializing one `PlaybackEvent` per cell.
+- [ ] scheduler preserves list-backed compatibility and typed batch ordering.
+- [ ] replay counters handle duplicate and state-change events.
+- [ ] status snapshots use incremental counters.
+- [ ] board rendering creates the logical board surface once per board size and
+      updates only changed batch cells.
+- [ ] resize/maximize reuses the logical board surface and changes only the
+      window/destination scaling path.
+- [ ] JSONL trace loading is line-by-line and rejects duplicate/decreasing
+      steps.
+- [ ] manual review confirms close responsiveness and final-board visual
+      equivalence for a representative completed Iter9 run.

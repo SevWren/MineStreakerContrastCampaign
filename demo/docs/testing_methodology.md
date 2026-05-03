@@ -1502,3 +1502,27 @@ Do not enforce line count as the only rule. It must also check responsibility/im
 - [ ] Architecture boundary tests prevent dependency drift.
 - [ ] Source modularity tests prevent large mixed-responsibility files.
 - [ ] No test file becomes a dumping ground for multiple modules.
+
+---
+
+# 6. Runtime Optimization Test Addendum
+
+Large-board playback optimization must add focused tests in the existing owner
+test files rather than creating broad integration-only coverage.
+
+Required ownership:
+
+- `test_event_source.py`: typed/lazy event-store metadata, overflow rejection,
+  row-major final-grid batches, and no final-grid event materialization for
+  metadata.
+- `test_event_scheduler.py`: typed batch views and unchanged list-backed
+  compatibility behavior.
+- `test_replay_state.py`: duplicate/state-change counters and O(1) snapshot
+  behavior.
+- `test_board_surface.py`: logical surface creation once, dirty batch cell
+  drawing, and scale/blit reuse.
+- `test_pygame_loop_with_fakes.py`: resize/maximize reuse of the logical board
+  surface and close responsiveness.
+- `test_status_view_model.py`: static cache reuse with dynamic snapshot updates.
+- `test_event_trace_loader.py`: streaming typed store output and duplicate or
+  decreasing step rejection.

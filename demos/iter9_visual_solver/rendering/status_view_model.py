@@ -180,3 +180,38 @@ def build_status_panel_view_model(
         raw_lines=raw_lines,
         source_preview=SourcePreviewSpec(label=source_name, detail=preview_detail),
     )
+
+
+@dataclass(frozen=True)
+class StatusPanelViewModelFactory:
+    status_config: Any | None
+    palette: Any
+    show_safe_cells: bool
+    show_unknown_cells: bool
+
+    def __post_init__(self) -> None:
+        legend = [LegendItemSpec("Mine", tuple(self.palette.flagged_mine_rgb))]
+        if self.show_safe_cells:
+            legend.append(LegendItemSpec("Safe", tuple(self.palette.safe_cell_rgb)))
+        if self.show_unknown_cells:
+            legend.append(LegendItemSpec("Unknown", tuple(self.palette.unknown_cell_rgb)))
+        legend.append(LegendItemSpec("Unseen", tuple(self.palette.unseen_cell_rgb)))
+        object.__setattr__(self, "_legend_items", tuple(legend))
+
+    def build(self, snapshot: Any) -> StatusPanelViewModel:
+        view_model = build_status_panel_view_model(
+            snapshot=snapshot,
+            status_config=self.status_config,
+            palette=self.palette,
+            show_safe_cells=self.show_safe_cells,
+            show_unknown_cells=self.show_unknown_cells,
+        )
+        return StatusPanelViewModel(
+            header_text=view_model.header_text,
+            badge=view_model.badge,
+            cards=view_model.cards,
+            progress_bars=view_model.progress_bars,
+            legend_items=self._legend_items,
+            raw_lines=view_model.raw_lines,
+            source_preview=view_model.source_preview,
+        )

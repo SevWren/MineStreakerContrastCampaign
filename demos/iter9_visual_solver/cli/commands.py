@@ -5,7 +5,7 @@ from __future__ import annotations
 from demos.iter9_visual_solver.cli.args import parse_args
 from demos.iter9_visual_solver.config.loader import load_demo_config
 from demos.iter9_visual_solver.domain.board_dimensions import BoardDimensions
-from demos.iter9_visual_solver.io.event_trace_loader import load_event_trace
+from demos.iter9_visual_solver.io.event_trace_loader import load_typed_event_trace
 from demos.iter9_visual_solver.io.grid_loader import load_grid
 from demos.iter9_visual_solver.io.metrics_loader import load_metrics
 from demos.iter9_visual_solver.playback.event_batching import calculate_events_per_frame
@@ -52,9 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     dims = BoardDimensions.from_grid(grid)
     trace_events = None
     if args.event_trace:
-        trace_events = load_event_trace(args.event_trace, board_width=dims.width, board_height=dims.height)
+        trace_events = load_typed_event_trace(args.event_trace, board_width=dims.width, board_height=dims.height)
     events, _source = select_event_source(input_config=config.input, grid=grid, trace_events=trace_events)
-    total_mines = sum(1 for event in events if event.state == "MINE")
+    if hasattr(events, "mine_count"):
+        total_mines = int(events.mine_count)
+    else:
+        total_mines = sum(1 for event in events if event.state == "MINE")
     events_per_second = calculate_events_per_second(config.playback, total_mines=total_mines)
     events_per_frame = calculate_events_per_frame(
         events_per_second=events_per_second,

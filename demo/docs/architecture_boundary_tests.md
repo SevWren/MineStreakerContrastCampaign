@@ -951,3 +951,21 @@ demos/iter9_visual_solver/rendering/pygame_loop.py
 - [ ] Test setup duplication guard exists.
 - [ ] Approved exception mechanism exists and rejects empty reasons.
 - [ ] All failures include actionable messages.
+
+---
+
+## 30. Optimization Boundary Rules
+
+Runtime optimization must preserve the same import boundaries:
+
+- typed event stores may import NumPy but must not import pygame, pathlib file
+  loading, JSON loading, or config models.
+- event trace streaming belongs in `io/event_trace_loader.py`, not playback.
+- dirty board-surface rendering belongs in `rendering/board_surface.py`, not
+  playback or I/O.
+- status view-model caching belongs in `rendering/status_view_model.py` and
+  must remain pygame-free.
+- `pygame_loop.py` may orchestrate cached objects but must not own typed trace
+  parsing, final-grid event generation, or playback-speed formulas.
+
+Architecture tests must continue to pass after optimization changes.
