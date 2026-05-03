@@ -135,7 +135,7 @@ Invalid values: values below `0.10`, negative numbers, values greater than `1`.
 | Default | `360` |
 | Valid range | `0` through `1200` |
 | Runtime owner | `rendering/window_geometry.py` |
-| Runtime effect | Reserves horizontal pixels for status text. `0` means no reserved side panel. |
+| Runtime effect | Minimum/preferred status panel width. `0` means no reserved side panel; responsive layout may grow the panel up to 560 px or 28% of the current window width, bounded by half of the window. |
 
 ## `window.minimum_board_cell_px`
 
@@ -454,7 +454,7 @@ Every field is a required boolean.
   "schema_version": "iter9_visual_solver_demo_config.v1",
   "window": {
     "title": "Mine-Streaker Iter9 Visual Solver Demo",
-    "resizable": false,
+    "resizable": true,
     "max_screen_fraction": 0.92,
     "status_panel_width_px": 360,
     "minimum_board_cell_px": 1,

@@ -33,6 +33,12 @@ class ConfigSchemaContractTests(unittest.TestCase):
         self.assertTrue(config_path.is_file(), f"Missing default config: {config_path}")
         assert_json_validates(self, load_json(config_path), load_json(schema_path))
 
+    def test_committed_default_config_enables_responsive_defaults(self):
+        config = load_json(Path("configs/demo/iter9_visual_solver_demo.default.json"))
+        self.assertTrue(config["window"]["resizable"])
+        self.assertTrue(config["window"]["fit_to_screen"])
+        self.assertTrue(config["window"]["center_window"])
+
 
 if __name__ == "__main__":
     unittest.main()

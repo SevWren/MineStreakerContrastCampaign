@@ -1068,6 +1068,9 @@ This file tests pure window sizing logic.
 - [ ] fit_to_screen scales display without changing board dimensions
 - [ ] max_screen_fraction limits window dimensions
 - [ ] wide and tall boards both fit correctly
+- [ ] maximized windows produce an enlarged board draw rect with `board_scale > 1`
+- [ ] smaller resize produces `board_scale < 1` without distorting board aspect
+- [ ] source preview rect preserves source-image aspect when source dimensions are available
 
 ### What must not belong in this file
 
@@ -1103,6 +1106,7 @@ This file tests board pixel/state mapping.
 - [ ] safe event maps to safe color when show_safe_cells is enabled
 - [ ] unknown event maps to unknown color when show_unknown_cells is enabled
 - [ ] unseen cells use unseen color
+- [ ] logical offscreen board surface is nearest-neighbor scaled/blitted into the destination rect
 
 ### What must not belong in this file
 
@@ -1175,6 +1179,8 @@ This file tests drawing status lines onto a surface seam.
 - [ ] status panel uses injected/fake font
 - [ ] status panel does not compute status text itself
 - [ ] status panel handles empty line list
+- [ ] wide mode renders structured label/value rows with right-aligned values
+- [ ] narrow mode wraps/clips structured rows safely
 
 ### What must not belong in this file
 
@@ -1209,6 +1215,7 @@ This file tests pygame adapter behavior through fakes.
 - [ ] adapter exposes event polling seam
 - [ ] adapter exposes clock/tick seam
 - [ ] adapter closes pygame cleanly
+- [ ] adapter creates offscreen surfaces and scale/blit operations for responsive board rendering
 
 ### What must not belong in this file
 
@@ -1245,6 +1252,8 @@ This file tests event-loop orchestration without a real window.
 - [ ] loop updates status snapshot/text through provided seams
 - [ ] loop exits on fake QUIT event
 - [ ] loop honors finish policy
+- [ ] loop preserves replay state while recomputing geometry on resize/maximize
+- [ ] loop passes the current dynamic board/status/source-preview rects to renderers
 
 ### What must not belong in this file
 
@@ -1317,6 +1326,19 @@ This file tests command-level orchestration seams.
 ### What must not belong in this file
 
 Do not test individual speed/window/loader rules here.
+
+Additional responsive/polish test ownership:
+
+- `test_status_view_model.py` covers badge state, progress ratios, legend
+  colors, raw status-line reuse, and source-preview placeholder metadata.
+- `test_window_chrome.py` covers header, board border, and divider drawing
+  through adapter/fakes without pygame imports.
+- `test_window_geometry.py` covers display bounds, placement, live resize
+  geometry, fit flags, scaled board draw rects, dynamic panel width, and the
+  bottom-right aspect-fit `source_preview_rect`.
+- `test_pygame_adapter_contract.py` covers display bounds, placement,
+  resize-window behavior, resize event helpers, and backwards-compatible
+  drawing primitives plus offscreen surface scale/blit seams.
 
 ---
 

@@ -56,6 +56,27 @@ tests/demo/iter9_visual_solver/test_pygame_loop_with_fakes.py
 | `pygame_adapter.py` | pygame init/display/event/clock seam | playback logic, config validation |
 | `pygame_loop.py` | frame-loop orchestration | artifact loading, Pydantic validation, speed formula |
 
+Responsive and polish additions:
+
+| Module | Added responsibility | Still forbidden |
+|---|---|---|
+| `window_chrome.py` | draw header strip, board border, and divider through the adapter | pygame imports, metrics parsing |
+| `status_view_model.py` | build pure badge/card/progress/legend/source-preview view models | pygame imports, file loading |
+| `pygame_adapter.py` | display bounds, resize event helpers, resize_window, placement, line/rect/text primitives | playback rules, config validation |
+| `pygame_loop.py` | recompute layout on resize and compose chrome/board/status draws from current geometry | speed calculation, metrics loading |
+
+The frame loop must preserve replay state during resize and draw in this order:
+background, header, board, board border, divider, polished status panel, flip.
+The board is rendered to a logical offscreen surface that matches grid
+dimensions, then nearest-neighbor scaled/blitted into `board_draw_rect`.
+The bottom-right source preview slot is reserved by geometry/status drawing;
+actual source-image loading is a follow-up feature and must degrade to a
+placeholder when unavailable.
+Maximize/window-state events must be treated as resize inputs. If the pygame
+event lacks explicit width/height values, the adapter must use display bounds so
+the surface is reopened at the maximized size instead of merely moving the
+window to the top-left corner.
+
 ---
 
 ## 4. Allowed pygame Import Paths
@@ -370,6 +391,7 @@ FakeFont
 - [ ] adapter polls events through fake queue.
 - [ ] adapter ticks clock through fake clock.
 - [ ] adapter closes pygame cleanly.
+- [ ] adapter creates offscreen surfaces and nearest-neighbor scales/blits them.
 
 ### `test_pygame_loop_with_fakes.py`
 
@@ -381,6 +403,7 @@ FakeFont
 - [ ] loop honors `close_immediately`.
 - [ ] loop honors `close_after_delay`.
 - [ ] loop does not require real display.
+- [ ] resize/maximize recomputes geometry and draws using the current board draw rect.
 
 ### `test_board_surface.py`
 
@@ -389,6 +412,7 @@ FakeFont
 - [ ] unknown events map according to `show_unknown_cells`.
 - [ ] unseen cells remain configured unseen color.
 - [ ] model dimensions match board dimensions.
+- [ ] board drawing can render a logical grid surface and scale/blit it into a destination rect.
 
 ### `test_status_panel.py`
 

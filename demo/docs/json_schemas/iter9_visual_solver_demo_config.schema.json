@@ -153,7 +153,7 @@
           "minimum": 0,
           "maximum": 1200,
           "default": 360,
-          "description": "Width in pixels reserved for status text. Use 0 to hide the side panel area."
+          "description": "Minimum/preferred width in pixels for the responsive status panel. Use 0 to hide the side panel area."
         },
         "minimum_board_cell_px": {
           "type": "integer",
@@ -396,7 +396,7 @@
       "schema_version": "iter9_visual_solver_demo_config.v1",
       "window": {
         "title": "Mine-Streaker Iter9 Visual Solver Demo",
-        "resizable": false,
+        "resizable": true,
         "max_screen_fraction": 0.92,
         "status_panel_width_px": 360,
         "minimum_board_cell_px": 1,

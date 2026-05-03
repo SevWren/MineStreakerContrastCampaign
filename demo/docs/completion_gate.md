@@ -207,7 +207,12 @@ tests/demo/iter9_visual_solver/test_event_trace_loader.py
 | RENDER-GATE-007 | pygame adapter uses injected pygame module in tests | Unit test | `test_pygame_adapter_contract.py` | real window required for unit test | Rendering owner | Blocking |
 | RENDER-GATE-008 | pygame loop runs with fakes | Unit test | `test_pygame_loop_with_fakes.py` | fake-loop test cannot run | Rendering owner | Blocking |
 | RENDER-GATE-009 | pygame imports are rendering-only | Architecture test | `test_pygame_imports_are_rendering_only` | pygame imported elsewhere | Architecture owner | Blocking |
-| RENDER-GATE-010 | Rendering modules do not validate config | Architecture test | `test_rendering_does_not_own_config_validation` | rendering imports pydantic/jsonschema/loader | Architecture owner | Blocking |
+| RENDER-GATE-010 | Responsive resize recomputes geometry without resetting replay | Unit test | `test_pygame_loop_with_fakes.py` | resize ignored or events reset | Rendering owner | Blocking |
+| RENDER-GATE-011 | Source preview slot is reserved in bottom-right status panel | Unit test | `test_window_geometry.py`, `test_status_panel.py` | preview overlaps board or lacks placeholder | Rendering owner | Blocking |
+| RENDER-GATE-012 | Polished status view model remains pygame-free | Unit test/source check | `test_status_view_model.py` | view model imports pygame or loads files | Rendering owner | Blocking |
+| RENDER-GATE-013 | Board draws through logical offscreen surface and nearest-neighbor scale/blit | Unit test | `test_board_surface.py`, `test_pygame_adapter_contract.py` | board remains capped to startup integer cell size | Rendering owner | Blocking |
+| RENDER-GATE-014 | Maximized layout enlarges board, dynamic panel, header, and source preview regions | Unit test + manual review | `test_window_geometry.py`, `test_pygame_loop_with_fakes.py` | OS window grows while rendered GUI stays fixed | Rendering owner | Blocking |
+| RENDER-GATE-015 | Rendering modules do not validate config | Architecture test | `test_rendering_does_not_own_config_validation` | rendering imports pydantic/jsonschema/loader | Architecture owner | Blocking |
 
 ---
 

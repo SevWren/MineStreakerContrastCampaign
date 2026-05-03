@@ -16,7 +16,7 @@ def default_demo_config_dict() -> dict[str, Any]:
         "schema_version": "iter9_visual_solver_demo_config.v1",
         "window": {
             "title": "Mine-Streaker Iter9 Visual Solver Demo",
-            "resizable": False,
+            "resizable": True,
             "max_screen_fraction": 0.92,
             "status_panel_width_px": 360,
             "minimum_board_cell_px": 1,

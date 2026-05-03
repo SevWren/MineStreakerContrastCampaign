@@ -29,6 +29,9 @@ class ConfigModelsTests(unittest.TestCase):
             self.skipTest("DemoConfig is not implemented yet")
         model = DemoConfig.model_validate(default_demo_config_dict())
         self.assertEqual(model.schema_version, "iter9_visual_solver_demo_config.v1")
+        self.assertTrue(model.window.resizable)
+        self.assertTrue(model.window.fit_to_screen)
+        self.assertTrue(model.window.center_window)
 
     def test_runtime_model_rejects_invalid_configs(self):
         try:

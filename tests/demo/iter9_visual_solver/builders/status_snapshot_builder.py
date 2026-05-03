@@ -39,5 +39,17 @@ class StatusSnapshotBuilder:
         self._values["total_mines"] = int(total_mines)
         return self
 
+    def with_unknowns(self, unknown_remaining: int) -> "StatusSnapshotBuilder":
+        self._values["unknown_remaining"] = int(unknown_remaining)
+        return self
+
+    def with_finish_state(self, finish_state: str) -> "StatusSnapshotBuilder":
+        self._values["finish_state"] = str(finish_state)
+        return self
+
+    def with_source_image(self, source_image_name: str) -> "StatusSnapshotBuilder":
+        self._values["source_image_name"] = str(source_image_name)
+        return self
+
     def build(self) -> StatusSnapshotFixture:
         return StatusSnapshotFixture(**self._values)

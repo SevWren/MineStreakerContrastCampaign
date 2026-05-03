@@ -95,6 +95,59 @@ class PygameLoopWithFakesTests(unittest.TestCase):
         for token in forbidden:
             self.assertNotIn(token, source)
 
+    def test_loop_recomputes_geometry_on_resize_event(self):
+        from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
+
+        fake = FakePygameModule()
+        fake.event.events.append(type("FakeResizeEvent", (), {"type": fake.VIDEORESIZE, "w": 80, "h": 80})())
+        result = run_pygame_loop(
+            pygame_module=fake,
+            events=[PlaybackEvent(step=0, y=0, x=0, state="MINE", display="flag")],
+            events_per_frame=1,
+            board_width=10,
+            board_height=10,
+            status_panel_width_px=20,
+            resizable=True,
+            max_frames=1,
+        )
+        self.assertEqual(result.events_applied, 1)
+        self.assertGreaterEqual(len(fake.display.created_windows), 2)
+
+    def test_loop_maximize_event_expands_surface_to_display_bounds(self):
+        from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
+
+        fake = FakePygameModule()
+        fake.display.desktop_sizes = [(1920, 1080)]
+        fake.event.events.append(type("FakeMaximizeEvent", (), {"type": fake.WINDOWMAXIMIZED})())
+        result = run_pygame_loop(
+            pygame_module=fake,
+            events=[PlaybackEvent(step=0, y=0, x=0, state="MINE", display="flag")],
+            events_per_frame=1,
+            board_width=800,
+            board_height=800,
+            status_panel_width_px=360,
+            resizable=True,
+            max_frames=1,
+        )
+        self.assertEqual(result.events_applied, 1)
+        self.assertEqual(fake.display.created_windows[-1], (1920, 1080))
+
+    def test_loop_ignores_resize_when_resizable_false(self):
+        from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
+
+        fake = FakePygameModule()
+        fake.event.events.append(type("FakeResizeEvent", (), {"type": fake.VIDEORESIZE, "w": 80, "h": 80})())
+        run_pygame_loop(
+            pygame_module=fake,
+            events=[],
+            board_width=10,
+            board_height=10,
+            status_panel_width_px=20,
+            resizable=False,
+            max_frames=1,
+        )
+        self.assertEqual(len(fake.display.created_windows), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

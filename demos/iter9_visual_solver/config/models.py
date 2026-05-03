@@ -28,7 +28,7 @@ class FinishBehaviorConfig(_StrictModel):
 
 class WindowConfig(_StrictModel):
     title: str = Field(default="Mine-Streaker Iter9 Visual Solver Demo", min_length=1, max_length=120)
-    resizable: bool = False
+    resizable: bool = True
     max_screen_fraction: float = Field(default=0.92, ge=0.1, le=1.0)
     status_panel_width_px: int = Field(default=360, ge=0, le=1200)
     minimum_board_cell_px: int = Field(default=1, ge=1, le=64)
@@ -108,4 +108,3 @@ class DemoConfig(_StrictModel):
     visuals: VisualsConfig
     status_panel: StatusPanelConfig
     input: InputConfig
-

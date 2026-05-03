@@ -62,8 +62,10 @@ pygame loop behavior in rendering/pygame_loop.py
 | Board width | `grid.shape[1]`. |
 | Board height | `grid.shape[0]`. |
 | Total cells | `board_width * board_height`. |
-| Cell pixel size | Number of screen pixels used to render one board cell. |
-| Board viewport | The pixel rectangle used for the Minesweeper board visualization. |
+| Cell pixel size | Compatibility integer derived from board scale; it is not the visual scaling authority during responsive resize. |
+| Board viewport | The allotted pixel rectangle for the Minesweeper board visualization. |
+| Board draw rect | The aspect-fit rectangle inside the board viewport where the scaled board is blitted. |
+| Board scale | Floating screen pixels per logical board cell. This may be below 1.0 on small windows or above 1.0 on large/maximized windows. |
 | Status panel | The optional side panel showing source image, board size, seed, cell counts, and playback status. |
 | Window geometry | The complete pygame window width/height and all child rectangles. |
 
@@ -225,6 +227,26 @@ def calculate_window_geometry(
 ) -> WindowGeometry: ...
 ```
 
+Responsive layout additions:
+
+- `RectSpec` is the pygame-free rectangle value type for window, content,
+  header, board, status-panel, divider, and source-preview rectangles.
+- `DisplayBounds` represents active display bounds for screen budgets and
+  horizontal placement.
+- `LayoutRequest` is the immutable input for startup and resize geometry.
+- `WindowPlacement` carries optional OS-window placement. `center_window=true`
+  horizontally centers the full window rectangle, not board content.
+- `calculate_responsive_window_geometry(...)` recalculates layout for resize
+  events while preserving board aspect ratio and exposing
+  `board_viewport_rect`, `board_draw_rect`, and floating `board_scale`.
+- For user-requested larger window sizes, including maximize, responsive
+  geometry preserves the requested surface width/height instead of shrinking
+  the pygame window back to the board content size. The board is aspect-fit and
+  visually scaled inside its viewport; it is not capped by integer cell size.
+- `WindowGeometry` must keep scalar compatibility fields while exposing rects,
+  fit flags, minimum/preferred window sizes, and a bottom-right
+  `source_preview_rect` inside the status panel when space allows.
+
 ---
 
 ## 7. Geometry Calculation Rules
@@ -245,6 +267,16 @@ window_width_px = board_width_px + status_panel_width_px
 window_height_px = max(board_height_px, minimum_status_panel_height_px)
 ```
 
+During resize/maximize handling, the configured width is treated as the
+minimum/preferred width. The responsive width is:
+
+```text
+panel_width = min(max(status_panel_width_px, int(window_width * 0.28)), min(560, window_width // 2))
+```
+
+The panel docks to the right edge of the requested window surface, leaving a
+gutter and divider between panel and board viewport.
+
 If `status_panel_width_px == 0`:
 
 ```text
@@ -261,7 +293,9 @@ allowed_screen_width  = floor(screen_width_px  * max_screen_fraction)
 allowed_screen_height = floor(screen_height_px * max_screen_fraction)
 ```
 
-If the preferred cell size does not fit, reduce `cell_px` until the full window fits.
+If the preferred visual scale does not fit, reduce `board_scale` until the
+board draw rect fits the allotted viewport. `cell_px` remains a compatibility
+integer only.
 
 ## 7.4 Minimum cell size
 
@@ -381,6 +415,9 @@ Required test cases:
 - [ ] Tall board and wide board both calculate correctly.
 - [ ] Window dimensions are derived from board dimensions.
 - [ ] Board aspect ratio is not distorted.
+- [ ] Maximized windows produce `board_scale > 1.0` when space allows.
+- [ ] Smaller resize produces `board_scale < 1.0` without changing board dimensions.
+- [ ] Source preview aspect-fits using source-image dimensions when provided.
 - [ ] `fits_screen` false case is represented explicitly.
 - [ ] No pygame window is opened in geometry tests.
 

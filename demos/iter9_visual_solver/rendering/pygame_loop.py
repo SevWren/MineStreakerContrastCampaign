@@ -8,11 +8,20 @@ from typing import Any
 from demos.iter9_visual_solver.playback.finish_policy import should_auto_close
 from demos.iter9_visual_solver.playback.event_scheduler import EventScheduler
 from demos.iter9_visual_solver.playback.replay_state import ReplayState
-from demos.iter9_visual_solver.rendering.board_surface import draw_board_state
+from demos.iter9_visual_solver.rendering.board_surface import draw_scaled_board_state
 from demos.iter9_visual_solver.rendering.color_palette import ColorPalette
 from demos.iter9_visual_solver.rendering.pygame_adapter import PygameAdapter
-from demos.iter9_visual_solver.rendering.status_panel import draw_status_panel
-from demos.iter9_visual_solver.rendering.status_text import build_status_lines
+from demos.iter9_visual_solver.rendering.status_panel import draw_status_panel_view_model
+from demos.iter9_visual_solver.rendering.status_view_model import build_status_panel_view_model
+from demos.iter9_visual_solver.rendering.window_chrome import draw_board_border, draw_header_strip, draw_vertical_divider
+from demos.iter9_visual_solver.rendering.window_geometry import (
+    DisplayBounds,
+    LayoutRequest,
+    WindowGeometry,
+    calculate_responsive_window_geometry,
+    calculate_window_geometry,
+    calculate_window_placement,
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +83,7 @@ def run_pygame_loop(
     board_width: int | None = None,
     board_height: int | None = None,
     source_image_name: str = "unknown",
+    source_image_size: tuple[int, int] | None = None,
     seed: int = 0,
     replay_source: str = "",
     finish_config=None,
@@ -81,6 +91,8 @@ def run_pygame_loop(
     palette: ColorPalette | None = None,
     show_safe_cells: bool = False,
     show_unknown_cells: bool = True,
+    geometry: WindowGeometry | None = None,
+    window_config=None,
     cell_px: int = 1,
     board_pixel_width: int | None = None,
     status_panel_width_px: int = 0,
@@ -93,7 +105,35 @@ def run_pygame_loop(
 ) -> PygameLoopResult:
     event_list = list(events or [])
     adapter = PygameAdapter(pygame_module=pygame_module)
-    surface = adapter.open_window(width=width, height=height, title=title, resizable=resizable)
+    display_bounds = adapter.get_display_bounds()
+    if window_config is not None:
+        resizable = bool(_get(window_config, "resizable", resizable))
+    if geometry is None:
+        geometry = calculate_window_geometry(
+            board_width=board_width or width,
+            board_height=board_height or height,
+            status_panel_width_px=_get(window_config, "status_panel_width_px", status_panel_width_px),
+            preferred_board_cell_px=_get(window_config, "preferred_board_cell_px", cell_px),
+            minimum_board_cell_px=_get(window_config, "minimum_board_cell_px", 1),
+            max_screen_fraction=_get(window_config, "max_screen_fraction", 1.0),
+            fit_to_screen=_get(window_config, "fit_to_screen", True),
+            display_bounds=display_bounds,
+            source_image_width_px=source_image_size[0] if source_image_size else None,
+            source_image_height_px=source_image_size[1] if source_image_size else None,
+        )
+    placement = calculate_window_placement(
+        window_width=geometry.window_width,
+        window_height=geometry.window_height,
+        display_bounds=display_bounds,
+        center_window=bool(_get(window_config, "center_window", False)),
+    )
+    surface = adapter.open_window(
+        width=geometry.window_width,
+        height=geometry.window_height,
+        title=title,
+        resizable=resizable,
+        placement=placement,
+    )
     font = adapter.create_font()
     scheduler = EventScheduler(events=event_list, events_per_frame=events_per_frame)
     replay_state = ReplayState(
@@ -113,8 +153,8 @@ def run_pygame_loop(
         background_rgb=(10, 10, 10),
     )
     finish_config = finish_config or {"mode": "close_immediately", "close_after_seconds": None}
-    board_pixel_width = int(board_pixel_width if board_pixel_width is not None else width - status_panel_width_px)
-    status_panel_width_px = max(0, int(status_panel_width_px))
+    board_pixel_width = int(board_pixel_width if board_pixel_width is not None else geometry.board_pixel_width)
+    status_panel_width_px = max(0, int(status_panel_width_px or geometry.status_panel_width_px))
     frames = 0
     events_applied = 0
     elapsed_time_s = 0.0
@@ -122,7 +162,7 @@ def run_pygame_loop(
     try:
         while True:
             for event in adapter.poll_events():
-                if getattr(event, "type", event) == getattr(adapter.pygame, "QUIT", None):
+                if adapter.is_quit_event(event):
                     return PygameLoopResult(
                         exit_reason="user_closed_window",
                         playback_finished=scheduler.finished,
@@ -131,6 +171,31 @@ def run_pygame_loop(
                         elapsed_time_s=elapsed_time_s,
                         closed_by_user=True,
                     )
+                if resizable and adapter.is_resize_event(event):
+                    event_size = adapter.get_resize_event_size(event)
+                    if event_size is not None:
+                        requested_width, requested_height = event_size
+                        geometry = calculate_responsive_window_geometry(
+                            LayoutRequest(
+                                board_width=board_width or geometry.board_width,
+                                board_height=board_height or geometry.board_height,
+                                requested_window_width=requested_width,
+                                requested_window_height=requested_height,
+                                status_panel_width_px=_get(window_config, "status_panel_width_px", geometry.status_panel_width_px),
+                                preferred_board_cell_px=_get(window_config, "preferred_board_cell_px", geometry.cell_px),
+                                minimum_board_cell_px=_get(window_config, "minimum_board_cell_px", 1),
+                                max_screen_fraction=_get(window_config, "max_screen_fraction", 1.0),
+                                fit_to_screen=_get(window_config, "fit_to_screen", True),
+                                display_bounds=display_bounds,
+                                source_image_width_px=source_image_size[0] if source_image_size else None,
+                                source_image_height_px=source_image_size[1] if source_image_size else None,
+                            )
+                        )
+                        surface = adapter.resize_window(
+                            width=max(geometry.window_width, geometry.minimum_window_width),
+                            height=max(geometry.window_height, geometry.minimum_window_height),
+                            resizable=resizable,
+                        )
             if not scheduler.finished:
                 batch = scheduler.next_batch()
                 replay_state.apply_batch(batch)
@@ -143,29 +208,61 @@ def run_pygame_loop(
                 finish_config=finish_config,
                 elapsed_after_finish_s=elapsed_after_finish_s,
             )
-            draw_board_state(
+            if hasattr(surface, "fill"):
+                surface.fill(tuple(palette.background_rgb))
+            snapshot = replay_state.snapshot(
+                finish_state=finish_state,
+                elapsed_seconds=elapsed_time_s,
+            )
+            view_model = build_status_panel_view_model(
+                snapshot=snapshot,
+                status_config=status_config,
+                palette=palette,
+                show_safe_cells=show_safe_cells,
+                show_unknown_cells=show_unknown_cells,
+            )
+            draw_header_strip(
+                surface,
+                adapter=adapter,
+                header_rect=geometry.header_rect,
+                text=view_model.header_text,
+                background_rgb=(20, 20, 20),
+                text_rgb=(230, 230, 230),
+                font=font,
+            )
+            draw_scaled_board_state(
                 surface=surface,
                 adapter=adapter,
                 board_state=replay_state.board,
                 palette=palette,
-                cell_px=cell_px,
+                board_width=geometry.board_width,
+                board_height=geometry.board_height,
+                destination_rect=geometry.board_draw_rect,
                 show_safe_cells=show_safe_cells,
                 show_unknown_cells=show_unknown_cells,
             )
-            if status_panel_width_px > 0:
-                lines = build_status_lines(
-                    replay_state.snapshot(
-                        finish_state=finish_state,
-                        elapsed_seconds=elapsed_time_s,
-                    ),
-                    status_config,
-                )
-                draw_status_panel(
+            draw_board_border(
+                surface,
+                adapter=adapter,
+                board_rect=geometry.board_rect,
+                border_rgb=(90, 90, 90),
+            )
+            if geometry.divider_rect is not None:
+                draw_vertical_divider(
                     surface,
-                    lines,
-                    panel_rect=(board_pixel_width, 0, status_panel_width_px, height),
-                    background_rgb=palette.background_rgb,
+                    adapter=adapter,
+                    divider_rect=geometry.divider_rect,
+                    divider_rgb=(70, 70, 70),
+                )
+            if geometry.status_panel_rect is not None:
+                draw_status_panel_view_model(
+                    surface,
+                    view_model,
+                    adapter=adapter,
+                    panel_rect=geometry.status_panel_rect,
+                    palette=palette,
                     font=font,
+                    source_preview_rect=geometry.source_preview_rect,
                 )
             adapter.flip()
             tick_ms = adapter.tick(target_fps)

@@ -53,6 +53,7 @@ The demo MUST:
 - open a pygame GUI window.
 - display the board visualization.
 - display status panel when configured.
+- resize/maximize the rendered GUI regions, not just the OS window.
 - start automatically.
 - require no user controls for MVP.
 - stop automatically when playback completes.
@@ -69,6 +70,10 @@ The demo MUST:
 - avoid hardcoded board height.
 - avoid static GUI dimensions.
 - size the GUI from board dimensions and config.
+- preserve board aspect ratio while scaling the visual board up or down inside
+  the current viewport.
+- preserve source-image aspect ratio for the source preview slot when source
+  dimensions are available in metrics.
 - support `300 x derived-height` concept by replacing `derived-height` with the actual height.
 
 ## 3.4 Playback behavior
@@ -311,6 +316,10 @@ any exceptions/warnings
 - [ ] GUI opens.
 - [ ] Board appears.
 - [ ] Status panel appears.
+- [ ] Header strip, board border, divider, metric cards, progress bars, legend,
+      and bottom-right source preview placeholder appear in the polished panel.
+- [ ] Resizing smaller, resizing larger, and maximizing visibly changes board,
+      panel, preview, and header layout without resetting playback.
 - [ ] Board line shows actual dimensions.
 - [ ] Playback starts automatically.
 - [ ] Mine flags/visual cells appear progressively.

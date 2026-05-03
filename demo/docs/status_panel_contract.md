@@ -205,6 +205,24 @@ If a field is hidden, `status_text.py` must omit the line entirely.
 
 No hidden field may leave blank placeholder rows unless an explicit layout option exists.
 
+Polished status panel additions:
+
+- `status_view_model.py` owns grouping existing status facts into badge, metric
+  cards, progress bars, legend items, and source-preview placeholder metadata.
+- `status_panel.py` owns drawing, wrapping, and clipping only; it must not parse
+  metrics, load images, calculate playback speed, or calculate finish policy.
+- The original source-image preview slot is reserved in the bottom-right corner
+  of the status panel. Geometry sizes it from available panel space and
+  source-image aspect when metrics provide source dimensions. Until image
+  loading/rendering is implemented, this slot draws a graceful placeholder with
+  the source image name when available.
+- Metric cards may carry structured label/value rows in addition to raw status
+  lines. Wide panels render labels and right-aligned values in compact rows;
+  narrow panels wrap safely without calculating status values in the renderer.
+- Missing or unloadable source images must not fail the demo.
+- `draw_status_panel(...)` remains available for raw-line compatibility, while
+  `draw_status_panel_view_model(...)` draws the polished panel.
+
 ---
 
 ## 7. Required Formatting Rules
@@ -417,6 +435,8 @@ Required test cases:
 - [ ] panel does not parse metrics.
 - [ ] panel does not calculate status text.
 - [ ] panel respects panel rectangle boundaries as defined by geometry.
+- [ ] wide panels render structured metric label/value rows without wrapping common values.
+- [ ] narrow panels still wrap or clip safely inside the panel.
 
 ## 12.3 Architecture tests
 

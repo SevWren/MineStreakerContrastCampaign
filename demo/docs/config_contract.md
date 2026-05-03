@@ -215,8 +215,9 @@ All models must reject extra fields.
 | JSON path | `$.window.resizable` |
 | Type | boolean |
 | Required | yes |
-| Default | `false` |
-| Runtime owner | `rendering/pygame_adapter.py` |
+| Default | `true` |
+| Runtime owner | `rendering/pygame_adapter.py`, `rendering/pygame_loop.py` |
+| Behavior | Requests pygame resizable mode and enables resize-event layout recomputation. |
 
 ---
 
@@ -245,6 +246,10 @@ All models must reject extra fields.
 | Range | `0 <= value <= 1200` |
 | Runtime owner | `rendering/window_geometry.py`, `rendering/status_panel.py` |
 | Tests | `test_window_geometry.py`, `test_status_panel.py` |
+
+Runtime effect: `0` hides the side panel. Values above `0` are the
+minimum/preferred side-panel width; responsive layout may grow the panel up to
+560 px or 28% of the current window width, bounded by half of the window.
 
 ---
 
@@ -561,7 +566,7 @@ The default config must contain every required field:
   "schema_version": "iter9_visual_solver_demo_config.v1",
   "window": {
     "title": "Mine-Streaker Iter9 Visual Solver Demo",
-    "resizable": false,
+    "resizable": true,
     "max_screen_fraction": 0.92,
     "status_panel_width_px": 360,
     "minimum_board_cell_px": 1,

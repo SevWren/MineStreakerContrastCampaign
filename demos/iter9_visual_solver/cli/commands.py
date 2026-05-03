@@ -13,7 +13,6 @@ from demos.iter9_visual_solver.playback.event_source import select_event_source
 from demos.iter9_visual_solver.playback.speed_policy import calculate_events_per_second
 from demos.iter9_visual_solver.rendering.color_palette import ColorPalette
 from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop
-from demos.iter9_visual_solver.rendering.window_geometry import calculate_window_geometry
 
 
 def _source_image_name(metrics: dict) -> str:
@@ -24,6 +23,25 @@ def _source_image_name(metrics: dict) -> str:
     if isinstance(source_validation, dict) and source_validation.get("name"):
         return str(source_validation["name"])
     return "unknown"
+
+
+def _source_image_size(metrics: dict) -> tuple[int, int] | None:
+    analysis = metrics.get("source_image_analysis")
+    if isinstance(analysis, dict):
+        width = analysis.get("width_px")
+        height = analysis.get("height_px")
+        if width and height:
+            return int(width), int(height)
+    width = metrics.get("source_width")
+    height = metrics.get("source_height")
+    if width and height:
+        return int(width), int(height)
+    validation = metrics.get("source_image_validation")
+    if isinstance(validation, dict):
+        pixel_shape = validation.get("pixel_shape")
+        if isinstance(pixel_shape, (list, tuple)) and len(pixel_shape) >= 2:
+            return int(pixel_shape[1]), int(pixel_shape[0])
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,15 +61,6 @@ def main(argv: list[str] | None = None) -> int:
         target_fps=config.playback.target_fps,
         batch_events_per_frame=config.playback.batch_events_per_frame,
     )
-    geometry = calculate_window_geometry(
-        board_width=dims.width,
-        board_height=dims.height,
-        status_panel_width_px=config.window.status_panel_width_px,
-        preferred_board_cell_px=config.window.preferred_board_cell_px,
-        minimum_board_cell_px=config.window.minimum_board_cell_px,
-        max_screen_fraction=config.window.max_screen_fraction,
-        fit_to_screen=config.window.fit_to_screen,
-    )
     palette = ColorPalette.from_config(config.visuals)
     run_pygame_loop(
         events=events,
@@ -60,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         board_width=dims.width,
         board_height=dims.height,
         source_image_name=_source_image_name(metrics),
+        source_image_size=_source_image_size(metrics),
         seed=int(metrics.get("seed", 0)),
         replay_source=_source,
         finish_config=config.window.finish_behavior,
@@ -67,12 +77,8 @@ def main(argv: list[str] | None = None) -> int:
         palette=palette,
         show_safe_cells=config.visuals.show_safe_cells,
         show_unknown_cells=config.visuals.show_unknown_cells,
-        cell_px=geometry.cell_px,
-        board_pixel_width=geometry.board_pixel_width,
-        status_panel_width_px=geometry.status_panel_width_px,
+        window_config=config.window,
         target_fps=config.playback.target_fps,
-        width=geometry.window_width,
-        height=geometry.window_height,
         title=config.window.title,
         resizable=config.window.resizable,
     )
