@@ -12,6 +12,7 @@ CARD_GAP_Y = 8
 PROGRESS_BAR_HEIGHT = 8
 LEGEND_SWATCH_SIZE = 10
 BADGE_HEIGHT = 34
+CARD_PADDING_Y = 8
 
 
 def _rect_tuple(rect: Any | None):
@@ -65,6 +66,12 @@ def _blit_text(surface, adapter, font, text: str, color, x: int, y: int) -> None
         rendered = font.render(text, True, tuple(color))
     if rendered is not None and hasattr(surface, "blit"):
         surface.blit(rendered, (x, y))
+
+
+def _metric_card_height(*, row_count: int, line_height: int) -> int:
+    row_count = max(0, int(row_count))
+    row_gaps = max(0, row_count - 1) * LINE_GAP_PX
+    return CARD_PADDING_Y + line_height + LINE_GAP_PX + row_count * line_height + row_gaps + CARD_PADDING_Y
 
 
 def draw_status_panel(
@@ -133,12 +140,12 @@ def draw_status_panel_view_model(
     for card in view_model.cards:
         rows = tuple(getattr(card, "rows", ()) or ())
         row_count = len(rows) if rows else len(card.lines)
-        needed = line_height * (row_count + 1) + CARD_GAP_Y
+        needed = _metric_card_height(row_count=row_count, line_height=line_height)
         if y + needed > bottom:
             break
         adapter.draw_rect(surface, (24, 24, 24), (x, y, width, needed), border_radius=4)
-        _blit_text(surface, adapter, font, card.title, text_rgb, x + 8, y + 6)
-        line_y = y + line_height + 8
+        _blit_text(surface, adapter, font, card.title, text_rgb, x + 8, y + CARD_PADDING_Y)
+        line_y = y + CARD_PADDING_Y + line_height + LINE_GAP_PX
         if rows and width >= 440:
             for row in rows:
                 label = f"{row.label}:"

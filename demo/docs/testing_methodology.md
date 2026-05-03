@@ -1,13 +1,5 @@
 ﻿# Iter9 Visual Solver Demo — Testing Methodology
 
-## Target Path
-
-This document is intended for:
-
-```text
-D:\Github\MineSweepResearchFilesFinalIteration\demo\docs\testing_methodology.md
-```
-
 ## Purpose
 
 This document defines exactly what belongs in each test support file and each test file for the Iter9 Visual Solver Demo.

@@ -22,6 +22,7 @@ class FakeSurface:
     blit_calls: list[Any] = field(default_factory=list)
     rect_calls: list[Any] = field(default_factory=list)
     scaled_from: Any = None
+    text: str | None = None
 
     def fill(self, color, rect=None):
         self.fill_calls.append((color, rect))
@@ -39,7 +40,7 @@ class FakeFont:
 
     def render(self, text: str, antialias: bool, color):
         self.rendered_text.append(text)
-        return FakeSurface((len(text) * 8, 16))
+        return FakeSurface((len(text) * 8, 16), text=str(text))
 
     def size(self, text: str):
         return (len(str(text)) * 8, 16)
