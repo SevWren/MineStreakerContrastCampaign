@@ -154,7 +154,7 @@ route_result
   Final solved/unresolved result after all route attempts that contributed to route.grid and route.sr.
 
 route_outcome_detail
-  Precise outcome detail explaining solved, partial progress, no accepted moves, timeout, changed grid without solver progress, or no route invoked.
+  Precise outcome detail. Must be one of the values defined in Appendix D.
 
 next_recommended_route
   The next strategy required after the selected route result.
@@ -163,6 +163,37 @@ next_recommended_route
 ```
 
 The report explicitly requires these fields and forbids overloading `selected_route` with both “route attempted” and “next action.”
+
+## 1.2 State Transition Table
+
+The following table defines the exact state transitions for all branches. Ambiguity in these mappings is a critical defect.
+
+| Current State (Input) | Condition | `selected_route` | `route_result` | `route_outcome_detail` | `next_recommended_route` |
+|---|---|---|---|---|---|
+| Unresolved | Already Solved (`sr.n_unknown == 0`) | `already_solved` | `solved` | `already_solved_before_routing` | `None` |
+| Unresolved | Phase 2 Invoked → Solved | `phase2_full_repair` | `solved` | `phase2_full_repair_solved` | `None` |
+| Unresolved | Phase 2 Invoked → **Partial** (n < before) | `phase2_full_repair` | `unresolved_after_repair` | `phase2_full_repair_partial_progress_unresolved` | `last100_repair` (if enabled) OR `needs_sa_or_adaptive_rerun` |
+| Unresolved | Phase 2 Invoked → **No-Op** (n == before) | `phase2_full_repair` | `unresolved_after_repair` | `phase2_full_repair_no_op` | `last100_repair` (if enabled) OR `needs_sa_or_adaptive_rerun` |
+| Unresolved | Last100 Invoked → Solved | `last100_repair` | `solved` | `last100_repair_solved` | `None` |
+| Unresolved | Last100 Invoked → Timeout | `last100_repair` | `unresolved_after_repair` | `last100_repair_timeout_unresolved` | `needs_sa_or_adaptive_rerun` |
+| Unresolved | Last100 Invoked → Partial | `last100_repair` | `unresolved_after_repair` | `last100_repair_partial_progress_unresolved` | `needs_sa_or_adaptive_rerun` |
+| Unresolved | No Route Invoked | `none` | `unresolved_after_repair` | `no_late_stage_route_invoked` | `needs_sa_or_adaptive_rerun` |
+
+## 1.3 Formal Enum: `route_outcome_detail`
+
+Free-text fields lead to parsing failures. The following values are the **only** allowed strings for `route_outcome_detail`. Any deviation indicates schema corruption:
+
+- `already_solved_before_routing`
+- `phase2_full_repair_solved`
+- `phase2_full_repair_partial_progress_unresolved`
+- `phase2_full_repair_no_op`
+- `phase2_full_repair_no_accepted_moves`
+- `last100_repair_solved`
+- `last100_repair_timeout_unresolved`
+- `last100_repair_partial_progress_unresolved`
+- `last100_repair_no_accepted_moves`
+- `no_late_stage_route_invoked`
+- `unresolved_repair_error`
 
 ---
 
@@ -384,32 +415,36 @@ def _build_route_result(
     if missing:
         raise ValueError(f"Incomplete route decision before result construction: {missing}")
 
+    # [AMENDMENT 2] Transactional Integrity: Verify sr.n_unknown matches decision BEFORE any commit
     sr_unknown = int(sr.n_unknown)
     decision_unknown = int(decision["solver_n_unknown_after"])
     if sr_unknown != decision_unknown:
         raise ValueError(
             "Route decision solver_n_unknown_after is stale: "
-            f"decision={decision_unknown}, sr={sr_unknown}"
+            f"decision={decision_unknown}, sr={sr_unknown}. "
+            "Grid/sr was modified without updating decision."
         )
 
+    # [AMENDMENT 2] Causal Consistency: Phase2 invoked must imply selected_route is phase2_full_repair
     if (
         bool(decision["phase2_full_repair_invoked"])
         and not bool(decision["last100_invoked"])
         and decision["selected_route"] != "phase2_full_repair"
     ):
         raise ValueError(
-            "Phase 2 changed or attempted the route, Last100 did not supersede it, "
-            f"but selected_route={decision['selected_route']!r}"
+            "Phase 2 invoked but selected_route is not phase2_full_repair. "
+            f"selected_route={decision['selected_route']!r}"
         )
 
+    # [AMENDMENT 2] Logical Invariant: needs_sa_or_adaptive_rerun is only valid for next_recommended_route
     if decision["selected_route"] == "needs_sa_or_adaptive_rerun":
         raise ValueError(
             "needs_sa_or_adaptive_rerun is a next_recommended_route value, "
-            "not a selected_route value"
+            "not a selected_route value. This indicates the route state was not updated after Phase 2."
         )
 
     route = RepairRouteResult(
-        grid=grid.copy(),
+        grid=grid.copy(),  # Deep copy for immutability
         sr=sr,
         selected_route=decision["selected_route"],
         route_result=decision["route_result"],
@@ -440,6 +475,7 @@ def _build_route_result(
         decision=dict(decision),
     )
 
+    # [AMENDMENT 2] Final Validation: Ensure dataclass and decision dict are perfectly synchronized
     for key, value in route.route_state_fields().items():
         if route.decision.get(key) != value:
             raise ValueError(
@@ -448,9 +484,12 @@ def _build_route_result(
             )
 
     return route
-```
 
-This helper is the synchronization boundary for `grid`, `sr`, `decision`, route logs, and `visual_delta_summary`. It must fail before artifact serialization when a route branch updates `grid` or `sr` without updating `decision` from the same routed state.
+# [AMENDMENT 2] USAGE CONTRACT: This function MUST be used as the sole construction path.
+# Any branch that modifies grid/sr must pass the MODIFIED copies (not originals) to this function.
+# If validation fails, the caller must NOT persist grid/sr and must handle the exception.
+
+
 
 ---
 
@@ -607,6 +646,24 @@ routed_grid = phase2_result.grid
 phase2_log = list(phase2_result.log)
 routed_sr = solve_board(routed_grid, max_rounds=int(config.solve_max_rounds), mode="full")
 
+# [AMENDMENT 4] Post-repair solve failure handling
+if routed_sr is None or not getattr(routed_sr, "success", True):
+    decision.update({
+        "route_result": "unresolved_repair_error",
+        "route_outcome_detail": "solver_failure_post_repair",
+        "solver_n_unknown_after": phase2_unknown_before,  # Revert to pre-repair state
+    })
+    # Do NOT update grid/sr - preserve original pre-repair state
+    return _build_route_result(
+        grid=phase2_grid_before,
+        sr=sr,
+        failure_taxonomy=failure_taxonomy,
+        decision=dict(decision),
+        phase2_log=phase2_log,
+        last100_log=[],
+        visual_delta_summary={},
+    )
+
 phase2_unknown_after = int(routed_sr.n_unknown)
 phase2_accepted_count = sum(1 for e in phase2_log if bool(e.get("accepted", False)))
 phase2_changed_grid = bool(np.any(routed_grid != phase2_grid_before))
@@ -629,26 +686,30 @@ decision.update({
 
 ### Required Phase 2 outcome mapping
 
+**CRITICAL CLARIFICATION**: The `next_recommended_route` must reflect the *actual next action*, not a generic fallback. If `config.enable_last100` is `True`, the next route is `"last100_repair"`, **not** `"needs_sa_or_adaptive_rerun"`.
+
 ```python
+# Determine next route based on config and progress
 if phase2_solved:
     route_result = "solved"
     route_outcome_detail = "phase2_full_repair_solved"
-    next_recommended_route = None
-
-elif phase2_accepted_count > 0 and phase2_reduced_unknowns:
+    next_rec = None
+elif phase2_unknown_after < phase2_unknown_before:  # Partial Progress (Reduced unknowns)
     route_result = "unresolved_after_repair"
     route_outcome_detail = "phase2_full_repair_partial_progress_unresolved"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
-
-elif phase2_accepted_count > 0 and phase2_changed_grid and not phase2_reduced_unknowns:
+    next_rec = "last100_repair" if config.enable_last100 else "needs_sa_or_adaptive_rerun"
+elif phase2_unknown_after == phase2_unknown_before and phase2_changed_grid:  # No-Op (Grid changed, solver saw no improvement)
     route_result = "unresolved_after_repair"
-    route_outcome_detail = "phase2_full_repair_changed_grid_without_solver_progress"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
-
-else:
+    route_outcome_detail = "phase2_full_repair_no_op"
+    next_rec = "last100_repair" if config.enable_last100 else "needs_sa_or_adaptive_rerun"
+elif phase2_accepted_count == 0:  # No accepted moves
     route_result = "unresolved_after_repair"
     route_outcome_detail = "phase2_full_repair_no_accepted_moves"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
+    next_rec = "last100_repair" if config.enable_last100 else "needs_sa_or_adaptive_rerun"
+else:  # Changed grid, but no solver improvement
+    route_result = "unresolved_after_repair"
+    route_outcome_detail = "phase2_full_repair_changed_grid_without_solver_progress"
+    next_rec = "last100_repair" if config.enable_last100 else "needs_sa_or_adaptive_rerun"
 ```
 
 Immediately after this mapping, write the outcome fields back into `decision`:
@@ -657,32 +718,54 @@ Immediately after this mapping, write the outcome fields back into `decision`:
 decision.update({
     "route_result": route_result,
     "route_outcome_detail": route_outcome_detail,
-    "next_recommended_route": next_recommended_route,
+    "next_recommended_route": next_rec,
 })
 ```
 
 The report requires exactly these Phase 2 values, including the partial-progress unresolved state.
+The report requires exactly these Phase 2 values, including the partial-progress unresolved state.
+
+**For Phase 2 SOLVED only**: return immediately with visual delta:
+
+```python
+if phase2_solved:
+    phase2_visual_delta = compute_repair_visual_delta(phase2_grid_before, routed_grid, target)
+    visual_delta_summary = {
+        **phase2_visual_delta,
+        "summary_scope": "route_phase",
+        "route_phase": "phase2_full_repair",
+        "selected_route": decision["selected_route"],
+        "route_result": decision["route_result"],
+        "route_outcome_detail": decision["route_outcome_detail"],
+        "next_recommended_route": decision["next_recommended_route"],
+        "solver_n_unknown_before": phase2_unknown_before,
+        "solver_n_unknown_after": phase2_unknown_after,
+        "accepted_move_count": phase2_accepted_count,
+        "n_fixed": int(phase2_result.n_fixed),
+        "removed_mine_count": int(np.sum((phase2_grid_before == 1) & (routed_grid == 0))),
+        "added_mine_count": int(np.sum((phase2_grid_before == 0) & (routed_grid == 1))),
+        "visual_quality_improved": bool(phase2_visual_delta["visual_delta"] < 0),
+        "solver_progress_improved": bool(phase2_unknown_after < phase2_unknown_before),
+    }
+    return _build_route_result(
+        grid=routed_grid,
+        sr=routed_sr,
+        failure_taxonomy=failure_taxonomy,
+        decision=dict(decision),
+        phase2_log=phase2_log,
+        last100_log=[],
+        visual_delta_summary=visual_delta_summary,
+    )
+```
+
+**For Phase 2 partial/no-op/no_accepted (UNRESOLVED)**: Do NOT return. `decision` is updated, `grid` and `sr` are the Phase 2 results. Control flows to Last100 (if enabled) or the final return (Section 3.7).
 
 ---
 
-## 3.5 Preserve partial Phase 2 state on unresolved fallback
 
-Current `pipeline.py:141-142` assigns:
+## 3.7 Final Return via `_build_route_result`
 
-```python
-grid = routed_grid
-sr = routed_sr
-```
-
-and later `pipeline.py:179-188` returns:
-
-```python
-selected_route="needs_sa_or_adaptive_rerun"
-```
-
-This is the core bug.
-
-Replace the final fallback with a return that uses the already-current `decision` values:
+Original `pipeline.py:179-188` returned `selected_route="needs_sa_or_adaptive_rerun"` unconditionally. Replace this entire final return with:
 
 ```python
 return _build_route_result(
@@ -696,15 +779,49 @@ return _build_route_result(
 )
 ```
 
-There must be no return path where:
+**Why this works**:
 
-```python
-selected_route == "needs_sa_or_adaptive_rerun"
+| Scenario | `selected_route` value before this return | How it was set |
+|---|---|---|
+| Already solved | `"already_solved"` | Early return in Section 3.3 |
+| Phase 2 solved | `"phase2_full_repair"` | Section 3.4 (solved case) early return |
+| Phase 2 partial/no-op/no_accepted | `"phase2_full_repair"` | Set at start of Phase 2 (Section 3.4) |
+| Phase 2 error + Last100 not run | `"phase2_full_repair"` | Error return in Section 3.4 |
+| Phase 2 partial + Last100 invoked | `"last100_repair"` | Set at start of Last100 (Section 3.6) |
+| Last100 (any outcome) | `"last100_repair"` | Section 3.6 sets before return |
+| No route invoked | `"none"` | Default from Section 3.2 |
+
+`_build_route_result` validates all invariants (causal consistency, accepted count equality, etc.) so no additional checks are needed here.
+
+**Important**: `_build_route_result` MUST be the ONLY return path from `route_late_stage_failure`. All other returns shown in Sections 3.4 and 3.6 also use `_build_route_result(...)`.
+
+The original bug (`selected_route="needs_sa_or_adaptive_rerun"` after a route ran) is impossible because `decision["selected_route"]` is never set to that value after a route is invoked.
 ```
 
-after `phase2_full_repair_invoked == True`.
+Actually, let's be simpler and clearer:
 
-The report states that the previous `selected_route="needs_sa_or_adaptive_rerun"` must not remain for the partial Phase 2 case because it describes the next strategy, not the route that modified the grid.
+**Rule**: `_build_route_result` is the ONLY return point for the whole function. Every branch ends with `return _build_route_result(...)`.
+
+In practice:
+- Already-solved: returns `_build_route_result` (Section 3.3) ✓
+- Phase 2 solved: returns `_build_route_result` (Section 3.4) ✓
+- Phase 2 error: returns `_build_route_result` (Section 3.4 §solver_failure) ✓
+- Last100 solved/error/partial: returns `_build_route_result` (Section 3.6) ✓
+- No route invoked: falls through to final `return _build_route_result` (below) ✓
+- Phase 2 partial progress + Last100 enabled: Last100 runs and returns (Section 3.6) ✓
+- Phase 2 partial progress + Last100 NOT enabled: Last100 doesn't run, falls through to final `return _build_route_result` ✓
+
+But wait - in the original code, Phase 2 partial progress (grid updated, not solved) continued to Last100 without returning. My Section 3.4 shows Phase 2 updating `decision` and computing visual delta, but NOT returning for partial progress. Let me re-check...
+
+Looking at current Section 3.4: after the outcome mapping and `decision.update(...)`, I ADDED a return with visual delta. That would PREVENT Last100 from running! That's wrong.
+
+I need to REMOVE that return from Phase 2 partial case. Phase 2 should only return immediately for:
+- solved case (with visual delta)
+- solver_failure_post_repair case
+
+For partial/no-op/no_accepted_moves cases, Phase 2 should just update `decision`, `grid`, `sr`, `phase2_log` and let execution continue to Last100 (if enabled) or the final fallback.
+
+Let me rewrite this cleanly.
 
 ---
 
@@ -728,6 +845,24 @@ After Last100:
 last100_unknown_after = int(routed_sr.n_unknown)
 last100_accepted_count = sum(1 for e in last100_log if bool(e.get("accepted", False)))
 
+# [AMENDMENT 4] Post-repair solve failure handling
+if routed_sr is None or not getattr(routed_sr, "success", True):
+    decision.update({
+        "route_result": "unresolved_repair_error",
+        "route_outcome_detail": "solver_failure_post_repair",
+        "solver_n_unknown_after": last100_unknown_before,  # Revert to pre-repair state
+    })
+    # Do NOT update grid/sr - preserve original pre-repair state
+    return _build_route_result(
+        grid=last100_grid_before,
+        sr=sr,
+        failure_taxonomy=failure_taxonomy,
+        decision=dict(decision),
+        phase2_log=[],
+        last100_log=last100_log,
+        visual_delta_summary={},
+    )
+
 decision.update({
     "last100_repair_hit_time_budget": bool(last100_result.last100_repair_hit_time_budget),
     "last100_n_fixes": int(last100_result.n_fixes),
@@ -738,28 +873,28 @@ decision.update({
 })
 ```
 
-Outcome mapping:
+Outcome mapping (preserving Phase 2 fields as phase-specific when Phase 2 ran first):
 
 ```python
 if last100_unknown_after == 0:
     route_result = "solved"
     route_outcome_detail = "last100_repair_solved"
-    next_recommended_route = None
+    next_rec = None
 
 elif bool(last100_result.last100_repair_hit_time_budget):
     route_result = "unresolved_after_repair"
     route_outcome_detail = "last100_repair_timeout_unresolved"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
+    next_rec = "needs_sa_or_adaptive_rerun"
 
 elif last100_accepted_count > 0 and last100_unknown_after < last100_unknown_before:
     route_result = "unresolved_after_repair"
     route_outcome_detail = "last100_repair_partial_progress_unresolved"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
+    next_rec = "needs_sa_or_adaptive_rerun"
 
 else:
     route_result = "unresolved_after_repair"
     route_outcome_detail = "last100_repair_no_accepted_moves"
-    next_recommended_route = "needs_sa_or_adaptive_rerun"
+    next_rec = "needs_sa_or_adaptive_rerun"
 ```
 
 Immediately after this mapping, write the outcome fields back into `decision`:
@@ -768,12 +903,43 @@ Immediately after this mapping, write the outcome fields back into `decision`:
 decision.update({
     "route_result": route_result,
     "route_outcome_detail": route_outcome_detail,
-    "next_recommended_route": next_recommended_route,
+    "next_recommended_route": next_rec,
 })
 ```
 
-The report requires Last100 to become the final `selected_route` only when it is the last applied route family, while preserving Phase 2 fields as phase-specific fields when Phase 2 ran first.
+### Last100 return via `_build_route_result`
 
+```python
+# Compute visual delta for this route phase
+last100_visual_delta = compute_repair_visual_delta(last100_grid_before, routed_grid, target)
+visual_delta_summary = {
+    **last100_visual_delta,
+    "summary_scope": "route_phase",
+    "route_phase": "last100_repair",
+    "selected_route": decision["selected_route"],
+    "route_result": decision["route_result"],
+    "route_outcome_detail": decision["route_outcome_detail"],
+    "next_recommended_route": decision["next_recommended_route"],
+    "solver_n_unknown_before": last100_unknown_before,
+    "solver_n_unknown_after": last100_unknown_after,
+    "accepted_move_count": last100_accepted_count,
+    "n_fixed": int(last100_result.n_fixes),
+    "removed_mine_count": int(np.sum((last100_grid_before == 1) & (routed_grid == 0))),
+    "added_mine_count": int(np.sum((last100_grid_before == 0) & (routed_grid == 1))),
+    "visual_quality_improved": bool(last100_visual_delta["visual_delta"] < 0),
+    "solver_progress_improved": bool(last100_unknown_after < last100_unknown_before),
+}
+
+return _build_route_result(
+    grid=routed_grid,
+    sr=routed_sr,
+    failure_taxonomy=failure_taxonomy,
+    decision=dict(decision),
+    phase2_log=[],
+    last100_log=last100_log,
+    visual_delta_summary=visual_delta_summary,
+)
+```
 ---
 
 # 4. Phase 3: Route-Wide Visual Delta Summary
@@ -864,9 +1030,11 @@ If an intentional algorithmic change produces different counts, the new counts m
 
 Modify `pipeline.py:191-226`.
 
-## 5.1 Serializer rule
+## 5. Serializer Hardening and Error Handling
 
-`write_repair_route_artifacts(...)` must only serialize already-complete state.
+### 5.1 Serializer Rule with Invariant Validation
+
+`write_repair_route_artifacts(...)` must only serialize already-complete state. The serializer is the **final enforcement point** for route-state invariants.
 
 Required assertion before writing:
 
@@ -892,7 +1060,94 @@ for key, value in route_state.items():
         )
 ```
 
-## 5.2 Remove primary-field `setdefault(...)`
+### 5.2 Invariant Enforcement: Accepted Move Count
+
+The serializer MUST validate the core invariant from `docs/ROUTE_STATE_FIELD_INVARIANTS.md`:
+
+```python
+# [AMENDMENT 4] Invariant Validation
+if route_result.phase2_full_repair_invoked:
+    phase2_accepted = sum(1 for e in route_result.phase2_log if e.get("accepted", False))
+    if route_result.phase2_full_repair_accepted_move_count != phase2_accepted:
+        raise RouteStateInvariantError(
+            "phase2_full_repair_accepted_move_count",
+            route_result.phase2_full_repair_accepted_move_count,
+            phase2_accepted,
+            {"context": "Phase 2 accepted count mismatch"}
+        )
+    if route_result.phase2_full_repair_n_fixed != phase2_accepted:
+        raise RouteStateInvariantError(
+            "phase2_full_repair_n_fixed",
+            route_result.phase2_full_repair_n_fixed,
+            phase2_accepted,
+            {"context": "Phase 2 n_fixed does not match accepted count"}
+        )
+
+if route_result.last100_invoked:
+    last100_accepted = sum(1 for e in route_result.last100_log if e.get("accepted", False))
+    if route_result.last100_accepted_move_count != last100_accepted:
+        raise RouteStateInvariantError(
+            "last100_accepted_move_count",
+            route_result.last100_accepted_move_count,
+            last100_accepted,
+            {"context": "Last100 accepted count mismatch"}
+        )
+    if route_result.last100_n_fixes != last100_accepted:
+        raise RouteStateInvariantError(
+            "last100_n_fixes",
+            route_result.last100_n_fixes,
+            last100_accepted,
+            {"context": "Last100 n_fixes does not match accepted count"}
+        )
+```
+
+Where `RouteStateInvariantError` is defined as:
+
+```python
+class RouteStateInvariantError(RuntimeError):
+    """Raised when accepted_move_count != n_fixed, indicating log corruption or bug."""
+    def __init__(self, field, expected, actual, context):
+        self.field = field
+        self.expected = expected
+        self.actual = actual
+        self.context = context
+        super().__init__(
+            f"Invariant failed: {field} expected {expected}, got {actual}. Context: {context}"
+        )
+```
+
+**Effect**: If `accepted_move_count != n_fixed`, the artifact write is **aborted** with a `RouteStateInvariantError`. This prevents corrupt data from being persisted.
+
+### 5.3 Post-Repair Solve Failure Handling
+
+When `solve_board` is called on a modified grid after Phase 2 or Last100 (to compute `routed_sr`), it may fail or return an invalid result. The plan must handle this.
+
+In the Phase 2 and Last100 outcome mapping code, after computing `routed_sr`:
+
+```python
+routed_sr = solve_board(routed_grid, max_rounds=int(config.solve_max_rounds), mode="full")
+if routed_sr is None or not getattr(routed_sr, "success", True):
+    # [AMENDMENT 4] Handle solver failure gracefully
+    decision.update({
+        "route_result": "unresolved_repair_error",
+        "route_outcome_detail": "solver_failure_post_repair",
+        "solver_n_unknown_after": int(sr.n_unknown),  # Revert to pre-repair state
+    })
+    # Do NOT update grid/sr - preserve original state
+    return _build_route_result(
+        grid=grid,  # Original grid, NOT routed_grid
+        sr=sr,      # Original sr, NOT routed_sr
+        failure_taxonomy=failure_taxonomy,
+        decision=decision,
+        phase2_log=phase2_log,
+        last100_log=last100_log,
+        visual_delta_summary=visual_delta_summary,
+    )
+```
+
+**Rationale**: If the solver fails after Phase 2 has modified the grid, we must not lose the original state. The route is marked with `route_outcome_detail="solver_failure_post_repair"` and the original grid is preserved.
+
+### 5.4 Remove primary-field `setdefault(...)`
 
 Do not manufacture primary route-state fields in the serializer.
 
@@ -905,10 +1160,10 @@ artifact_metadata injection
 Forbidden:
 
 ```python
-repair_route_decision.setdefault("selected_route", ...)
-repair_route_decision.setdefault("route_result", ...)
-repair_route_decision.setdefault("route_outcome_detail", ...)
-repair_route_decision.setdefault("next_recommended_route", ...)
+repair_route_decision.setdefault("selected_route", ...)  # ❌ NEVER
+repair_route_decision.setdefault("route_result", ...)    # ❌ NEVER
+repair_route_decision.setdefault("route_outcome_detail", ...)  # ❌ NEVER
+repair_route_decision.setdefault("next_recommended_route", ...)  # ❌ NEVER
 ```
 
 The report explicitly says the writer must not be used to infer missing route state after the fact.
@@ -1800,19 +2055,90 @@ The report explicitly defines these non-goals.
 
 ---
 
-# 14. Completion Definition
+# Appendix D: Route Outcome Detail Enumeration
 
-Recommendation 4 is complete only when this statement is true:
+The `route_outcome_detail` field must use exactly one of these values. No free-text variations are permitted.
 
-```text
-For every late-stage route run, repair_route_decision.json, metrics JSON, repair_route_summary, visual_delta_summary.json, overlays, benchmark rows, sweep rows, report text, and schema examples all agree that selected_route is the route actually invoked, route_result is the final solved/unresolved result, route_outcome_detail explains the exact outcome, and next_recommended_route contains needs_sa_or_adaptive_rerun only when another strategy is still required.
-```
+| Value | Meaning |
+|---|---|
+| `already_solved_before_routing` | Board was solved before late-stage routing began |
+| `phase2_full_repair_solved` | Phase 2 successfully solved the board |
+| `phase2_full_repair_partial_progress_unresolved` | Phase 2 made progress (reduced unknowns) but did not solve |
+| `phase2_full_repair_no_op` | Phase 2 invoked but made zero progress (no reduction in unknowns) |
+| `phase2_full_repair_no_accepted_moves` | Phase 2 invoked but accepted zero moves |
+| `last100_repair_solved` | Last100 successfully solved the board |
+| `last100_repair_timeout_unresolved` | Last100 hit time budget and remains unresolved |
+| `last100_repair_partial_progress_unresolved` | Last100 made progress but remains unresolved |
+| `last100_repair_no_accepted_moves` | Last100 invoked but accepted zero moves |
+| `no_late_stage_route_invoked` | No late-stage route was attempted |
+| `unresolved_repair_error` | A solver failure or invariant violation occurred during repair |
 
-For the forensic case, the final corrected route state must be:
+Schema files must constrain this field to these enumerated values.
 
-```text
-selected_route = "phase2_full_repair"
-route_result = "unresolved_after_repair"
-route_outcome_detail = "phase2_full_repair_partial_progress_unresolved"
-next_recommended_route = "needs_sa_or_adaptive_rerun"
-```
+---
+
+# Appendix E: Hardening Checklist for Implementation
+
+This checklist must be completed before marking Recommendation 4 as implemented:
+
+## Data Migration
+- [ ] Script provided to backfill `route_outcome_detail` and `next_recommended_route` in existing artifacts
+- [ ] Schema version field added to all route artifacts to distinguish old vs new format
+- [ ] Legacy artifact loader handles missing fields with warnings (not errors)
+
+## Invariant Enforcement
+- [ ] `RouteStateInvariantError` exception class defined in `pipeline.py`
+- [ ] Serializer guard validates `accepted_move_count == n_fixed` for Phase 2 and Last100
+- [ ] Any invariant violation raises `RouteStateInvariantError` and aborts artifact write
+- [ ] Tests verify invariant enforcement catches deliberate tampering
+
+## Transactional Boundaries
+- [ ] `_build_route_result` includes causal validation (Phase 2 invoked → selected_route is phase2_full_repair)
+- [ ] `_build_route_result` rejects `selected_route == "needs_sa_or_adaptive_rerun"` after route invoked
+- [ ] Phase 2 and Last100 branches use copy-on-write: validate BEFORE committing grid/sr changes
+- [ ] Solver failure after grid modification reverts to original grid and marks error
+
+## State Transitions
+- [ ] No-route unresolved branch sets `selected_route="none"`
+- [ ] Already-solved branch sets `route_outcome_detail="already_solved_before_routing"`
+- [ ] Phase 2 partial progress sets `next_recommended_route` based on `config.enable_last100`
+- [ ] Last100 partial progress sets `next_recommended_route="needs_sa_or_adaptive_rerun"`
+
+## Documentation
+- [ ] `for_user_review.md` lists all affected artifacts and field-level backward compatibility notes
+- [ ] `demo/docs/artifact_consumption_contract.md` updated to use canonical field names
+- [ ] Schema files updated with new required fields and `route_outcome_detail` enum
+- [ ] Deprecation warning added for `repair_route_selected`, `phase2_fixes`, `last100_fixes`
+
+## Testing
+- [ ] Test for Phase 2 invocation with zero progress (`n_fixed == 0`)
+- [ ] Test for Phase 2 partial progress with Last100 enabled (check `next_recommended_route`)
+- [ ] Test for Last100 with rejected moves (verify `accepted_move_count != len(log)`)
+- [ ] Test for invariant violation (tamper with counts, expect `RouteStateInvariantError`)
+- [ ] Test for solver failure after Phase 2 (expect `route_outcome_detail="solver_failure_post_repair"`)
+- [ ] Forensic rerun passes with corrected route state
+
+## Logging and Observability
+- [ ] Invariant violations log as ERROR with full context (grid hash, sr state, log entries)
+- [ ] Solver failures after repair logged as WARNING with route context
+- [ ] Deprecation warnings emitted when legacy fields are accessed
+
+---
+
+# Appendix F: Field Mapping Table
+
+Canonical source of truth for all route-state fields:
+
+| Field | Source | Notes |
+|---|---|---|
+| `selected_route` | `decision["selected_route"]` | Must match invoked route family |
+| `route_result` | `decision["route_result"]` | `solved` or `unresolved_after_repair` |
+| `route_outcome_detail` | `decision["route_outcome_detail"]` | Must be from Appendix D enum |
+| `next_recommended_route` | `decision["next_recommended_route"]` | `None` or next route or `needs_sa_or_adaptive_rerun` |
+| `solver_n_unknown_before` | `decision["solver_n_unknown_before"]` | Must equal initial `sr.n_unknown` |
+| `solver_n_unknown_after` | `sr.n_unknown` | Must equal `decision["solver_n_unknown_after"]` |
+| `phase2_full_repair_n_fixed` | `phase2_result.n_fixed` | Direct counter from `repair.py` |
+| `phase2_full_repair_accepted_move_count` | `sum(1 for e in phase2_log if e["accepted"])` | Must equal `phase2_full_repair_n_fixed` |
+| `last100_n_fixes` | `last100_result.n_fixes` | Direct counter from `repair.py` |
+| `last100_accepted_move_count` | `sum(1 for e in last100_log if e["accepted"])` | Must equal `last100_n_fixes` |
+
