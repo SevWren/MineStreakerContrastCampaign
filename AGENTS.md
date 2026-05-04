@@ -316,7 +316,40 @@ When modifying solver/repair/pipeline behavior:
 - `report.py` owns visual proof artifacts.
 - `sa.py` must not contain repair routing logic.
 
-Metrics field removals are allowed when they improve the runtime/data model. When a change may affect external consumers, document applicability, impact, and transition notes in `for_user_review.md`.
+Metrics field removals are allowed when they improve the runtime/data model. 
+When a change may affect external consumers, document applicability, impact, and transition notes in `for_user_review.md`.
+
+## Route-State Field Invariants
+
+When implementing repair route artifacts (Recommendation 4 or future repair work):
+
+**Mandatory governance contract**: `docs/ROUTE_STATE_FIELD_INVARIANTS.md`
+
+All route-state artifacts must maintain the accepted-move-count invariant:
+
+```python
+accepted_move_count = sum(1 for e in repair_log if e["accepted"] == True)
+                    == repair_result.n_fixed      (for Phase2)
+                    == repair_result.n_fixes      (for Last100)
+```
+
+**This invariant:**
+- Fixes the Last100 log-mixing bug (move_log contains accepted AND rejected entries; old code incorrectly counts both)
+- Provides defensive verification (catches if repair functions change logging behavior)
+- Enforces artifact consistency (all three consumers—metrics, visual_delta, repair_route_decision—report the same count)
+
+**Before implementing Recommendation 4, read**: `docs/ROUTE_STATE_FIELD_INVARIANTS.md`
+
+**Enforcement**:
+- Serializer guard in `pipeline.py::write_repair_route_artifacts(...)` rejects artifact writes if invariant is violated
+- Test suite (Section 2 of Recommendation 4) validates invariant for all repair routes
+- Forensic rerun (Recommendation 4 step 12.8) asserts cross-artifact equality
+
+**Implementation requirement**: Any new repair function that modifies the grid must:
+1. Return a counter field (`n_fixed`, `n_fixes`, or equivalent)
+2. Log accepted moves with `"accepted": True` and rejected moves with `"accepted": False`
+3. Submit to the same invariant verification in `pipeline.py` serializer guard
+4. Pass validation tests that assert counter equals accepted-log count
 
 ## Build and Validation Commands
 Use a local virtual environment and runtime dependencies (`numpy`, `scipy`, `numba`, `Pillow`, `matplotlib`, optional `scikit-image`).

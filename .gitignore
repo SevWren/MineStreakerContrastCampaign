@@ -1,5 +1,7 @@
 # Repository outputs
-results/
+# results/
+/results/*
+
 claude_conv_output/
 docs/result_reports/
 Larger_boards_fidelity_iteration/
@@ -19,10 +21,14 @@ example_commands_before_pipeline_improvement_native_iter9_image_sweep_mode.md
 demo/docs/archive
 demo/docs/archive/
 demo_documentation_files.txt
+x
+#LLM Related
+.kilocode
+.kilocode/
 minesweep_codebase.txt
 iter9_visual_solver_codebase.txt
 
-
+docs/modifications_to_industry_standard_implementation_execution_plan_recommendation_4.md
 
 # Generated conversation artifacts
 conversations.json
@@ -35,7 +41,6 @@ docs/archive
 docs\archive
 archives/
 archives
-
 
 # Reports and data exports
 *.csv
@@ -104,6 +109,7 @@ __pycache__/
 *.swp
 *.swo
 *~
+temp
 temp/
 7a592fcd_conversation.md
 
@@ -121,3 +127,12 @@ assets/line_art_irl_18.jpg
 assets/line_art_irl_18.png 
 assets/line_art_irl_18v2.png 
 demo/demo_screenshot_notes.png 
+
+# Whitelist one specific results run
+#!/results/
+#!/results/iter9/
+!/results/iter9/20260503T185252Z_line_art_irl_14_300w_seed44_Forensic_Run/
+!/results/iter9/20260503T185252Z_line_art_irl_14_300w_seed44_Forensic_Run/**
+documentation_ingested_file.txt
+assets/ffiv.png
+assets/ffiv_1.png
