@@ -723,7 +723,6 @@ decision.update({
 ```
 
 The report requires exactly these Phase 2 values, including the partial-progress unresolved state.
-The report requires exactly these Phase 2 values, including the partial-progress unresolved state.
 
 **For Phase 2 SOLVED only**: return immediately with visual delta:
 
@@ -756,12 +755,30 @@ if phase2_solved:
         last100_log=[],
         visual_delta_summary=visual_delta_summary,
     )
-```
 
-**For Phase 2 partial/no-op/no_accepted (UNRESOLVED)**: Do NOT return. `decision` is updated, `grid` and `sr` are the Phase 2 results. Control flows to Last100 (if enabled) or the final return (Section 3.7).
+**For Phase 2 partial/no-op/no_accepted (UNRESOLVED)**: Do NOT return. `decision` is updated, `grid` and `sr` are the Phase 2 results. Compute visual delta for the final return:
 
----
+```python
+else:
+    visual_delta_summary = compute_repair_visual_delta(phase2_grid_before, routed_grid, target)
+    visual_delta_summary.update({
+        "summary_scope": "route_phase",
+        "route_phase": "phase2_full_repair",
+        "selected_route": decision["selected_route"],
+        "route_result": decision["route_result"],
+        "route_outcome_detail": decision["route_outcome_detail"],
+        "next_recommended_route": decision["next_recommended_route"],
+        "solver_n_unknown_before": phase2_unknown_before,
+        "solver_n_unknown_after": phase2_unknown_after,
+        "accepted_move_count": phase2_accepted_count,
+        "n_fixed": int(phase2_result.n_fixed),
+        "removed_mine_count": int(np.sum((phase2_grid_before == 1) & (routed_grid == 0))),
+        "added_mine_count": int(np.sum((phase2_grid_before == 0) & (routed_grid == 1))),
+        "visual_quality_improved": bool(visual_delta_summary["visual_delta"] < 0),
+        "solver_progress_improved": bool(phase2_unknown_after < phase2_unknown_before),
+    })
 
+Control flows to Last100 (if enabled) or the final return (Section 3.7).
 
 ## 3.7 Final Return via `_build_route_result`
 
@@ -796,33 +813,6 @@ return _build_route_result(
 **Important**: `_build_route_result` MUST be the ONLY return path from `route_late_stage_failure`. All other returns shown in Sections 3.4 and 3.6 also use `_build_route_result(...)`.
 
 The original bug (`selected_route="needs_sa_or_adaptive_rerun"` after a route ran) is impossible because `decision["selected_route"]` is never set to that value after a route is invoked.
-```
-
-Actually, let's be simpler and clearer:
-
-**Rule**: `_build_route_result` is the ONLY return point for the whole function. Every branch ends with `return _build_route_result(...)`.
-
-In practice:
-- Already-solved: returns `_build_route_result` (Section 3.3) ✓
-- Phase 2 solved: returns `_build_route_result` (Section 3.4) ✓
-- Phase 2 error: returns `_build_route_result` (Section 3.4 §solver_failure) ✓
-- Last100 solved/error/partial: returns `_build_route_result` (Section 3.6) ✓
-- No route invoked: falls through to final `return _build_route_result` (below) ✓
-- Phase 2 partial progress + Last100 enabled: Last100 runs and returns (Section 3.6) ✓
-- Phase 2 partial progress + Last100 NOT enabled: Last100 doesn't run, falls through to final `return _build_route_result` ✓
-
-But wait - in the original code, Phase 2 partial progress (grid updated, not solved) continued to Last100 without returning. My Section 3.4 shows Phase 2 updating `decision` and computing visual delta, but NOT returning for partial progress. Let me re-check...
-
-Looking at current Section 3.4: after the outcome mapping and `decision.update(...)`, I ADDED a return with visual delta. That would PREVENT Last100 from running! That's wrong.
-
-I need to REMOVE that return from Phase 2 partial case. Phase 2 should only return immediately for:
-- solved case (with visual delta)
-- solver_failure_post_repair case
-
-For partial/no-op/no_accepted_moves cases, Phase 2 should just update `decision`, `grid`, `sr`, `phase2_log` and let execution continue to Last100 (if enabled) or the final fallback.
-
-Let me rewrite this cleanly.
-
 ---
 
 ## 3.6 Fix Last100 translation
