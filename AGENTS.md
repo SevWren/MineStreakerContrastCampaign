@@ -194,7 +194,25 @@ python -m demos.iter9_visual_solver.cli.commands --help
 
 For demo integration or optional hook changes, also run:
 
+### Linux / macOS
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python run_iter9.py --help
+python run_benchmark.py --help
+# Demo entrypoint (via prompted launcher):
+# python -m demos.iter9_visual_solver.cli.commands
+```
+
+### Windows (PowerShell)
 ```powershell
+python -m unittest discover -s tests -p "test_*.py"
+python run_iter9.py --help
+python run_benchmark.py --help
+.\demo\run_iter9_visual_solver_demo_prompted.ps1
+```
+
+### Windows (CMD)
+```cmd
 python -m unittest discover -s tests -p "test_*.py"
 python run_iter9.py --help
 python run_benchmark.py --help
@@ -354,6 +372,15 @@ accepted_move_count = sum(1 for e in repair_log if e["accepted"] == True)
 ## Build and Validation Commands
 Use a local virtual environment and runtime dependencies (`numpy`, `scipy`, `numba`, `Pillow`, `matplotlib`, optional `scikit-image`).
 
+### Linux / macOS
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install numpy scipy numba Pillow matplotlib scikit-image
+```
+
+### Windows (PowerShell)
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
@@ -361,9 +388,34 @@ python -m pip install --upgrade pip
 python -m pip install numpy scipy numba Pillow matplotlib scikit-image
 ```
 
+### Windows (CMD)
+```cmd
+python -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install --upgrade pip
+python -m pip install numpy scipy numba Pillow matplotlib scikit-image
+```
+
 Minimum validation for runtime-contract changes:
 
+### Linux / macOS
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+python run_iter9.py --help
+python run_benchmark.py --help
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
+```
+
+### Windows (PowerShell)
 ```powershell
+python -m unittest discover -s tests -p "test_*.py"
+python run_iter9.py --help
+python run_benchmark.py --help
+python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncanonical
+```
+
+### Windows (CMD)
+```cmd
 python -m unittest discover -s tests -p "test_*.py"
 python run_iter9.py --help
 python run_benchmark.py --help
@@ -372,7 +424,20 @@ python assets/image_guard.py --path assets/line_art_irl_11_v2.png --allow-noncan
 
 Extended runtime validation (expensive):
 
+### Linux / macOS
+```bash
+python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --max-images 2 --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11"
+python run_benchmark.py --regression-only
+```
+
+### Windows (PowerShell)
 ```powershell
+python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --max-images 2 --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11"
+python run_benchmark.py --regression-only
+```
+
+### Windows (CMD)
+```cmd
 python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical --max-images 2 --run-tag "assets_smoke_top2_w300_s11" --out-root "results/iter9/sweep_assets_smoke_top2_w300_s11"
 python run_benchmark.py --regression-only
 ```
