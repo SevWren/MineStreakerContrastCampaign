@@ -654,6 +654,7 @@ if routed_sr is None or not getattr(routed_sr, "success", True):
         "solver_n_unknown_after": phase2_unknown_before,  # Revert to pre-repair state
     })
     # Do NOT update grid/sr - preserve original pre-repair state
+    # No visual delta computed - grid was not successfully modified by solver
     return _build_route_result(
         grid=phase2_grid_before,
         sr=sr,
@@ -661,7 +662,6 @@ if routed_sr is None or not getattr(routed_sr, "success", True):
         decision=dict(decision),
         phase2_log=phase2_log,
         last100_log=[],
-        visual_delta_summary={},
     )
 
 phase2_unknown_after = int(routed_sr.n_unknown)
@@ -843,14 +843,14 @@ if routed_sr is None or not getattr(routed_sr, "success", True):
         "solver_n_unknown_after": last100_unknown_before,  # Revert to pre-repair state
     })
     # Do NOT update grid/sr - preserve original pre-repair state
+    # No visual delta computed - solve_board failed after modification
     return _build_route_result(
         grid=last100_grid_before,
         sr=sr,
         failure_taxonomy=failure_taxonomy,
         decision=dict(decision),
-        phase2_log=[],
+        phase2_log=phase2_log,
         last100_log=last100_log,
-        visual_delta_summary={},
     )
 
 decision.update({
@@ -925,113 +925,16 @@ return _build_route_result(
     sr=routed_sr,
     failure_taxonomy=failure_taxonomy,
     decision=dict(decision),
-    phase2_log=[],
+    phase2_log=phase2_log,
     last100_log=last100_log,
     visual_delta_summary=visual_delta_summary,
 )
 ```
 ---
 
-# 4. Phase 3: Route-Wide Visual Delta Summary
+# 4. Phase 3: Final Verification
 
-## 4.1 Import route-wide visual delta calculation
-
-Modify the import block in `pipeline.py:14-25`.
-
-Add:
-
-```python
-compute_repair_visual_delta
-```
-
-from `repair.py`.
-
-Reason: `repair.py::compute_repair_visual_delta(...)` already computes before/after visual delta. `pipeline.py` needs route-wide summaries instead of selecting only the last move log entry.
-
-## 4.2 Build route-wide visual summary
-
-For Phase 2:
-
-```python
-phase2_visual_delta = compute_repair_visual_delta(phase2_grid_before, routed_grid, target)
-visual_delta_summary = {
-    **phase2_visual_delta,
-    "summary_scope": "route_phase",
-    "route_phase": "phase2_full_repair",
-    "selected_route": decision["selected_route"],
-    "route_result": decision["route_result"],
-    "route_outcome_detail": decision["route_outcome_detail"],
-    "next_recommended_route": decision["next_recommended_route"],
-    "solver_n_unknown_before": phase2_unknown_before,
-    "solver_n_unknown_after": phase2_unknown_after,
-    "accepted_move_count": phase2_accepted_count,
-    "n_fixed": int(phase2_result.n_fixed),
-    "removed_mine_count": int(np.sum((phase2_grid_before == 1) & (routed_grid == 0))),
-    "added_mine_count": int(np.sum((phase2_grid_before == 0) & (routed_grid == 1))),
-    "visual_quality_improved": bool(phase2_visual_delta["visual_delta"] < 0),
-    "solver_progress_improved": bool(phase2_unknown_after < phase2_unknown_before),
-}
-```
-
-For Last100:
-
-```python
-last100_visual_delta = compute_repair_visual_delta(last100_grid_before, routed_grid, target)
-visual_delta_summary = {
-    **last100_visual_delta,
-    "summary_scope": "route_phase",
-    "route_phase": "last100_repair",
-    "selected_route": decision["selected_route"],
-    "route_result": decision["route_result"],
-    "route_outcome_detail": decision["route_outcome_detail"],
-    "next_recommended_route": decision["next_recommended_route"],
-    "solver_n_unknown_before": last100_unknown_before,
-    "solver_n_unknown_after": last100_unknown_after,
-    "accepted_move_count": last100_accepted_count,
-    "n_fixed": int(last100_result.n_fixes),
-    "removed_mine_count": int(np.sum((last100_grid_before == 1) & (routed_grid == 0))),
-    "added_mine_count": int(np.sum((last100_grid_before == 0) & (routed_grid == 1))),
-    "visual_quality_improved": bool(last100_visual_delta["visual_delta"] < 0),
-    "solver_progress_improved": bool(last100_unknown_after < last100_unknown_before),
-}
-```
-
-The report requires `visual_delta_summary.json` to be route-wide and route-state-aware when Phase 2 changes the grid but does not solve.
-
-For the forensic rerun, `visual_delta_summary.json` must also preserve the same grid-delta facts shown by the overlay:
-
-```text
-len(removed_mines) == 192
-len(added_mines) == 0
-changed_cells == 192
-removed_mine_count == 192
-added_mine_count == 0
-solver_n_unknown_before == 37285
-solver_n_unknown_after == 31540
-visual_quality_improved == false
-solver_progress_improved == true
-```
-
-If an intentional algorithmic change produces different counts, the new counts must agree across `visual_delta_summary.json`, the overlay, and metrics for the new run.
-
----
-
-# 5. Phase 4: Serializer Hardening in `pipeline.py`
-
-Modify `pipeline.py:191-226`.
-
-## 5. Serializer Hardening and Error Handling
-
-### 5.1 Serializer Rule with Invariant Validation
-
-`write_repair_route_artifacts(...)` must only serialize already-complete state. The serializer is the **final enforcement point** for route-state invariants.
-
-Required assertion before writing:
-
-```python
-required = {
-    "selected_route",
-    "route_result",
+The serializer (Section 5) performs all invariant checks. No additional visual delta computation is required beyond what is done in Sections 3.4 and 3.6.
     "route_outcome_detail",
     "next_recommended_route",
     "solver_n_unknown_before",
