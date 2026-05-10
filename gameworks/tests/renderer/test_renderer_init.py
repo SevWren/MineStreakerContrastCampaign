@@ -116,3 +116,69 @@ class TestSurfaceCacheInit:
         """No image_path → thumbnail surface must be None."""
         r, _ = renderer_easy
         assert r._thumb_surf is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Frame-local value hoisting (P-15, P-17, P-18, P-21)
+# ---------------------------------------------------------------------------
+
+class TestPhase2Caches:
+    """
+    Regression tests for Phase 2 frame-local caching.
+    Validates that expensive OS calls are cached and reused within each frame.
+    """
+
+    def test_win_size_cache_exists_at_init(self, renderer_easy):
+        """_win_size must be populated at init."""
+        r, _ = renderer_easy
+        assert hasattr(r, "_win_size")
+        assert isinstance(r._win_size, tuple)
+        assert len(r._win_size) == 2
+
+    def test_win_size_cache_matches_get_size_at_init(self, renderer_easy):
+        """_win_size must match _win.get_size() at construction."""
+        r, _ = renderer_easy
+        assert r._win_size == r._win.get_size()
+
+    def test_board_rect_cache_exists_at_init(self, renderer_easy):
+        """_cached_board_rect attribute must exist."""
+        r, _ = renderer_easy
+        assert hasattr(r, "_cached_board_rect")
+
+    def test_board_rect_cache_initially_none(self, renderer_easy):
+        """_cached_board_rect starts None and is populated on first _board_rect() call."""
+        r, _ = renderer_easy
+        # After __init__ + _center_board(), cache should be None (invalidated)
+        assert r._cached_board_rect is None
+
+    def test_board_rect_cache_populated_on_first_call(self, renderer_easy):
+        """First call to _board_rect() populates the cache."""
+        r, _ = renderer_easy
+        rect = r._board_rect()
+        assert r._cached_board_rect is not None
+        assert rect is r._cached_board_rect
+
+    def test_board_rect_cache_reused_on_second_call(self, renderer_easy):
+        """Second call to _board_rect() returns the same cached Rect object."""
+        r, _ = renderer_easy
+        rect1 = r._board_rect()
+        rect2 = r._board_rect()
+        assert rect1 is rect2  # same object identity
+
+    def test_last_mouse_pos_exists_at_init(self, renderer_easy):
+        """_last_mouse_pos attribute must exist for MOUSEWHEEL zoom."""
+        r, _ = renderer_easy
+        assert hasattr(r, "_last_mouse_pos")
+        assert isinstance(r._last_mouse_pos, tuple)
+
+    def test_renderer_does_not_call_engine_elapsed(self, renderer_easy):
+        """
+        Renderer must never call engine.elapsed directly (which would re-invoke time.time()).
+        The elapsed value is passed to draw() once per frame by main.py.
+        """
+        r, _ = renderer_easy
+        import inspect
+        source = inspect.getsource(r.__class__)
+        # renderer.py should never reference 'engine.elapsed' or 'self.engine.elapsed'
+        assert "engine.elapsed" not in source
+        assert "self.engine.elapsed" not in source

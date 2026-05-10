@@ -295,6 +295,7 @@ class Renderer:
         win_h = min(win_h, pygame.display.Info().current_h)
 
         self._win = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
+        self._win_size: Tuple[int, int] = self._win.get_size()
         pygame.display.set_caption("Mine-Streaker · Image Minesweeper")
         self._icon = self._make_icon()
         pygame.display.set_icon(self._icon)
@@ -366,6 +367,7 @@ class Renderer:
         self._pan_y         = 0
         self._dragging      = False
         self._drag_last     = (0, 0)
+        self._last_mouse_pos: Tuple[int, int] = (0, 0)
 
         # ── Win animation state ───────────────────────────────────────────
         self.win_anim: Optional[WinAnimation] = None
@@ -387,6 +389,8 @@ class Renderer:
         self._fog_surf_size: Tuple[int, int] = (0, 0)
         # Image thumbnail — built once at init, never per-frame.
         self._thumb_surf: Optional[pygame.Surface] = None
+        # Board rect cache — invalidated when _pan_x, _pan_y, or _tile changes.
+        self._cached_board_rect: Optional[pygame.Rect] = None
 
         # Initial pan: center the board in the window
         self._center_board()
@@ -399,7 +403,7 @@ class Renderer:
         """Pan so the board is centered in its drawing area (not the full window)."""
         bw = self.board.width * self._tile
         bh = self.board.height * self._tile
-        win_w, win_h = self._win.get_size()
+        win_w, win_h = self._win_size
         # Available horizontal space starts after BOARD_OX; exclude right panel if present.
         avail_x = win_w - self.BOARD_OX
         if self._panel_right:
@@ -407,6 +411,7 @@ class Renderer:
         avail_y = win_h - self.BOARD_OY
         self._pan_x = max(0, (avail_x - bw) // 2)
         self._pan_y = max(0, (avail_y - bh) // 2)
+        self._cached_board_rect = None
 
     def _rebuild_num_surfs(self):
         """Pre-render digit surfaces 1-8 and the '?' mark for the current tile size.
@@ -454,6 +459,7 @@ class Renderer:
 
         if ev.type == VIDEORESIZE:
             self._win = pygame.display.set_mode(ev.size, pygame.RESIZABLE)
+            self._win_size = ev.size
             self._center_board()
             return None
 
@@ -471,16 +477,20 @@ class Renderer:
             # Arrow-key panning for keyboard users
             elif ev.key == K_LEFT:
                 self._pan_x = min(self._pan_x + self._tile * 3, 0)
+                self._cached_board_rect = None
             elif ev.key == K_RIGHT:
                 bw = self.board.width * self._tile
                 max_pan = max(0, bw - (self._win.get_width() - self.BOARD_OX))
                 self._pan_x = max(self._pan_x - self._tile * 3, -max_pan)
+                self._cached_board_rect = None
             elif ev.key == K_UP:
                 self._pan_y = min(self._pan_y + self._tile * 3, 0)
+                self._cached_board_rect = None
             elif ev.key == K_DOWN:
                 bh = self.board.height * self._tile
                 max_pan = max(0, bh - (self._win.get_height() - self.BOARD_OY))
                 self._pan_y = max(self._pan_y - self._tile * 3, -max_pan)
+                self._cached_board_rect = None
             return None
 
         # ── Mouse drag for panning ───────────────────────────────────
@@ -521,7 +531,7 @@ class Renderer:
             # Clamp pan so we don't show too much empty space
             bw = self.board.width * self._tile
             bh = self.board.height * self._tile
-            win_w, win_h = self._win.get_size()
+            win_w, win_h = self._win_size
             max_pan_x = max(0, bw - (win_w - self.BOARD_OX - self.PAD))
             max_pan_y = max(0, bh - (win_h - self.BOARD_OY - self.HEADER_H))
             if self._pan_x > 0:
@@ -532,6 +542,7 @@ class Renderer:
                 self._pan_x = 0
             if bh <= win_h - self.BOARD_OY - self.HEADER_H:
                 self._pan_y = 0
+            self._cached_board_rect = None
             self._drag_last = ev.pos
             return None
 
@@ -558,8 +569,8 @@ class Renderer:
                 new_tile = max(MIN_TILE_SIZE, self._tile - step)
             if new_tile != self._tile:
                 # Zoom centered on mouse position.
-                # MOUSEWHEEL events have no .pos in pygame 2 — use get_pos().
-                mx, my = pygame.mouse.get_pos()
+                # MOUSEWHEEL events have no .pos in pygame 2 — use _last_mouse_pos.
+                mx, my = self._last_mouse_pos
                 old_tile = self._tile
                 self._tile = new_tile
                 # Adjust pan so the point under cursor stays fixed
@@ -621,20 +632,25 @@ class Renderer:
     # ── Geometry helpers ──────────────────────────────────────────────
 
     def _board_rect(self) -> pygame.Rect:
-        bw = self.board.width * self._tile
-        bh = self.board.height * self._tile
-        return pygame.Rect(self.BOARD_OX + self._pan_x,
-                           self.BOARD_OY + self._pan_y, bw, bh)
+        if self._cached_board_rect is None:
+            bw = self.board.width * self._tile
+            bh = self.board.height * self._tile
+            self._cached_board_rect = pygame.Rect(
+                self.BOARD_OX + self._pan_x,
+                self.BOARD_OY + self._pan_y,
+                bw, bh)
+        return self._cached_board_rect
 
     def _clamp_pan(self):
         """Keep pan within sensible bounds."""
         bw = self.board.width * self._tile
         bh = self.board.height * self._tile
-        win_w, win_h = self._win.get_size()
+        win_w, win_h = self._win_size
         max_px = max(0, bw - max(0, win_w - self.BOARD_OX - self.PAD))
         max_py = max(0, bh - max(0, win_h - self.BOARD_OY - self.HEADER_H))
         self._pan_x = max(-max_px, min(0, self._pan_x))
         self._pan_y = max(-max_py, min(0, self._pan_y))
+        self._cached_board_rect = None
 
     def _on_resize(self):
         """Recompute button positions after zoom — handles both panel layouts.
@@ -672,11 +688,12 @@ class Renderer:
 
     def draw(self, mouse_pos=(0, 0), game_state: str = "waiting",
              elapsed: float = 0.0, cascade_done: bool = True):
+        self._last_mouse_pos = mouse_pos
         self._win.fill(C["bg"])
         self._draw_board(mouse_pos, game_state, cascade_done)
         self._draw_overlay()
         self._draw_panel(mouse_pos, game_state, elapsed)
-        self._draw_header(elapsed, game_state)  # drawn last — board can't cover it
+        self._draw_header(elapsed, game_state, mouse_pos)  # drawn last — board can't cover it
         if self.help_visible:
             self._draw_help()
         pygame.display.flip()
@@ -686,7 +703,7 @@ class Renderer:
     def _draw_overlay(self):
         if not self.fog:
             return
-        win_size = self._win.get_size()
+        win_size = self._win_size
         # Recreate backing surface only when window is resized — avoids per-frame allocation.
         if self._fog_surf is None or self._fog_surf_size != win_size:
             self._fog_surf = pygame.Surface(win_size, pygame.SRCALPHA)
@@ -702,7 +719,7 @@ class Renderer:
 
     # ── Header ────────────────────────────────────────────────────────
 
-    def _draw_header(self, elapsed, game_state):
+    def _draw_header(self, elapsed, game_state, mouse_pos):
         w = self._win.get_width()
         r = pygame.Rect(0, 0, w, self.HEADER_H + 4)
         pygame.draw.rect(self._win, C["panel"], r)
@@ -717,7 +734,7 @@ class Renderer:
 
         # ── Centre: smiley (clickable reset button) ───────────────────
         cx = self._win.get_width() // 2
-        self._draw_smiley(cx - 25, 4, 50, self.HEADER_H - 4, game_state)
+        self._draw_smiley(cx - 25, 4, 50, self.HEADER_H - 4, game_state, mouse_pos)
 
         # ── Right: two-row scoreboard — guaranteed no overlap ─────────
         # Uses _font_small so two rows always fit inside HEADER_H=48px.
@@ -746,11 +763,11 @@ class Renderer:
             sl = self._font_small.render(f"STREAK x{streak}  {mult:.1f}x", True, streak_col)
             self._win.blit(sl, (win_w - sl.get_width() - 8, y2))
 
-    def _draw_smiley(self, x, y, w, h, state):
+    def _draw_smiley(self, x, y, w, h, state, mouse_pos):
         cx, cy = x + w // 2, y + h // 2
         r = min(w, h) // 2 - 2
         col = {"playing": C["yellow"], "won": C["green"], "lost": C["red"]}.get(state, C["yellow"])
-        hov = pygame.Rect(x, y, w, h).collidepoint(pygame.mouse.get_pos())
+        hov = pygame.Rect(x, y, w, h).collidepoint(mouse_pos)
         if hov:
             col = tuple(min(255, c + 40) for c in col)
         pygame.draw.circle(self._win, col, (cx, cy), r)
@@ -807,7 +824,7 @@ class Renderer:
 
         # ── Compute visible tile range (skip off-screen tiles) ──────
         # This is critical for 300×370 boards — only draw what's visible
-        win_w, win_h = self._win.get_size()
+        win_w, win_h = self._win_size
         # Tiles that could possibly be visible (conservative)
         tx0 = max(0, (-self._pan_x) // ts - 1)
         ty0 = max(0, (-self._pan_y) // ts - 1)
@@ -949,7 +966,7 @@ class Renderer:
 
     def _draw_loss_overlay(self, ox, oy):
         ts = self._tile
-        win_w, win_h = self._win.get_size()
+        win_w, win_h = self._win_size
         tx0 = max(0, (-self._pan_x) // ts - 1)
         ty0 = max(0, (-self._pan_y) // ts - 1)
         tx1 = min(self.board.width, (win_w - ox) // ts + 2)
@@ -989,7 +1006,7 @@ class Renderer:
         _mine    = self.board._mine
 
         # Viewport culling — only iterate cells actually on screen (matches _draw_board bounds)
-        win_w, win_h = self._win.get_size()
+        win_w, win_h = self._win_size
         tx0 = max(0, (-self._pan_x) // ts - 1)
         ty0 = max(0, (-self._pan_y) // ts - 1)
         tx1 = min(self.board.width,  (win_w - ox) // ts + 2)
@@ -1160,7 +1177,7 @@ class Renderer:
             self._win.blit(sub, (px, py))
 
     def _draw_modal(self, title, subtitle):
-        overlay = pygame.Surface(self._win.get_size(), pygame.SRCALPHA)
+        overlay = pygame.Surface(self._win_size, pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         self._win.blit(overlay, (0, 0))
 
@@ -1181,7 +1198,7 @@ class Renderer:
     # ── Help overlay ──────────────────────────────────────────────────
 
     def _draw_help(self):
-        overlay = pygame.Surface(self._win.get_size(), pygame.SRCALPHA)
+        overlay = pygame.Surface(self._win_size, pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 200))
         self._win.blit(overlay, (0, 0))
 
