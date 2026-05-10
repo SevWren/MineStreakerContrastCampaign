@@ -449,8 +449,61 @@ python run_benchmark.py --regression-only
 - Keep Numba kernels isolated and deterministic with explicit seeds.
 - Prefer atomic output writes (`*.tmp` then `os.replace`) for new emitters.
 
+## gameworks/ — Mine-Streaker Pygame Package
+
+`gameworks/` is a standalone pygame Minesweeper engine with image-reveal mode.
+It is developed on the `frontend-game-mockup` branch and is independent of the
+reconstruction pipeline modules (`core.py`, `sa.py`, etc.).
+
+Primary files:
+- `gameworks/engine.py` — `Board`, `GameEngine`, scoring, mine-flash, flood-fill
+- `gameworks/renderer.py` — All pygame drawing, animation, HUD, panel, image ghost
+- `gameworks/main.py` — CLI args, game loop state machine, event dispatch
+- `gameworks/corridors.py` — `build_adaptive_corridors()` (returns `(forbidden, coverage_pct, seeds, mst)` tuple — NOT a dict)
+
+Issue tracking: `docs/ISSUE-LOG.md` — canonical record of all known bugs and their status.
+Performance analysis: `docs/M001-M002-analysis.md`
+
+Key design decisions:
+- No-game-over on mine hit: `Board._state` is NEVER set to `"lost"`. Mine hit = score penalty + 1.5 s flash.
+- Viewport culling: `tx0/ty0/tx1/ty1` computed from `_pan_x/_pan_y` — all cell loops must stay within these bounds.
+- numpy arrays accessed directly (`_mine`, `_revealed`, `_flagged`, `_questioned`, `_neighbours`) — do NOT call `board.snapshot()` inside hot per-frame paths.
+- Surface caches: `_num_surfs`, `_question_surf`, `_thumb_surf`, `_fog_surf`, `_ghost_surf` — rebuild only on tile/window-size change, never per-frame.
+
+gameworks validation (no test runner; manual import check):
+```bash
+python -c "import ast; ast.parse(open('gameworks/renderer.py').read()); print('renderer OK')"
+python -c "import ast; ast.parse(open('gameworks/engine.py').read()); print('engine OK')"
+python -c "import ast; ast.parse(open('gameworks/main.py').read()); print('main OK')"
+```
+
+---
+
+## Pre-Push Verification Protocol (MANDATORY)
+
+Before **every** `git push`, regardless of how small the change appears:
+
+1. **Re-read every file you touched** — confirm the actual written code matches what you claimed to fix. Do not rely on memory of what you intended to write.
+
+2. **Cross-check the full issue scope** — if the task listed N problems, verify N fixes are present in the diff. Count them. A commit message listing 5 fixes with only 3 in the diff is a failed push.
+
+3. **Trace each fix end-to-end** — for bug fixes, follow the call chain from the broken call site through to the corrected return value. Confirm no intermediate function still passes the old (wrong) value.
+
+4. **Check for partial fixes** — a fix that corrects the primary symptom but leaves a secondary bug in the same function is not complete. Check the surrounding logic for co-located bugs.
+
+5. **Verify no regressions introduced** — if you edited a function, confirm all callers still receive what they expect. If you renamed or removed a variable, grep for stale references.
+
+6. **Run AST parse on every `.py` file edited** — catches syntax errors that would crash at import time.
+
+7. **Only then push.** If any step above reveals a gap, fix it and restart the checklist from step 1.
+
+This protocol exists because previous sessions pushed commits where the claimed fix list in the message did not fully match what was implemented in the diff.
+
+---
+
 ## Commit and PR Guidance
 If git metadata is available:
 - Commit style: `<scope>: <imperative summary>`
 - Keep commits focused.
 - For behavior changes, include metric-impact notes and artifact-path evidence in PR descriptions.
+- **Apply the Pre-Push Verification Protocol above before every push.**
