@@ -24,9 +24,8 @@ Each entry carries a status, severity, and resolution notes.
 ### [T-001] `test_fps_is_exported` asserts `FPS == 60` but renderer defines `FPS = 30`
 - **Status:** `RESOLVED`
 - **File:** `tests/test_gameworks_renderer_headless.py:94` vs `gameworks/renderer.py:33`
-- **Detail:** `TestFPSConstant::test_fps_is_exported` contains `assert FPS == 60`. The renderer defines `FPS = 30`. One is wrong. The new package-local test at `gameworks/tests/renderer/test_renderer_init.py::TestRendererConstants::test_fps_constant_exists_and_positive` avoids this by asserting `FPS > 0` only.
-- **Impact:** Root-level test will fail as soon as `pygame` is installed in CI.
-- **Action needed:** Decide canonical FPS value. If 30 is correct: update `tests/test_gameworks_renderer_headless.py:94` to `assert FPS == 30`. If 60 was intended: update `renderer.py`.
+- **Detail:** `TestFPSConstant::test_fps_is_exported` contained `assert FPS == 60`. The renderer defines `FPS = 30` with comment "Minesweeper needs no more than 30 fps".
+- **Fix applied (session 7):** Updated `tests/test_gameworks_renderer_headless.py:94` to `assert FPS == 30`.
 - **Discovered:** Session 4 pre-push protocol check.
 
 ---
@@ -556,13 +555,15 @@ All remaining test files and demo modules audited. No new bugs found.
 
 | Area | Status |
 |---|---|
-| `gameworks/engine.py`, `main.py`, `renderer.py` | Fully audited; all bugs fixed (C-001–C-007, R-001–R-007, P-001) |
-| `pipeline.py`, `run_iter9.py`, `run_benchmark.py` | Fully audited; R-008, R-009 open |
-| `report.py` | Fully audited; R-008 spans here |
+| `gameworks/engine.py`, `main.py`, `renderer.py` | Fully audited. C-001, C-002 resolved; C-003–C-007 open; H-001–H-004 resolved; H-005, M-003/M-004/M-007/M-008/M-009 open; M-005/M-006 WONT-FIX; P-001 resolved |
+| `pipeline.py`, `run_iter9.py`, `run_benchmark.py` | Fully audited; R-008, R-009 resolved |
+| `report.py` | Fully audited; R-008 resolved |
 | `solver.py`, `repair.py`, `source_config.py` | Fully audited; no bugs |
-| All `tests/*.py` (18 files) | Fully audited; no new bugs beyond coverage gaps noted in R-008 |
+| All `tests/*.py` (18 files) | Fully audited; no new bugs beyond coverage gap M-009 |
 | All `demos/iter9_visual_solver/**` (49 files) | Fully audited; no bugs |
 
-**All items resolved.** No open bugs remain across the audited codebase.
+**Session 7 fixed:** R-008, R-009, T-001.
+
+**Still open:** C-003, C-004, C-005, C-006, C-007, H-005, M-003, M-004, M-007, M-008, M-009, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9.
 
 *Log maintained by: Claude Sonnet 4.6 via Maton Tasks*
