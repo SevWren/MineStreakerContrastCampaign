@@ -1,27 +1,25 @@
 # Repository outputs
 # results/
 #/results/*
+#assets/line_art_irl_14.png
+#assets/line_art_irl_15.png
+#assets/line_art_irl_16.png
+#assets/line_art_irl_17.png
 
 claude_conv_output/
 docs/result_reports/
 Larger_boards_fidelity_iteration/
-assets/WIP/
 digest.txt
 number_gitingest.py
 digest.line_numbered.txt
 minesweeper_timeout_boolean_patch
 patch*
-assets/line_art_irl_14.png
-assets/line_art_irl_15.png
-assets/line_art_irl_16.png
-assets/line_art_irl_17.png
 repair_result_dataclass_migration_plan.md
 PATCH_SUMMARY.md
 example_commands_before_pipeline_improvement_native_iter9_image_sweep_mode.md
 demo/docs/archive
 demo/docs/archive/
 demo_documentation_files.txt
-x
 #LLM Related
 .kilocode
 .kilocode/
@@ -53,6 +51,7 @@ archives
 # *.png
 # *.jpg
 # *.jpeg
+assets/WIP/
 *.gif
 *.bmp
 *.webp
@@ -117,15 +116,15 @@ temp/
 # if the repository must reject tracked files larger than 50 KB.
 
 
-assets/Easter 2025-2.png 
-assets/Easter 2025.jfif 
-assets/line_art_a6.jpg 
-assets/line_art_a7.jpg 
-assets/line_art_irl_14_optimized.png 
-assets/line_art_irl_14_optimized_V2.png 
-assets/line_art_irl_18.jpg 
-assets/line_art_irl_18.png 
-assets/line_art_irl_18v2.png 
+#assets/Easter 2025-2.png 
+#assets/Easter 2025.jfif 
+#assets/line_art_a6.jpg 
+#assets/line_art_a7.jpg 
+#assets/line_art_irl_14_optimized.png 
+#assets/line_art_irl_14_optimized_V2.png 
+#assets/line_art_irl_18.jpg 
+#assets/line_art_irl_18.png 
+#assets/line_art_irl_18v2.png 
 demo/demo_screenshot_notes.png 
 
 # Whitelist one specific results run
