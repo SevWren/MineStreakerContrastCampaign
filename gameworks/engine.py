@@ -76,7 +76,8 @@ class Board:
     """
 
     __slots__ = ("width", "height", "total_mines", "_mine", "_revealed",
-                 "_flagged", "_questioned", "_neighbours", "_state")
+                 "_flagged", "_questioned", "_neighbours", "_state",
+                 "_n_flags", "_n_questioned", "_n_safe_revealed", "_n_revealed")
 
     def __init__(self, width: int, height: int, mine_positions: Set[Tuple[int, int]]):
         self.width = width
@@ -96,6 +97,13 @@ class Board:
         _kernel[1, 1] = 0
         raw = _ndconvolve(self._mine.view(np.uint8), _kernel, mode='constant', cval=0)
         self._neighbours = np.where(self._mine, np.uint8(0), raw.astype(np.uint8))
+
+        # Dirty-int counters — updated atomically on every state mutation.
+        # Eliminates full numpy array scans from the per-frame draw path.
+        self._n_flags: int = 0
+        self._n_questioned: int = 0
+        self._n_safe_revealed: int = 0   # revealed non-mine cells only
+        self._n_revealed: int = 0        # total revealed (includes mine-hit cells)
 
         self._state: str = "playing"  # playing | won | lost
 
@@ -127,20 +135,20 @@ class Board:
 
     @property
     def revealed_count(self) -> int:
-        return int(self._revealed.sum())
+        return self._n_revealed
 
     @property
     def safe_revealed_count(self) -> int:
         """Revealed cells that are NOT mines (excludes mine-hit cells from count)."""
-        return int(np.sum(self._revealed & ~self._mine))
+        return self._n_safe_revealed
 
     @property
     def flags_placed(self) -> int:
-        return int(self._flagged.sum())
+        return self._n_flags
 
     @property
     def questioned_count(self) -> int:
-        return int(self._questioned.sum())
+        return self._n_questioned
 
     @property
     def mines_remaining(self) -> int:
@@ -175,6 +183,7 @@ class Board:
 
         if self._mine[y, x]:
             self._revealed[y, x] = True
+            self._n_revealed += 1
             # No game-over: mine hit is a score penalty, game continues.
             return True, [(x, y)]
 
@@ -186,13 +195,15 @@ class Board:
             if cell:
                 continue
             self._revealed[cy, cx] = True
+            self._n_revealed += 1
+            self._n_safe_revealed += 1
             newly.append((cx, cy))
             if self._neighbours[cy, cx] == 0:
                 for nx, ny in self._neighbours_iter(cx, cy):
                     if not self._revealed[ny, nx] and not self._flagged[ny, nx] and not self._mine[ny, nx]:
                         stack.append((nx, ny))
 
-        if self.revealed_count == self.total_safe:
+        if self._n_safe_revealed == self.total_safe:
             self._state = "won"
 
         return False, newly
@@ -207,16 +218,20 @@ class Board:
         if self._flagged[y, x]:
             # flag → question
             self._flagged[y, x] = False
+            self._n_flags -= 1
             self._questioned[y, x] = True
+            self._n_questioned += 1
             return "question"
 
         if self._questioned[y, x]:
             # question → hidden
             self._questioned[y, x] = False
+            self._n_questioned -= 1
             return "hidden"
 
         # hidden → flag
         self._flagged[y, x] = True
+        self._n_flags += 1
         return "flag"
 
     def snapshot(self, x: int, y: int) -> CellState:
@@ -652,6 +667,12 @@ class GameEngine:
         # Put every mine in a correct-flag state; clear any wrong flags and ?-marks
         board._flagged[:] = board._mine
         board._questioned[:] = False
+
+        # Resync counters after bulk numpy ops
+        board._n_safe_revealed = board.total_safe
+        board._n_revealed = int(board._revealed.sum())  # recount from array — mine-hit cells may also be revealed
+        board._n_flags = board.total_mines
+        board._n_questioned = 0
 
         board._state = "won"
         self.stop_timer()

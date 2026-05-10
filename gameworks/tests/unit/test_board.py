@@ -401,3 +401,94 @@ class TestBoardProperties:
         assert b.questioned_count == 1
         b.toggle_flag(2, 2)   # → hidden
         assert b.questioned_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Counter correctness — Phase 1 regression guards
+# ---------------------------------------------------------------------------
+
+class TestDirtyIntCounters:
+    """
+    Regression tests for Phase 1 dirty-int counters (P-06, P-07, P-08, P-23).
+    These tests validate that counter values always match the underlying numpy
+    array state after any sequence of actions.
+    """
+
+    def test_counters_match_array_state_after_flood_fill(self):
+        """After flood-fill, all counters must exactly match their array sum()."""
+        mines = {(0, 0)}
+        b = Board(5, 5, mines)
+        b.reveal(4, 4)   # flood-fill from far corner
+
+        # Validate all four counters
+        assert b._n_revealed == int(b._revealed.sum())
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
+
+    def test_counters_match_after_flag_cycle(self):
+        """Flag → question → hidden cycle must keep counters in sync."""
+        b = board()
+        b.toggle_flag(3, 3)   # → flag
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
+
+        b.toggle_flag(3, 3)   # → question
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
+
+        b.toggle_flag(3, 3)   # → hidden
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
+
+    def test_counters_match_after_mine_hit(self):
+        """Mine hit increments revealed_count but not safe_revealed_count."""
+        mines = {(2, 2)}
+        b = Board(5, 5, mines)
+        b.reveal(2, 2)   # mine hit
+
+        assert b._n_revealed == int(b._revealed.sum())
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+        assert b._n_safe_revealed == 0   # mine hit does not count as safe reveal
+
+    def test_counters_match_after_mixed_actions(self):
+        """Complex action sequence: reveal + flag + chord."""
+        mines = {(0, 0)}
+        b = Board(5, 5, mines)
+
+        b.reveal(4, 4)      # flood-fill
+        b.toggle_flag(0, 0) # flag
+        b.toggle_flag(1, 1) # flag
+        b.toggle_flag(1, 1) # → question
+
+        assert b._n_revealed == int(b._revealed.sum())
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
+
+    def test_dev_solve_resyncs_all_counters(self):
+        """dev_solve_board() bulk ops must resync counters correctly."""
+        from gameworks.engine import GameEngine
+
+        mines = {(0, 0), (1, 1)}
+        b = Board(5, 5, mines)
+        eng = GameEngine(mode="random", width=5, height=5, mines=2, seed=42)
+        eng.board = b
+
+        # Partially reveal, flag, question some cells before dev_solve
+        b.reveal(4, 4)
+        b.toggle_flag(3, 3)
+        b.toggle_flag(2, 2)
+        b.toggle_flag(2, 2)  # → question
+
+        eng.dev_solve_board()
+
+        # After dev_solve, all counters must match the numpy arrays
+        assert b._n_revealed == int(b._revealed.sum())
+        assert b._n_safe_revealed == b.total_safe
+        assert b._n_flags == b.total_mines
+        assert b._n_questioned == 0
+
+        # Validate against arrays
+        assert b._n_flags == int(b._flagged.sum())
+        assert b._n_questioned == int(b._questioned.sum())
