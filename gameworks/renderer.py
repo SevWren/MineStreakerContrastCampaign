@@ -168,7 +168,7 @@ class WinAnimation:
     revealed, the victory modal appears.
     """
 
-    def __init__(self, board: Board, speed: float = 0.025):
+    def __init__(self, board: Board, speed: float = 0.00066):
         # Correctly-flagged mines first, then incorrectly-flagged,
         # giving a satisfying "pattern emerges" feel.
         self._board = board
