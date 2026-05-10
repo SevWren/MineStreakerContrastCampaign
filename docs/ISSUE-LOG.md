@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10 (session 4)
+**Last updated:** 2026-05-10 (session 5)
 
 ---
 
@@ -24,10 +24,47 @@ Each entry carries a status, severity, and resolution notes.
 ### [T-001] `test_fps_is_exported` asserts `FPS == 60` but renderer defines `FPS = 30`
 - **Status:** `OPEN`
 - **File:** `tests/test_gameworks_renderer_headless.py:94` vs `gameworks/renderer.py:33`
-- **Detail:** `TestFPSConstant::test_fps_is_exported` contains `assert FPS == 60`. The renderer defines `FPS = 30` with the comment "Minesweeper needs no more than 30 fps". One of them is wrong — either the target FPS was changed without updating the test, or the test was written for a higher-fps design.
-- **Impact:** Test will fail as soon as `pygame` is installed in CI. Currently skipped because the entire `test_gameworks_renderer_headless.py` file skips when pygame is absent.
-- **Action needed:** Decide the canonical FPS value and align the other. If 30 is correct, update the test. If 60 was intended, update the code.
-- **Discovered:** Session 4 pre-push protocol check (pre-existing; not introduced by session 4 changes).
+- **Detail:** `TestFPSConstant::test_fps_is_exported` contains `assert FPS == 60`. The renderer defines `FPS = 30`. One is wrong. The new package-local test at `gameworks/tests/renderer/test_renderer_init.py::TestRendererConstants::test_fps_constant_exists_and_positive` avoids this by asserting `FPS > 0` only.
+- **Impact:** Root-level test will fail as soon as `pygame` is installed in CI.
+- **Action needed:** Decide canonical FPS value. If 30 is correct: update `tests/test_gameworks_renderer_headless.py:94` to `assert FPS == 30`. If 60 was intended: update `renderer.py`.
+- **Discovered:** Session 4 pre-push protocol check.
+
+---
+
+## Design Pattern Debt — Pending Implementations
+
+These are not bugs but tracked engineering gaps from `gameworks/docs/DESIGN_PATTERNS.md`.
+Each has a test scaffold in `gameworks/tests/` that is currently skipped.
+
+### [DP-R2] No GameConfig frozen dataclass
+- **Status:** `OPEN`
+- **Files:** `gameworks/engine.py` — `GameEngine.__init__`
+- **Detail:** `GameEngine` takes 7 flat keyword arguments. No config object; not serializable or comparable as a unit. See DESIGN_PATTERNS.md § R2.
+- **Test scaffold:** `gameworks/tests/unit/test_config.py` (entire file skipped)
+
+### [DP-R3] Board loaders return naked Board
+- **Status:** `OPEN`
+- **Files:** `gameworks/engine.py` — `load_board_from_npy`, `load_board_from_pipeline`
+- **Detail:** No `BoardLoadResult` dataclass. Format detection, fallback status, and load warnings are not observable by callers. See DESIGN_PATTERNS.md § R3.
+- **Test scaffold:** `gameworks/tests/unit/test_board_loading.py` (partial; schema section skipped)
+
+### [DP-R6] No preflight_check()
+- **Status:** `OPEN`
+- **Files:** `gameworks/main.py` — `main()`
+- **Detail:** Missing-file and import errors surface mid-game-loop. No fast-fail validation before `GameLoop` construction. See DESIGN_PATTERNS.md § R6.
+- **Test scaffold:** `gameworks/tests/cli/test_preflight.py` (entire file skipped)
+
+### [DP-R8] _save_npy() is not atomic
+- **Status:** `OPEN`
+- **Files:** `gameworks/main.py` — `GameLoop._save_npy()`
+- **Detail:** Direct `np.save(path)` call. Corrupt partial file left on crash or Ctrl-C. No `os.replace` pattern. See DESIGN_PATTERNS.md § R8.
+- **Test scaffold:** `gameworks/tests/integration/test_board_modes.py::TestSaveLoadRoundTrip::test_atomic_save_uses_tmp_then_replace` (skipped)
+
+### [DP-R9] No GAME_SAVE_SCHEMA_VERSION
+- **Status:** `OPEN`
+- **Files:** `gameworks/engine.py`, `gameworks/main.py`
+- **Detail:** Saved `.npy` boards have no version metadata. No companion JSON sidecar. Format detection relies on value-range heuristics only. See DESIGN_PATTERNS.md § R9.
+- **Test scaffold:** `gameworks/tests/unit/test_board_loading.py` (schema versioning section, skipped)
 
 ---
 

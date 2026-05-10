@@ -538,11 +538,17 @@ headless execution of `tests/test_gameworks_engine.py`, it is a regression.
 ### Gameworks Test Commands
 
 ```bash
-# Headless engine tests (no display required)
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+# Package-local suite — unit, architecture, CLI, integration (no display required)
+pytest gameworks/tests/unit/ gameworks/tests/architecture/ gameworks/tests/cli/ gameworks/tests/integration/ -v
 
-# Full test suite
-python -m unittest discover -s tests -p "test_*.py"
+# Headless renderer suite
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
+
+# Full package-local suite
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v
+
+# Legacy root-level gameworks tests (regression guard)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
 ```
 
 ### Gameworks Versioning
@@ -585,12 +591,31 @@ Key design decisions:
 - numpy arrays accessed directly (`_mine`, `_revealed`, `_flagged`, `_questioned`, `_neighbours`) — do NOT call `board.snapshot()` inside hot per-frame paths.
 - Surface caches: `_num_surfs`, `_question_surf`, `_thumb_surf`, `_fog_surf`, `_ghost_surf` — rebuild only on tile/window-size change, never per-frame.
 
-gameworks validation (no test runner; manual import check):
+gameworks validation — AST syntax check (Step 5 of Pre-Push Protocol):
 ```bash
 python -c "import ast; ast.parse(open('gameworks/renderer.py').read()); print('renderer OK')"
 python -c "import ast; ast.parse(open('gameworks/engine.py').read()); print('engine OK')"
 python -c "import ast; ast.parse(open('gameworks/main.py').read()); print('main OK')"
 ```
+
+gameworks test suite (Step 6 of Pre-Push Protocol):
+```bash
+# Package-local suite — unit, architecture, CLI, integration (no display required)
+pytest gameworks/tests/unit/ gameworks/tests/architecture/ gameworks/tests/cli/ gameworks/tests/integration/ -v
+
+# Headless renderer suite (SDL dummy driver)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
+
+# Legacy root-level suite (regression guard)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
+```
+
+Pending implementation tests (activate when the corresponding R2/R3/R6/R8/R9 feature is built):
+- `gameworks/tests/unit/test_config.py` — R2: GameConfig frozen dataclass
+- `gameworks/tests/unit/test_board_loading.py` (partial) — R3: BoardLoadResult
+- `gameworks/tests/cli/test_preflight.py` — R6: preflight_check()
+- `gameworks/tests/integration/test_board_modes.py::test_atomic_save` — R8: atomic .npy save
+- `gameworks/tests/unit/test_board_loading.py` (schema section) — R9: GAME_SAVE_SCHEMA_VERSION
 
 ---
 
@@ -650,12 +675,15 @@ file in the diff — not just the ones you believe are syntactically changed.
 **gameworks/ changes** (engine, renderer, main, corridors):
 
 ```bash
-# Engine unit tests (no display required)
-python -m pytest tests/test_gameworks_engine.py -v
+# Package-local suite — unit, architecture, CLI, integration (no display required)
+pytest gameworks/tests/unit/ gameworks/tests/architecture/ gameworks/tests/cli/ gameworks/tests/integration/ -v
 
-# Renderer headless tests (SDL dummy driver — no display required)
+# Headless renderer suite (SDL dummy driver)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
+
+# Legacy root-level regression guard
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
-  python -m pytest tests/test_gameworks_renderer_headless.py -v
+  pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
 ```
 
 **Pipeline / reconstruction changes** (core, sa, solver, corridors, repair, report, pipeline):
@@ -692,9 +720,18 @@ broken state. If no such test exists, write one before pushing. The test does
 not need to be elaborate — a single assertion that the broken symptom no longer
 occurs is sufficient.
 
-Existing gameworks test files to extend:
-- `tests/test_gameworks_engine.py` — Board logic, GameEngine lifecycle, npy loading
-- `tests/test_gameworks_renderer_headless.py` — Renderer init, animation classes, constants
+Extend the appropriate test file for the change:
+- `gameworks/tests/unit/test_board.py` — Board logic: reveal, flag, chord, flood-fill
+- `gameworks/tests/unit/test_engine.py` — GameEngine: lifecycle, scoring, streak, restart
+- `gameworks/tests/unit/test_scoring.py` — scoring constants and multiplier tiers
+- `gameworks/tests/unit/test_mine_placement.py` — place_random_mines
+- `gameworks/tests/unit/test_board_loading.py` — load_board_from_npy, format detection
+- `gameworks/tests/renderer/test_renderer_init.py` — Renderer construction, constants
+- `gameworks/tests/renderer/test_animations.py` — AnimationCascade, WinAnimation
+- `gameworks/tests/renderer/test_surface_cache.py` — per-frame cache stability
+- `gameworks/tests/architecture/test_boundaries.py` — import boundary enforcement
+- `gameworks/tests/fixtures/boards.py` / `engines.py` — add shared factory helpers here
+- `tests/test_gameworks_engine.py` — regression guard for critical bugs (root suite)
 
 ---
 
