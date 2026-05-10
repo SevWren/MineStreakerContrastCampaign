@@ -19,8 +19,11 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, Set, Tuple
 
+import traceback
+
 import numpy as np
 from pathlib import Path
+from scipy.ndimage import convolve as _ndconvolve
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -65,12 +68,11 @@ class Board:
         for (cx, cy) in mine_positions:
             self._mine[cy, cx] = True
 
-        # Pre-compute neighbour counts (0–8)
-        self._neighbours = np.zeros((height, width), dtype=np.uint8)
-        for y in range(height):
-            for x in range(width):
-                if not self._mine[y, x]:
-                    self._neighbours[y, x] = self._count_adj(x, y)
+        # Pre-compute neighbour counts (0–8) via scipy convolution — O(H*W) vs O(H*W*9)
+        _kernel = np.ones((3, 3), dtype=np.uint8)
+        _kernel[1, 1] = 0
+        raw = _ndconvolve(self._mine.view(np.uint8), _kernel, mode='constant', cval=0)
+        self._neighbours = np.where(self._mine, np.uint8(0), raw.astype(np.uint8))
 
         self._state: str = "playing"  # playing | won | lost
 
@@ -162,7 +164,7 @@ class Board:
                     if not self._revealed[ny, nx] and not self._flagged[ny, nx] and not self._mine[ny, nx]:
                         stack.append((nx, ny))
 
-        if self.revealed_count == self.total_safe:
+        if self.revealed_count == self.total_safe and self.correct_flags == self.total_mines:
             self._state = "won"
 
         return False, newly
@@ -188,7 +190,7 @@ class Board:
         # hidden → flag
         self._flagged[y, x] = True
 
-        if self.revealed_count == self.total_safe:
+        if self.revealed_count == self.total_safe and self.correct_flags == self.total_mines:
             self._state = "won"
 
         return "flag"
@@ -274,30 +276,42 @@ def place_random_mines(width: int, height: int, count: int,
 def load_board_from_npy(path: str) -> Board:
     """
     Load a board from an .npy file.
-    Convention: -1 = mine, 0+ = neighbour count (pre-validated).
+
+    Supports two encodings:
+    - Pipeline format (run_iter9.py output): int8, 0=safe, 1=mine
+    - Game format (_save_npy() output):      int8, -1=mine, 0-8=neighbour_count
+
+    Format is auto-detected: if all values are in {0, 1} (no negatives, max <= 1)
+    the pipeline format is assumed.
     """
     grid = np.load(path)
     if grid.ndim != 2:
         raise ValueError(f"Expected 2D array, got shape {grid.shape}")
 
     h, w = grid.shape
-    mine_pos: Set[Tuple[int, int]] = set()
-    for y in range(h):
-        for x in range(w):
-            if grid[y, x] < 0:
-                mine_pos.add((x, y))
+    is_pipeline_format = int(grid.min()) >= 0 and int(grid.max()) <= 1
+
+    if is_pipeline_format:
+        # Pipeline format: 1=mine, 0=safe — no neighbour counts stored
+        rows, cols = np.where(grid == 1)
+        mine_pos: Set[Tuple[int, int]] = {(int(c), int(r)) for r, c in zip(rows, cols)}
+    else:
+        # Game format: -1=mine, 0-8=neighbour count
+        rows, cols = np.where(grid < 0)
+        mine_pos = {(int(c), int(r)) for r, c in zip(rows, cols)}
 
     board = Board(w, h, mine_pos)
 
-    # Validate neighbour counts
-    for y in range(h):
-        for x in range(w):
-            if not board._mine[y, x]:
-                if int(grid[y, x]) != int(board._neighbours[y, x]):
-                    raise ValueError(
-                        f"Neighbour mismatch at ({x},{y}): file={grid[y,x]}, "
-                        f"computed={board._neighbours[y,x]}"
-                    )
+    # Validate neighbour counts only for game format (pipeline boards don't store them)
+    if not is_pipeline_format:
+        for y in range(h):
+            for x in range(w):
+                if not board._mine[y, x]:
+                    if int(grid[y, x]) != int(board._neighbours[y, x]):
+                        raise ValueError(
+                            f"Neighbour mismatch at ({x},{y}): file={grid[y,x]}, "
+                            f"computed={board._neighbours[y,x]}"
+                        )
     return board
 
 
@@ -336,7 +350,6 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
             forbidden = np.zeros((board_h, board_w), dtype=np.uint8)
 
         # ── Simulated Annealing ──
-        compile_sa_kernel(board_w, board_h, seed)
 
         # Seed grid on allowed cells
         avail = np.argwhere(forbidden == 0)
@@ -354,17 +367,11 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
         grid[forbidden == 1] = 0
 
         # ── Repair ──
-        class _RouteCfg:
-            phase2_budget_s = 360.0
-            last100_budget_s = 300.0
-            last100_unknown_threshold = 100
-            solve_max_rounds = 300
-            trial_max_rounds = 60
-            enable_phase2 = True
-            enable_last100 = True
-            enable_sa_rerun = False
-
-        grid = run_phase1_repair(grid, target, weights, forbidden, _RouteCfg(), seed)
+        grid = run_phase1_repair(
+            grid, target, weights, forbidden,
+            time_budget_s=90.0,
+            max_rounds=300,
+        )
 
         # ── Extract mines ──
         positions: Set[Tuple[int, int]] = set()
@@ -380,6 +387,7 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
 
     except Exception as exc:
         print(f"[WARN] MineStreaker pipeline failed ({exc}); falling back to random.")
+        traceback.print_exc()
         c = max(1, board_w * board_w // 8)
         mp = place_random_mines(board_w, board_w, c, seed=seed)
         return Board(board_w, board_w, mp)
@@ -429,6 +437,7 @@ class GameEngine:
         self.seed = seed
         self.mode = mode
         self.image_path = image_path if mode == "image" else ""
+        self.npy_path = npy_path if mode == "npy" else ""
 
         if mode == "npy" and npy_path:
             self.board = load_board_from_npy(npy_path)
@@ -460,6 +469,11 @@ class GameEngine:
         self._paused_elapsed = self.elapsed
         self._start_time = 0.0
 
+    @property
+    def state(self) -> str:
+        """Expose board state: 'playing' | 'won' | 'lost'."""
+        return self.board._state
+
     # ── Difficulty helpers ─────────────────────────────────────────────
 
     @classmethod
@@ -488,7 +502,6 @@ class GameEngine:
         hit, revealed = board.reveal(x, y)
 
         if hit:
-            board._state = "lost"
             for mx, my in board.all_mine_positions():
                 board._revealed[my, mx] = True
             self.stop_timer()
@@ -507,7 +520,6 @@ class GameEngine:
         board = self.board
 
         if hit:
-            board._state = "lost"
             for mx, my in board.all_mine_positions():
                 board._revealed[my, mx] = True
             self.stop_timer()
@@ -517,15 +529,21 @@ class GameEngine:
         return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state)
 
     def restart(self, width=None, height=None, mines=None):
-        w = width or self.board.width
-        h = height or self.board.height
-        m = mines if mines is not None else self.board.total_mines
-        self.seed += 1
         self._first_click = True
         self._start_time = 0.0
         self._paused_elapsed = 0.0
-        mp = place_random_mines(w, h, m, seed=self.seed)
-        self.board = Board(w, h, mp)
+        self.seed += 1
+        if self.mode == "npy" and self.npy_path:
+            self.board = load_board_from_npy(self.npy_path)
+        elif self.mode == "image" and self.image_path:
+            self.board = load_board_from_pipeline(
+                self.image_path, width or self.board.width, self.seed)
+        else:
+            w = width or self.board.width
+            h = height or self.board.height
+            m = mines if mines is not None else self.board.total_mines
+            mp = place_random_mines(w, h, m, seed=self.seed)
+            self.board = Board(w, h, mp)
 
 
 # ── Quick correctness test ──────────────────────────────────────────────────

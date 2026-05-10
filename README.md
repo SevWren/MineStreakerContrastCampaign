@@ -54,6 +54,62 @@ python run_benchmark.py --image assets/line_art_irl_11_v2.png --widths 300 360 4
 python run_benchmark.py --regression-only
 ```
 
+## Gameworks — Interactive Minesweeper Game
+
+The `gameworks/` package is a Pygame-based interactive Minesweeper that can use pipeline output boards.
+
+### Install game dependencies
+
+```bash
+pip install pygame scipy numpy
+```
+
+### Launch modes
+
+**Classic random board:**
+```bash
+python -m gameworks.main --random --easy
+python -m gameworks.main --random --medium
+python -m gameworks.main --random --hard
+```
+
+**Load a pre-built pipeline board (recommended for development):**
+```bash
+# Tessa board — 300x300, 5.3% density, source image available
+python -m gameworks.main --load results/iter9/20260510T054753Z_tessa_line_art_stiletto_300w_seed11_GAME_DevelopmentBOARD/grid_iter9_300x300.npy
+
+# Custom board size
+python -m gameworks.main --load path/to/board.npy --seed 42
+```
+
+**Image-reveal mode (runs the pipeline at launch — slow, requires Numba warmup):**
+```bash
+python -m gameworks.main --image assets/tessa_line_art_stiletto.png --board-w 300
+```
+
+### Controls
+
+| Input | Action |
+|---|---|
+| Left-click | Reveal tile |
+| Right-click | Flag / unflag |
+| Middle-click or Ctrl+Left | Chord (reveal neighbours) |
+| Scroll wheel | Zoom in/out |
+| Mouse drag | Pan board |
+| Arrow keys | Pan board |
+| R | Restart game |
+| H | Toggle help overlay |
+| F | Toggle fog of war |
+| ESC | Quit |
+
+### Running tests
+
+```bash
+pytest tests/test_gameworks_engine.py -v
+# For headless environments (no display):
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+```
+
 ## Source Image Runtime Contract
 Normal runs are CLI image driven (`--image`).
 

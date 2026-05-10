@@ -313,7 +313,8 @@ class Renderer:
             px = self.PAD
             oy = int(self.BOARD_OY + h_rows * self._tile + self.PAD)
 
-        btn_w = self.PANEL_W - 2 * self.PAD
+        self._btn_w = self.PANEL_W - 2 * self.PAD
+        btn_w = self._btn_w
         btn_h = max(28, font_base + 10)
         gap = max(4, btn_h // 5)
 
@@ -349,6 +350,7 @@ class Renderer:
 
         # ── Win animation state ───────────────────────────────────────────
         self.win_anim: Optional[WinAnimation] = None
+        self._ghost_surf: Optional[pygame.Surface] = None
 
         # Initial pan: center the board in the window
         self._center_board()
@@ -569,7 +571,7 @@ class Renderer:
     # ── Overlay (fog) ─────────────────────────────────────────────────
 
     def _draw_overlay(self):
-        if not getattr(self, '_fog', False):
+        if not self.fog:
             return
         surf = pygame.Surface(self._win.get_size(), pygame.SRCALPHA)
         surf.fill((0, 0, 0, 140))
@@ -579,20 +581,6 @@ class Renderer:
         punch = pygame.Rect(ox + self._pan_x, oy + self._pan_y, bw, bh)
         surf.fill((0, 0, 0, 0), punch)
         self._win.blit(surf, (0, 0))
-
-    # ── Background (grid dots) ────────────────────────────────────────
-
-    def _draw_bg(self):
-        self._win.fill(C["bg"])
-        ox, oy = self.BOARD_OX + self._pan_x, self.BOARD_OY + self._pan_y
-        bw = self.board.width * self._tile
-        bh = self.board.height * self._tile
-        step = max(self._tile, 64)
-        rect = pygame.Rect(ox, oy, bw, bh)
-        for x in range(rect.left, rect.right, step):
-            pygame.draw.line(self._win, (24, 24, 34), (x, rect.top), (x, rect.bottom))
-        for y in range(rect.top, rect.bottom, step):
-            pygame.draw.line(self._win, (24, 24, 34), (rect.left, y), (rect.right, y))
 
     # ── Header ────────────────────────────────────────────────────────
 
@@ -796,8 +784,13 @@ class Renderer:
 
     def _draw_loss_overlay(self, ox, oy):
         ts = self._tile
-        for y in range(self.board.height):
-            for x in range(self.board.width):
+        win_w, win_h = self._win.get_size()
+        tx0 = max(0, (-self._pan_x) // ts - 1)
+        ty0 = max(0, (-self._pan_y) // ts - 1)
+        tx1 = min(self.board.width, (win_w - ox) // ts + 2)
+        ty1 = min(self.board.height, (win_h - oy) // ts + 2)
+        for y in range(ty0, ty1):
+            for x in range(tx0, tx1):
                 cell = self.board.snapshot(x, y)
                 px = ox + x * ts
                 py = oy + y * ts
@@ -818,30 +811,24 @@ class Renderer:
         if not self._image_surf:
             return
 
-        img_w, img_h = self._image_surf.get_size()
+        # Rebuild cached scaled surface only when board pixel dimensions change
+        if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
+            self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
 
-        # Build a scaled copy matching the board pixel area
-        scaled = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+        scaled = self._ghost_surf
+        ts = self._tile
 
         for y in range(self.board.height):
             for x in range(self.board.width):
                 cell = self.board.snapshot(x, y)
                 if not cell.is_flagged:
                     continue
-                sx = int((x / self.board.width) * img_w)
-                sy = int((y / self.board.height) * img_h)
-                sx = min(sx, img_w - 1)
-                sy = min(sy, img_h - 1)
-                pixel = scaled.get_at((sx, sy))
-                if cell.is_mine:
-                    pixel.a = 200
-                else:
-                    pixel.a = 40
-                px = ox + x * self._tile
-                py = oy + y * self._tile
-                pixel_surf = pygame.Surface((self._tile, self._tile), pygame.SRCALPHA)
-                pixel_surf.fill(pixel)
-                self._win.blit(pixel_surf, (px, py))
+                px = ox + x * ts
+                py = oy + y * ts
+                src_rect = pygame.Rect(x * ts, y * ts, ts, ts)
+                sub = scaled.subsurface(src_rect).copy()
+                sub.set_alpha(200 if cell.is_mine else 40)
+                self._win.blit(sub, (px, py))
     # ── Right panel ───────────────────────────────────────────────────
 
     def _draw_panel(self, mouse_pos, game_state, elapsed):
@@ -933,7 +920,7 @@ class Renderer:
             thumb_border = pygame.Surface((thumb_w + 4, thumb_h + 4))
             thumb_border.fill(C["border"])
             thumb_border.blit(thumb, (2, 2))
-            win.blit(thumb_border, (px + (btn_w - thumb_w - 4) // 2, oy - thumb_h - 14))
+            win.blit(thumb_border, (px + (self._btn_w - thumb_w - 4) // 2, oy - thumb_h - 14))
 
     # ── Victory overlay ───────────────────────────────────────────────
 
@@ -953,22 +940,23 @@ class Renderer:
         if not self._image_surf or not win_anim_set:
             return
 
-        img_w, img_h = self._image_surf.get_size()
-        scaled = pygame.transform.smoothscale(self._image_surf, (self.board.width * self._tile,
-                                                                   self.board.height * self._tile))
+        bw = self.board.width * self._tile
+        bh = self.board.height * self._tile
+        ts = self._tile
+
+        # Reuse the same cached surface as _draw_image_ghost
+        if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
+            self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+
+        scaled = self._ghost_surf
 
         for (x, y) in win_anim_set:
-            sx = int((x / self.board.width) * img_w)
-            sy = int((y / self.board.height) * img_h)
-            sx = min(sx, img_w - 1)
-            sy = min(sy, img_h - 1)
-            px = ox + x * self._tile
-            py = oy + y * self._tile
-            pixel = scaled.get_at((sx, sy))
-            pixel.a = 255
-            pixel_surf = pygame.Surface((self._tile, self._tile), pygame.SRCALPHA)
-            pixel_surf.fill(pixel)
-            self._win.blit(pixel_surf, (px, py))
+            px = ox + x * ts
+            py = oy + y * ts
+            src_rect = pygame.Rect(x * ts, y * ts, ts, ts)
+            sub = scaled.subsurface(src_rect).copy()
+            sub.set_alpha(255)
+            self._win.blit(sub, (px, py))
 
     def _draw_modal(self, title, subtitle):
         overlay = pygame.Surface(self._win.get_size(), pygame.SRCALPHA)

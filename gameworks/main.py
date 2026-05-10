@@ -21,13 +21,13 @@ try:
         Board, GameEngine, MoveResult,
         load_board_from_pipeline, load_board_from_npy, place_random_mines,
     )
-    from .renderer import Renderer
+    from .renderer import Renderer, FPS
 except ImportError:
     from engine import (
         Board, GameEngine, MoveResult,
         load_board_from_pipeline, load_board_from_npy, place_random_mines,
     )
-    from renderer import Renderer
+    from renderer import Renderer, FPS
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -93,10 +93,7 @@ class GameLoop:
             mode = "image"
             image_path = a.image
         elif a.load:
-            brd = load_board_from_npy(a.load)
-            eng = GameEngine(mode="random", width=brd.width, height=brd.height)
-            eng.board = brd
-            eng.board._state = "playing"
+            eng = GameEngine(mode="npy", npy_path=a.load, seed=a.seed)
             return eng
 
         elif a.random or (not a.image):
@@ -175,18 +172,6 @@ class GameLoop:
                 elif ev.type == pygame.QUIT:
                     running = False
                     break
-
-                # Panel button via collidepoint
-                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                    panel_action = self._renderer.handle_panel(ev.pos)
-                    if panel_action == "quit":
-                        running = False
-                        break
-                    elif panel_action == "restart":
-                        self._start_game()
-                        continue
-                    elif panel_action == "save":
-                        self._save_npy()
 
                 # Global keys handled by renderer already (KEYDOWN)
 
