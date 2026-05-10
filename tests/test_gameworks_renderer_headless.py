@@ -134,6 +134,7 @@ class TestAnimationCascade:
         # speed=0.005s/cell → 5 cells = 25ms; sleep 10× for headroom.
         cascade = AnimationCascade(positions, speed=0.005)
         time.sleep(0.25)
+        cascade.current()  # drive _idx forward before checking done
         assert cascade.done, (
             f"Cascade with 5 cells at 5ms/cell should be done after 250ms"
         )
@@ -224,6 +225,88 @@ class TestWinAnimation:
         fa = anim.finished_after()
         assert isinstance(fa, float)
         assert fa > 0
+
+
+# ---------------------------------------------------------------------------
+# Overlay panel click routing — regression for "Solve Board does nothing"
+# ---------------------------------------------------------------------------
+
+class TestOverlayPanelClickRouting:
+    """Regression: when _panel_overlay is True, the board rect covers the full
+    window width.  Panel button clicks were silently swallowed by the board drag
+    handler (returned None) before reaching handle_panel.
+
+    These tests reproduce the exact bug condition by forcing _panel_overlay=True
+    and positioning a button inside the board rect, then asserting handle_event
+    returns the expected action string rather than None.
+    """
+
+    def _make_overlay_renderer(self):
+        import pygame as _pg
+        _pg.init()
+        _pg.display.set_mode((800, 600))
+        from gameworks.engine import GameEngine
+        from gameworks.renderer import Renderer
+        eng = GameEngine(mode="random", width=9, height=9, mines=10, seed=42)
+        eng.start()
+        r = Renderer(eng)
+        # Force overlay mode and place the dev button INSIDE the board rect
+        # — this is exactly what happens on a 300×370 board (board rect spans
+        # the full window width, panel buttons land inside it).
+        r._panel_overlay = True
+        board_rect = r._board_rect()
+        r._btn_dev_solve.x = board_rect.x + 10
+        r._btn_dev_solve.y = board_rect.y + 10
+        return r, eng
+
+    def test_dev_solve_click_returns_action_not_none(self):
+        """REGRESSION: clicking _btn_dev_solve in overlay mode must return
+        'dev:solve', not None (board drag handler must not swallow it)."""
+        r, _ = self._make_overlay_renderer()
+        pos = r._btn_dev_solve.center
+        ev = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": pos})
+        action = r.handle_event(ev)
+        assert action == "dev:solve", (
+            f"Overlay button click returned {action!r}; expected 'dev:solve'. "
+            "Board drag handler likely swallowed the MOUSEBUTTONDOWN event."
+        )
+        pygame.quit()
+
+    def test_restart_click_in_overlay_not_swallowed(self):
+        """Other overlay panel buttons must also not be swallowed."""
+        r, _ = self._make_overlay_renderer()
+        board_rect = r._board_rect()
+        r._btn_new.x = board_rect.x + 10
+        r._btn_new.y = board_rect.y + 10
+        pos = r._btn_new.center
+        ev = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": pos})
+        action = r.handle_event(ev)
+        assert action == "restart", (
+            f"Overlay restart button click returned {action!r}; expected 'restart'."
+        )
+        pygame.quit()
+
+    def test_board_click_outside_panel_still_works(self):
+        """Board cell clicks that do NOT land on a panel button must still register."""
+        r, _ = self._make_overlay_renderer()
+        # Move all buttons far off-screen so no panel button intercepts the click
+        for btn in (r._btn_new, r._btn_help, r._btn_fog,
+                    r._btn_save, r._btn_restart, r._btn_dev_solve):
+            btn.x, btn.y = 9999, 9999
+
+        ox = r.BOARD_OX + r._pan_x
+        oy = r.BOARD_OY + r._pan_y
+        cell_px = ox + r._tile // 2
+        cell_py = oy + r._tile // 2
+
+        ev_dn = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": (cell_px, cell_py)})
+        ev_up = pygame.event.Event(pygame.MOUSEBUTTONUP,   {"button": 1, "pos": (cell_px, cell_py)})
+        r.handle_event(ev_dn)
+        action = r.handle_event(ev_up)
+        assert action is not None and action.startswith("click:"), (
+            f"Board cell click must return 'click:x,y' when not on a panel button; got {action!r}"
+        )
+        pygame.quit()
 
 
 # ---------------------------------------------------------------------------
