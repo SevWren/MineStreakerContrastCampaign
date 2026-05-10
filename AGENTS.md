@@ -481,23 +481,118 @@ python -c "import ast; ast.parse(open('gameworks/main.py').read()); print('main 
 
 ## Pre-Push Verification Protocol (MANDATORY)
 
-Before **every** `git push`, regardless of how small the change appears:
+Before **every** `git push`, regardless of how small the change appears, execute
+every step below in order. If any step fails, fix the gap and restart from step 1.
 
-1. **Re-read every file you touched** — confirm the actual written code matches what you claimed to fix. Do not rely on memory of what you intended to write.
+---
 
-2. **Cross-check the full issue scope** — if the task listed N problems, verify N fixes are present in the diff. Count them. A commit message listing 5 fixes with only 3 in the diff is a failed push.
+### Step 1 — Re-read every file you touched
 
-3. **Trace each fix end-to-end** — for bug fixes, follow the call chain from the broken call site through to the corrected return value. Confirm no intermediate function still passes the old (wrong) value.
+Open each file you edited and read the final state. Confirm the actual written
+code matches what you claimed to fix. Memory of what you *intended* to write is
+not sufficient — read the file.
 
-4. **Check for partial fixes** — a fix that corrects the primary symptom but leaves a secondary bug in the same function is not complete. Check the surrounding logic for co-located bugs.
+---
 
-5. **Verify no regressions introduced** — if you edited a function, confirm all callers still receive what they expect. If you renamed or removed a variable, grep for stale references.
+### Step 2 — Cross-check the full issue scope
 
-6. **Run AST parse on every `.py` file edited** — catches syntax errors that would crash at import time.
+If the task listed N problems, count the fixes present in the diff. A commit
+message that names 5 fixes with only 3 in the diff is a **failed push**. Tally
+explicitly; do not estimate.
 
-7. **Only then push.** If any step above reveals a gap, fix it and restart the checklist from step 1.
+---
 
-This protocol exists because previous sessions pushed commits where the claimed fix list in the message did not fully match what was implemented in the diff.
+### Step 3 — Trace each fix end-to-end
+
+For every bug fixed, follow the call chain from the broken call site through to
+the corrected return value. Confirm no intermediate function still passes the old
+(wrong) value or stale variable reference.
+
+---
+
+### Step 4 — Check for partial fixes and co-located bugs
+
+A fix that corrects the primary symptom while leaving a secondary bug in the same
+function is incomplete. Read the entire function body of every function you
+changed, not just the lines you modified. Check callers for assumptions about
+return type or value that your change may have invalidated.
+
+---
+
+### Step 5 — Run AST parse on every edited `.py` file
+
+```bash
+python -c "import ast; ast.parse(open('FILE').read()); print('FILE OK')"
+```
+
+Catches syntax errors that would crash at import time. Do this for every `.py`
+file in the diff — not just the ones you believe are syntactically changed.
+
+---
+
+### Step 6 — Run the relevant test suite and verify results
+
+**gameworks/ changes** (engine, renderer, main, corridors):
+
+```bash
+# Engine unit tests (no display required)
+python -m pytest tests/test_gameworks_engine.py -v
+
+# Renderer headless tests (SDL dummy driver — no display required)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  python -m pytest tests/test_gameworks_renderer_headless.py -v
+```
+
+**Pipeline / reconstruction changes** (core, sa, solver, corridors, repair, report, pipeline):
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+**Demo changes** (`demos/`, `tests/demo/`):
+
+```bash
+python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
+```
+
+**Rules:**
+
+- All tests that were passing before your change must still pass after it.
+- If your change caused a previously-passing test to fail: **fix the code or
+  update the test** before pushing. Do not push failing tests.
+- If a test was already failing *before* your change (pre-existing breakage):
+  document it explicitly in the commit message and in `docs/ISSUE-LOG.md`.
+  Do not silently push over pre-existing failures as if they are acceptable —
+  make the state visible.
+- If you add new behaviour (new function, new fix, new feature): check whether
+  existing tests cover it. If they do not, add a test. A fix with zero test
+  coverage that can silently regress is an incomplete fix.
+
+---
+
+### Step 7 — Check test coverage for new behaviour
+
+For every bug you fixed, find the test that would catch a regression to the
+broken state. If no such test exists, write one before pushing. The test does
+not need to be elaborate — a single assertion that the broken symptom no longer
+occurs is sufficient.
+
+Existing gameworks test files to extend:
+- `tests/test_gameworks_engine.py` — Board logic, GameEngine lifecycle, npy loading
+- `tests/test_gameworks_renderer_headless.py` — Renderer init, animation classes, constants
+
+---
+
+### Step 8 — Push
+
+Only after steps 1–7 pass completely. If any step above revealed a gap, fix it
+and restart the checklist from step 1.
+
+---
+
+This protocol exists because previous sessions pushed commits where: (a) the
+claimed fix list in the message did not fully match the diff, and (b) no test
+coverage was added for fixes, allowing regressions to go undetected.
 
 ---
 

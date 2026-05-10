@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10 (session 3)
+**Last updated:** 2026-05-10 (session 4)
 
 ---
 
@@ -16,6 +16,18 @@ Each entry carries a status, severity, and resolution notes.
 | `WONT-FIX` | Acknowledged; intentional or out-of-scope |
 | `OPEN` | Known, not yet fixed |
 | `PENDING-TEST` | Fix applied; needs runtime verification |
+
+---
+
+## Test Divergences — Pre-existing, latent failures
+
+### [T-001] `test_fps_is_exported` asserts `FPS == 60` but renderer defines `FPS = 30`
+- **Status:** `OPEN`
+- **File:** `tests/test_gameworks_renderer_headless.py:94` vs `gameworks/renderer.py:33`
+- **Detail:** `TestFPSConstant::test_fps_is_exported` contains `assert FPS == 60`. The renderer defines `FPS = 30` with the comment "Minesweeper needs no more than 30 fps". One of them is wrong — either the target FPS was changed without updating the test, or the test was written for a higher-fps design.
+- **Impact:** Test will fail as soon as `pygame` is installed in CI. Currently skipped because the entire `test_gameworks_renderer_headless.py` file skips when pygame is absent.
+- **Action needed:** Decide the canonical FPS value and align the other. If 30 is correct, update the test. If 60 was intended, update the code.
+- **Discovered:** Session 4 pre-push protocol check (pre-existing; not introduced by session 4 changes).
 
 ---
 
