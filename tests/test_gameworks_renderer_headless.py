@@ -120,18 +120,23 @@ class TestAnimationCascade:
     def test_cells_revealed_over_time(self):
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(10)]
+        # speed=0.01s/cell — sleep 5× the required time for headroom on loaded machines.
         cascade = AnimationCascade(positions, speed=0.01)
-        time.sleep(0.05)
+        time.sleep(0.15)
         current = cascade.current()
-        assert len(current) >= 3, \
-            f"Expected >=3 cells revealed after 50ms at 10ms/cell, got {len(current)}"
+        assert len(current) >= 3, (
+            f"Expected >=3 cells revealed after 150ms at 10ms/cell, got {len(current)}"
+        )
 
     def test_done_after_all_positions_elapsed(self):
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(5)]
+        # speed=0.005s/cell → 5 cells = 25ms; sleep 10× for headroom.
         cascade = AnimationCascade(positions, speed=0.005)
-        time.sleep(0.1)
-        assert cascade.done
+        time.sleep(0.25)
+        assert cascade.done, (
+            f"Cascade with 5 cells at 5ms/cell should be done after 250ms"
+        )
 
     def test_finished_after_returns_float(self):
         from gameworks.renderer import AnimationCascade

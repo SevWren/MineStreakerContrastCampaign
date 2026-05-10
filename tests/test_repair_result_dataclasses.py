@@ -79,6 +79,71 @@ class RepairResultDataclassTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             tuple(result)
 
+    def test_phase1_adequate_budget_does_not_set_timeout_boolean(self):
+        grid = np.zeros((3, 3), dtype=np.int8)
+        target = np.zeros((3, 3), dtype=np.float32)
+        forbidden = np.zeros((3, 3), dtype=np.int8)
+
+        result = run_phase1_repair(
+            grid,
+            target,
+            np.ones((3, 3), dtype=np.float32),
+            forbidden,
+            time_budget_s=60.0,
+            max_rounds=1,
+            verbose=False,
+            parallel_eval=False,
+        )
+
+        self.assertIsInstance(result, Phase1RepairResult)
+        self.assertFalse(
+            result.phase1_repair_hit_time_budget,
+            msg="Ample budget should not set phase1_repair_hit_time_budget=True",
+        )
+
+    def test_phase2_full_adequate_budget_does_not_set_timeout_boolean(self):
+        grid = np.zeros((3, 3), dtype=np.int8)
+        target = np.zeros((3, 3), dtype=np.float32)
+        forbidden = np.zeros((3, 3), dtype=np.int8)
+
+        result = run_phase2_full_repair(
+            grid,
+            target,
+            forbidden,
+            verbose=False,
+            time_budget_s=60.0,
+            solve_max_rounds=1,
+            trial_max_rounds=1,
+        )
+
+        self.assertIsInstance(result, Phase2FullRepairResult)
+        self.assertFalse(
+            result.phase2_full_repair_hit_time_budget,
+            msg="Ample budget should not set phase2_full_repair_hit_time_budget=True",
+        )
+
+    def test_last100_adequate_budget_does_not_set_timeout_boolean(self):
+        grid = np.zeros((3, 3), dtype=np.int8)
+        target = np.zeros((3, 3), dtype=np.float32)
+        forbidden = np.zeros((3, 3), dtype=np.int8)
+
+        result = run_last100_repair(
+            grid,
+            target,
+            target,
+            forbidden,
+            budget_s=60.0,
+            solve_max_rounds=1,
+            trial_max_rounds=1,
+            verbose=False,
+        )
+
+        self.assertIsInstance(result, Last100RepairResult)
+        self.assertFalse(
+            result.last100_repair_hit_time_budget,
+            msg="Ample budget should not set last100_repair_hit_time_budget=True",
+        )
+
     def test_phase2_mesa_returns_result_object_without_timeout_field(self):
         grid = np.zeros((3, 3), dtype=np.int8)
         target = np.zeros((3, 3), dtype=np.float32)

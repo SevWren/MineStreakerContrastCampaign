@@ -49,6 +49,21 @@ class EventSchedulerTests(unittest.TestCase):
         self.assertEqual(scheduler.total_count, 0)
         self.assertEqual(scheduler.next_batch(), [])
 
+    def test_single_event_list_returns_one_batch_then_finishes(self):
+        scheduler = EventScheduler(events=[42], events_per_frame=3)
+        self.assertFalse(scheduler.finished)
+        batch = scheduler.next_batch()
+        self.assertEqual(batch, [42])
+        self.assertTrue(scheduler.finished)
+        self.assertEqual(scheduler.next_batch(), [])
+
+    def test_events_per_frame_of_one_returns_single_item_batches(self):
+        scheduler = EventScheduler(events=[10, 20, 30], events_per_frame=1)
+        self.assertEqual(scheduler.next_batch(), [10])
+        self.assertEqual(scheduler.next_batch(), [20])
+        self.assertEqual(scheduler.next_batch(), [30])
+        self.assertTrue(scheduler.finished)
+
     def test_scheduler_returns_typed_batch_views_without_list_slicing(self):
         store = TypedPlaybackEventStore(
             steps=np.arange(5, dtype=np.uint32),

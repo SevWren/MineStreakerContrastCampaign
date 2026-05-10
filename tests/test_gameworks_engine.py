@@ -223,13 +223,14 @@ class TestBoardLogic:
         assert b._state == "won"
 
     def test_win_does_not_require_flags(self):
-        """Flagging is optional — win triggers on safe reveals alone."""
+        """Flagging is optional — win triggers on safe reveals alone, and mine cell stays unrevealed."""
         mp = {(0, 0)}
         b = Board(2, 2, mp)
         b.reveal(1, 0)
         b.reveal(0, 1)
         b.reveal(1, 1)
         assert b._state == "won", "All safe cells revealed should trigger win without flags"
+        assert not b._flagged[0, 0], "Mine should not be auto-flagged when win is triggered by reveals"
 
     def test_chord_reveals_neighbours(self):
         mp = {(0, 0)}
@@ -268,7 +269,9 @@ class TestGameEngineLifecycle:
         for seed in range(20):
             eng = make_engine(w=9, h=9, mines=70, seed=seed)  # very high mine density
             result = eng.left_click(4, 4)
-            assert not result.hit_mine, f"First click hit mine with seed={seed}"
+            assert not result.hit_mine, (
+                f"First click hit mine with seed={seed}: board regeneration did not protect first click"
+            )
 
     def test_state_property_matches_board(self):
         eng = make_engine()
@@ -313,8 +316,12 @@ class TestGameEngineLifecycle:
         import time
         eng = make_engine()
         t0 = eng.elapsed
-        time.sleep(0.05)
-        assert eng.elapsed > t0, "Elapsed should grow after start()"
+        # Sleep long enough to be reliable even on a loaded CI machine.
+        time.sleep(0.2)
+        t1 = eng.elapsed
+        assert t1 > t0, (
+            f"Elapsed should grow after start(); got t0={t0:.4f}s t1={t1:.4f}s"
+        )
 
     def test_mine_hit_applies_penalty_and_continues(self):
         """Mine hit deducts score and keeps game playing (no game-over)."""
