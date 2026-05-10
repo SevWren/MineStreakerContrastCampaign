@@ -535,6 +535,13 @@ class Renderer:
             if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                 return f"chord:{cx},{cy}"
 
+        # ── Smiley click (restart) ────────────────────────────────────
+        if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
+            _cx = self._win.get_width() // 2
+            _smiley_rect = pygame.Rect(_cx - 25, 4, 50, self.HEADER_H - 4)
+            if _smiley_rect.collidepoint(ev.pos):
+                return "restart"
+
         # ── Panel button clicks ───────────────────────────────────────
         if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
             panel_action = self.handle_panel(ev.pos)
@@ -595,10 +602,10 @@ class Renderer:
     def draw(self, mouse_pos=(0, 0), game_state: str = "waiting",
              elapsed: float = 0.0, cascade_done: bool = True):
         self._win.fill(C["bg"])
-        self._draw_header(elapsed, game_state)
         self._draw_board(mouse_pos, game_state, cascade_done)
         self._draw_overlay()
         self._draw_panel(mouse_pos, game_state, elapsed)
+        self._draw_header(elapsed, game_state)  # drawn last — board can't cover it
         if self.help_visible:
             self._draw_help()
         pygame.display.flip()
@@ -626,40 +633,42 @@ class Renderer:
         pygame.draw.line(self._win, C["border"],
                          (0, self.HEADER_H + 2), (w, self.HEADER_H + 2), 2)
 
-        ox = self.BOARD_OX + self._pan_x
-        bx = ox + self.board.width * self._tile   # right edge of board on screen
-
-        # ── Left: mine counter ────────────────────────────────────────
+        # ── Left: mine counter (vertically centered) ──────────────────
         mines = self.board.mines_remaining
         mcol = C["red"] if mines < 0 else C["text_light"]
         mt = self._font_big.render(f"M:{mines:>03d}", True, mcol)
-        self._win.blit(mt, (self.BOARD_OX + 8, 8))
+        self._win.blit(mt, (self.BOARD_OX + 8, (self.HEADER_H - mt.get_height()) // 2))
 
-        # ── Centre: smiley (reset button) ────────────────────────────
+        # ── Centre: smiley (clickable reset button) ───────────────────
         cx = self._win.get_width() // 2
         self._draw_smiley(cx - 25, 4, 50, self.HEADER_H - 4, game_state)
 
-        # ── Right: scoreboard ─────────────────────────────────────────
+        # ── Right: two-row scoreboard — guaranteed no overlap ─────────
+        # Uses _font_small so two rows always fit inside HEADER_H=48px.
         score = self.engine.score
         streak = self.engine.streak
         mult = self.engine.streak_multiplier
         secs = int(elapsed)
-
-        # Timer
-        tt = self._font_big.render(f"T:{secs:>03d}", True, C["text_light"])
         win_w = self._win.get_width()
-        self._win.blit(tt, (win_w - tt.get_width() - 8, 8))
 
-        # Score — two lines: value + streak info
+        fsh = self._font_small.get_height()
+        # Centre the two rows vertically in the header
+        y1 = (self.HEADER_H - 2 * fsh - 2) // 2
+        y2 = y1 + fsh + 2
+
+        # Row 1: timer (left of score) + score (right-anchored)
         score_col = C["yellow"] if mult > 1.0 else C["text_light"]
-        sc = self._font_big.render(f"SCORE:{score:>6d}", True, score_col)
-        self._win.blit(sc, (win_w - sc.get_width() - 8, self.HEADER_H - sc.get_height() - 2))
+        sc = self._font_small.render(f"SCORE:{score:>6d}", True, score_col)
+        self._win.blit(sc, (win_w - sc.get_width() - 8, y1))
+        tt = self._font_small.render(f"T:{secs:>03d}", True, C["text_light"])
+        self._win.blit(tt, (win_w - sc.get_width() - tt.get_width() - 18, y1))
 
+        # Row 2: streak (only shown when streak >= 5)
         if streak >= 5:
             streak_col = (C["orange"] if mult < 3.0 else
                           C["red"]    if mult < 5.0 else C["cyan"])
             sl = self._font_small.render(f"STREAK x{streak}  {mult:.1f}x", True, streak_col)
-            self._win.blit(sl, (win_w - sl.get_width() - 8, 28))
+            self._win.blit(sl, (win_w - sl.get_width() - 8, y2))
 
     def _draw_smiley(self, x, y, w, h, state):
         cx, cy = x + w // 2, y + h // 2
@@ -955,7 +964,7 @@ class Renderer:
         stats = [
             f"Board: {self.board.width} x {self.board.height}",
             f"Mines: {self.board.total_mines}",
-            f"Safe left: {self.board.total_safe - self.board.revealed_count}",
+            f"Safe left: {self.board.total_safe - self.board.safe_revealed_count}",
             f"Flags: {self.board.flags_placed}",
         ]
         if self.board.questioned_count > 0:

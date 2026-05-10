@@ -223,9 +223,7 @@ class GameLoop:
         if result.newly_revealed:
             from .renderer import AnimationCascade
             self._renderer.cascade = AnimationCascade(result.newly_revealed)
-        if result.hit_mine:
-            self._state = self.RESULT
-            self._result_time = time.time()
+        # Mine hit is a score penalty — game continues, do NOT transition to RESULT
 
     def _do_right_click(self, x, y):
         state = self._engine.right_click(x, y)
@@ -236,9 +234,7 @@ class GameLoop:
         if result.newly_revealed:
             from .renderer import AnimationCascade
             self._renderer.cascade = AnimationCascade(result.newly_revealed)
-        if result.hit_mine:
-            self._state = self.RESULT
-            self._result_time = time.time()
+        # Mine hit via chord is a penalty — game continues
 
     def _save_npy(self):
         """Save current board's grid to an npy file."""

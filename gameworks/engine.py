@@ -130,6 +130,11 @@ class Board:
         return int(self._revealed.sum())
 
     @property
+    def safe_revealed_count(self) -> int:
+        """Revealed cells that are NOT mines (excludes mine-hit cells from count)."""
+        return int(np.sum(self._revealed & ~self._mine))
+
+    @property
     def flags_placed(self) -> int:
         return int(self._flagged.sum())
 
@@ -367,10 +372,7 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
         weights = compute_asymmetric_weights(target)
 
         # ── Corridors (mine-free paths) ──
-        corridors = build_adaptive_corridors(target, DENSITY=0.22, BORDER=3)
-        forbidden = corridors.get("corridor_board")
-        if forbidden is None:
-            forbidden = np.zeros((board_h, board_w), dtype=np.uint8)
+        forbidden, *_ = build_adaptive_corridors(target, border=3)
 
         # ── Simulated Annealing ──
 
