@@ -27,6 +27,29 @@ from scipy.ndimage import convolve as _ndconvolve
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Scoring constants
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Points awarded for revealing a cell, indexed by neighbour_mines count (0–8).
+# Higher-count cells are harder to deduce → more points.
+REVEAL_POINTS = [1, 5, 10, 20, 35, 55, 80, 110, 150]
+
+CORRECT_FLAG_BONUS = 50   # placing a flag on an actual mine
+WRONG_FLAG_PENALTY = 25   # placing a flag on a safe cell
+MINE_HIT_PENALTY   = 250  # score deducted per mine stepped on (game continues)
+
+# Streak multiplier tiers.  First tier where streak >= threshold is used.
+# Sorted descending so we short-circuit on the highest matching tier.
+STREAK_TIERS: List[Tuple[int, float]] = [
+    (25, 5.0),   # 25+ consecutive safe actions → 5× multiplier
+    (15, 3.0),   #  15–24 → 3×
+    (10, 2.0),   #  10–14 → 2×
+    (5,  1.5),   #   5– 9 → 1.5×
+    (0,  1.0),   #   0– 4 → 1× (base)
+]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Cell Snapshot
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -147,7 +170,7 @@ class Board:
 
         if self._mine[y, x]:
             self._revealed[y, x] = True
-            self._state = "lost"
+            # No game-over: mine hit is a score penalty, game continues.
             return True, [(x, y)]
 
         newly: List[Tuple[int, int]] = []
@@ -164,7 +187,7 @@ class Board:
                     if not self._revealed[ny, nx] and not self._flagged[ny, nx] and not self._mine[ny, nx]:
                         stack.append((nx, ny))
 
-        if self.revealed_count == self.total_safe and self.correct_flags == self.total_mines:
+        if self.revealed_count == self.total_safe:
             self._state = "won"
 
         return False, newly
@@ -190,7 +213,7 @@ class Board:
         # hidden → flag
         self._flagged[y, x] = True
 
-        if self.revealed_count == self.total_safe and self.correct_flags == self.total_mines:
+        if self.revealed_count == self.total_safe:
             self._state = "won"
 
         return "flag"
@@ -401,15 +424,20 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
 
 class MoveResult:
     """Outcome of a single player action."""
-    __slots__ = ("success", "hit_mine", "newly_revealed", "flagged", "state")
+    __slots__ = ("success", "hit_mine", "newly_revealed", "flagged", "state",
+                 "score_delta", "streak", "penalty")
 
     def __init__(self, *, success=True, hit_mine=False, newly_revealed=None,
-                 flagged=False, state: str = "playing"):
+                 flagged=False, state: str = "playing",
+                 score_delta: int = 0, streak: int = 0, penalty: int = 0):
         self.success = success
         self.hit_mine = hit_mine
         self.newly_revealed: List[Tuple[int, int]] = newly_revealed or []
         self.flagged = flagged
         self.state = state
+        self.score_delta = score_delta   # net score change this action
+        self.streak = streak             # streak count after this action
+        self.penalty = penalty           # non-zero when mine was hit
 
 
 class GameEngine:
@@ -452,6 +480,11 @@ class GameEngine:
         self._start_time: float = 0.0
         self._paused_elapsed: float = 0.0
 
+        # Scoring state
+        self.score: int = 0
+        self.streak: int = 0
+        self.mine_flash: dict = {}   # (x,y) → expiry time (monotonic); read by renderer
+
     # ── Lifecycle ──────────────────────────────────────────────────────
 
     def start(self):
@@ -471,8 +504,16 @@ class GameEngine:
 
     @property
     def state(self) -> str:
-        """Expose board state: 'playing' | 'won' | 'lost'."""
+        """Expose board state: 'playing' | 'won'."""
         return self.board._state
+
+    @property
+    def streak_multiplier(self) -> float:
+        """Score multiplier based on current streak."""
+        for threshold, mult in STREAK_TIERS:
+            if self.streak >= threshold:
+                return mult
+        return 1.0
 
     # ── Difficulty helpers ─────────────────────────────────────────────
 
@@ -484,14 +525,14 @@ class GameEngine:
     # ── Player Actions ─────────────────────────────────────────────────
 
     def left_click(self, x: int, y: int) -> MoveResult:
-        """Reveal (x, y). First click is always safe."""
+        """Reveal (x, y). First click is always safe. Mine hit = penalty, not game over."""
         board = self.board
 
         if self._first_click:
             self._first_click = False
             self._start_time = time.time()
 
-            if board.snapshot(x, y).is_mine:
+            if board._mine[y, x]:
                 # Regenerate around the click
                 mp = place_random_mines(
                     board.width, board.height, board.total_mines,
@@ -501,38 +542,100 @@ class GameEngine:
 
         hit, revealed = board.reveal(x, y)
 
+        score_delta = 0
+        penalty = 0
         if hit:
-            for mx, my in board.all_mine_positions():
-                board._revealed[my, mx] = True
-            self.stop_timer()
-        elif board.is_won:
-            self.stop_timer()
+            # Score penalty; mark flash; reset streak
+            penalty = MINE_HIT_PENALTY
+            self.score = max(0, self.score - penalty)
+            score_delta = -penalty
+            self.streak = 0
+            self.mine_flash[(x, y)] = time.monotonic() + 1.5   # 1.5 s flash
+        else:
+            # Award points for each newly revealed cell
+            mult = self.streak_multiplier
+            for rx, ry in revealed:
+                n = int(board._neighbours[ry, rx])
+                pts = int(REVEAL_POINTS[n] * mult)
+                self.score += pts
+                score_delta += pts
+            if revealed:
+                self.streak += 1
 
-        return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state)
+            if board.is_won:
+                self.stop_timer()
+
+        return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state,
+                          score_delta=score_delta, streak=self.streak, penalty=penalty)
 
     def right_click(self, x: int, y: int) -> MoveResult:
         board = self.board
+        was_flagged = bool(board._flagged[y, x])
         placed = board.toggle_flag(x, y)
-        return MoveResult(flagged=placed, state=board._state)
+
+        score_delta = 0
+        mult = self.streak_multiplier
+        if placed == "flag":
+            if board._mine[y, x]:
+                pts = int(CORRECT_FLAG_BONUS * mult)
+                self.score += pts
+                score_delta = pts
+            else:
+                self.score = max(0, self.score - WRONG_FLAG_PENALTY)
+                score_delta = -WRONG_FLAG_PENALTY
+        elif placed == "question" and was_flagged:
+            # Reversing a flag — reverse the original score change
+            if board._mine[y, x]:
+                self.score = max(0, self.score - CORRECT_FLAG_BONUS)
+                score_delta = -CORRECT_FLAG_BONUS
+            else:
+                self.score += WRONG_FLAG_PENALTY
+                score_delta = WRONG_FLAG_PENALTY
+
+        if board.is_won:
+            self.stop_timer()
+
+        return MoveResult(flagged=placed, state=board._state,
+                          score_delta=score_delta, streak=self.streak)
 
     def middle_click(self, x: int, y: int) -> MoveResult:
         hit, revealed = self.board.chord(x, y)
         board = self.board
 
+        score_delta = 0
+        penalty = 0
         if hit:
-            for mx, my in board.all_mine_positions():
-                board._revealed[my, mx] = True
-            self.stop_timer()
-        elif board.is_won:
-            self.stop_timer()
+            penalty = MINE_HIT_PENALTY
+            self.score = max(0, self.score - penalty)
+            score_delta = -penalty
+            self.streak = 0
+            # Flash all mines that were just hit via chord
+            for rx, ry in revealed:
+                if board._mine[ry, rx]:
+                    self.mine_flash[(rx, ry)] = time.monotonic() + 1.5
+        else:
+            mult = self.streak_multiplier
+            for rx, ry in revealed:
+                n = int(board._neighbours[ry, rx])
+                pts = int(REVEAL_POINTS[n] * mult)
+                self.score += pts
+                score_delta += pts
+            if revealed:
+                self.streak += 1
+            if board.is_won:
+                self.stop_timer()
 
-        return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state)
+        return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state,
+                          score_delta=score_delta, streak=self.streak, penalty=penalty)
 
     def restart(self, width=None, height=None, mines=None):
         self._first_click = True
         self._start_time = 0.0
         self._paused_elapsed = 0.0
         self.seed += 1
+        self.score = 0
+        self.streak = 0
+        self.mine_flash = {}
         if self.mode == "npy" and self.npy_path:
             self.board = load_board_from_npy(self.npy_path)
         elif self.mode == "image" and self.image_path:

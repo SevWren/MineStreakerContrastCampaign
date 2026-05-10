@@ -187,10 +187,7 @@ class GameLoop:
                     self._result_time = time.time()
                     self._result_shown = False
                     self._renderer.start_win_animation()
-                elif self._engine.state == "lost":
-                    self._state = self.RESULT
-                    self._result_time = time.time()
-                    self._result_shown = False
+                # "lost" state no longer exists — mine hits are penalties, not game over
 
             # ── Draw ──────────────────────────────────────────────────
             cascade_done = True
@@ -213,9 +210,7 @@ class GameLoop:
                 elif gs == "won":
                     self._renderer.draw_victory(elapsed)
                     self._result_shown = True
-                elif gs == "lost":
-                    self._renderer.draw_defeat()
-                    self._result_shown = True
+                # no "lost" branch — game never ends on mine hit
 
             self._renderer._clock.tick(FPS)
 

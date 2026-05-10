@@ -74,13 +74,13 @@ class TestCriticalRegressions:
                     b.reveal(x, y)
         assert b._state == "won"
 
-    def test_f002a_state_transitions_to_lost(self):
-        """GameEngine.state must reflect board lost state."""
+    def test_f002a_mine_hit_keeps_playing(self):
+        """Mine hit returns hit=True but state stays 'playing' (no game-over)."""
         mp = {(4, 4)}
         b = Board(9, 9, mp)
         hit, _ = b.reveal(4, 4)
         assert hit
-        assert b._state == "lost"
+        assert b._state == "playing"   # game continues after mine hit
 
     def test_f001a_fps_importable(self):
         """FIND-ARCH-CRITICAL-f001a: FPS must be importable from renderer."""
@@ -175,11 +175,14 @@ class TestBoardLogic:
         assert int(b._neighbours[2, 2]) == 0
 
     def test_reveal_mine_returns_hit(self):
+        """Mine hit returns hit=True but game continues (no game-over)."""
         mp = {(3, 3)}
         b = Board(9, 9, mp)
         hit, revealed = b.reveal(3, 3)
         assert hit
-        assert b._state == "lost"
+        # No game-over: mine hit is a penalty, game keeps going
+        assert b._state == "playing"
+        assert b._revealed[3, 3]   # mine cell is revealed
 
     def test_reveal_safe_cell(self):
         mp = {(0, 0)}
@@ -209,29 +212,24 @@ class TestBoardLogic:
         assert not b._flagged[5, 5]
         assert not b._questioned[5, 5]
 
-    def test_win_requires_both_reveals_and_flags(self):
-        """Win must require all safe cells revealed AND all mines correctly flagged."""
+    def test_win_on_all_safe_cells_revealed(self):
+        """Win condition: all safe cells revealed (no flagging required)."""
         mp = {(0, 0)}
         b = Board(2, 2, mp)
-        # Reveal all safe cells — should NOT win yet (mine not flagged)
+        # Reveal all safe cells → should win immediately
         b.reveal(1, 0)
         b.reveal(0, 1)
         b.reveal(1, 1)
-        assert b._state == "playing", "Should not win without flagging all mines"
-        # Now flag the mine
-        b.toggle_flag(0, 0)
         assert b._state == "won"
 
-    def test_win_via_flagging_last_mine(self):
-        """Placing the last correct flag when all safe cells are already revealed triggers win."""
+    def test_win_does_not_require_flags(self):
+        """Flagging is optional — win triggers on safe reveals alone."""
         mp = {(0, 0)}
         b = Board(2, 2, mp)
         b.reveal(1, 0)
         b.reveal(0, 1)
         b.reveal(1, 1)
-        assert b._state == "playing"
-        b.toggle_flag(0, 0)
-        assert b._state == "won"
+        assert b._state == "won", "All safe cells revealed should trigger win without flags"
 
     def test_chord_reveals_neighbours(self):
         mp = {(0, 0)}
@@ -318,16 +316,20 @@ class TestGameEngineLifecycle:
         time.sleep(0.05)
         assert eng.elapsed > t0, "Elapsed should grow after start()"
 
-    def test_timer_stops_on_loss(self):
-        # Build a board with a known mine, then click it
+    def test_mine_hit_applies_penalty_and_continues(self):
+        """Mine hit deducts score and keeps game playing (no game-over)."""
         mp = {(0, 0)}
         b = Board(3, 3, mp)
         eng = GameEngine(mode="random", width=3, height=3, mines=1, seed=99)
         eng.board = b
         eng._first_click = False
-        eng._start_time = 1.0  # fake non-zero start
-        eng.left_click(0, 0)
-        assert eng.state == "lost"
+        eng.score = 500
+        result = eng.left_click(0, 0)
+        assert result.hit_mine
+        assert eng.state == "playing"         # game continues
+        assert eng.score < 500               # penalty deducted
+        assert eng.streak == 0               # streak reset
+        assert result.penalty > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ except ImportError:
 
 BASE_TILE = 32          # nominal size; actual cell size is auto-computed
 ANIM_TICK = 0.035       # seconds per tile in cascade reveal
-FPS = 60
+FPS = 30                # Minesweeper needs no more than 30 fps
 
 # Dark modern palette
 C = dict(
@@ -369,11 +369,17 @@ class Renderer:
         self._rebuild_num_surfs()
 
     def _center_board(self):
-        """Pan so the board is centered in the window."""
+        """Pan so the board is centered in its drawing area (not the full window)."""
         bw = self.board.width * self._tile
         bh = self.board.height * self._tile
-        self._pan_x = max(0, (self._win.get_width() - bw) // 2)
-        self._pan_y = max(0, (self._win.get_height() - bh) // 2)
+        win_w, win_h = self._win.get_size()
+        # Available horizontal space starts after BOARD_OX; exclude right panel if present.
+        avail_x = win_w - self.BOARD_OX
+        if self._panel_right:
+            avail_x -= self.PANEL_W + self.PAD
+        avail_y = win_h - self.BOARD_OY
+        self._pan_x = max(0, (avail_x - bw) // 2)
+        self._pan_y = max(0, (avail_y - bh) // 2)
 
     def _rebuild_num_surfs(self):
         """Pre-render digit surfaces 1-8 for the current tile size.
@@ -443,16 +449,16 @@ class Renderer:
             # Middle button (or ctrl+left) = chord
             mods = pygame.key.get_mods()
             if mods & pygame.KMOD_CTRL:
-                cx = (ev.pos[0] - self.BOARD_OX + self._pan_x) // self._tile
-                cy = (ev.pos[1] - self.BOARD_OY + self._pan_y) // self._tile
+                cx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
+                cy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
                 if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                     return f"chord:{cx},{cy}"
             # Start drag
             self._dragging = True
             self._drag_last = ev.pos
             # Also set pressed cell for click-release detection
-            cx = (ev.pos[0] - self.BOARD_OX + self._pan_x) // self._tile
-            cy = (ev.pos[1] - self.BOARD_OY + self._pan_y) // self._tile
+            cx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
+            cy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
             if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                 self.pressed_cell = (cx, cy)
             return None
@@ -485,8 +491,8 @@ class Renderer:
             self.pressed_cell = None
             if not b_rect.collidepoint(ev.pos):
                 return None
-            rcx = (ev.pos[0] - self.BOARD_OX + self._pan_x) // self._tile
-            rcy = (ev.pos[1] - self.BOARD_OY + self._pan_y) // self._tile
+            rcx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
+            rcy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
             if (rcx, rcy) != (cx, cy):
                 return None  # was a drag, not a click
             if 0 <= rcx < self.board.width and 0 <= rcy < self.board.height:
@@ -517,15 +523,15 @@ class Renderer:
 
         # ── Right-click anywhere on board ────────────────────────────
         if ev.type == MOUSEBUTTONDOWN and ev.button == 3 and b_rect.collidepoint(ev.pos):
-            cx = (ev.pos[0] - self.BOARD_OX + self._pan_x) // self._tile
-            cy = (ev.pos[1] - self.BOARD_OY + self._pan_y) // self._tile
+            cx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
+            cy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
             if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                 return f"flag:{cx},{cy}"
 
         # ── Middle-click chord ────────────────────────────────────────
         if ev.type == MOUSEBUTTONDOWN and ev.button == 2 and b_rect.collidepoint(ev.pos):
-            cx = (ev.pos[0] - self.BOARD_OX + self._pan_x) // self._tile
-            cy = (ev.pos[1] - self.BOARD_OY + self._pan_y) // self._tile
+            cx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
+            cy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
             if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                 return f"chord:{cx},{cy}"
 
@@ -558,7 +564,8 @@ class Renderer:
     def _board_rect(self) -> pygame.Rect:
         bw = self.board.width * self._tile
         bh = self.board.height * self._tile
-        return pygame.Rect(self.BOARD_OX, self.BOARD_OY, bw, bh)
+        return pygame.Rect(self.BOARD_OX + self._pan_x,
+                           self.BOARD_OY + self._pan_y, bw, bh)
 
     def _clamp_pan(self):
         """Keep pan within sensible bounds."""
@@ -619,21 +626,40 @@ class Renderer:
         pygame.draw.line(self._win, C["border"],
                          (0, self.HEADER_H + 2), (w, self.HEADER_H + 2), 2)
 
-        # Mine counter
+        ox = self.BOARD_OX + self._pan_x
+        bx = ox + self.board.width * self._tile   # right edge of board on screen
+
+        # ── Left: mine counter ────────────────────────────────────────
         mines = self.board.mines_remaining
         mcol = C["red"] if mines < 0 else C["text_light"]
-        mt = self._font_big.render(f"💣 {mines:>03d}", True, mcol)
+        mt = self._font_big.render(f"M:{mines:>03d}", True, mcol)
         self._win.blit(mt, (self.BOARD_OX + 8, 8))
 
-        # Timer
-        secs = int(elapsed)
-        tt = self._font_big.render(f"⏱ {secs:>03d}", True, C["text_light"])
-        bx = self.BOARD_OX + self.board.width * self._tile
-        self._win.blit(tt, (bx - tt.get_width() - 8, 8))
-
-        # Smiley button (centred over board)
-        cx = (self.BOARD_OX + bx) // 2
+        # ── Centre: smiley (reset button) ────────────────────────────
+        cx = self._win.get_width() // 2
         self._draw_smiley(cx - 25, 4, 50, self.HEADER_H - 4, game_state)
+
+        # ── Right: scoreboard ─────────────────────────────────────────
+        score = self.engine.score
+        streak = self.engine.streak
+        mult = self.engine.streak_multiplier
+        secs = int(elapsed)
+
+        # Timer
+        tt = self._font_big.render(f"T:{secs:>03d}", True, C["text_light"])
+        win_w = self._win.get_width()
+        self._win.blit(tt, (win_w - tt.get_width() - 8, 8))
+
+        # Score — two lines: value + streak info
+        score_col = C["yellow"] if mult > 1.0 else C["text_light"]
+        sc = self._font_big.render(f"SCORE:{score:>6d}", True, score_col)
+        self._win.blit(sc, (win_w - sc.get_width() - 8, self.HEADER_H - sc.get_height() - 2))
+
+        if streak >= 5:
+            streak_col = (C["orange"] if mult < 3.0 else
+                          C["red"]    if mult < 5.0 else C["cyan"])
+            sl = self._font_small.render(f"STREAK x{streak}  {mult:.1f}x", True, streak_col)
+            self._win.blit(sl, (win_w - sl.get_width() - 8, 28))
 
     def _draw_smiley(self, x, y, w, h, state):
         cx, cy = x + w // 2, y + h // 2
@@ -737,8 +763,9 @@ class Renderer:
             self._draw_win_animation_fx(ox, oy, win_anim_set)
 
         # Cursor highlight
-        hx = (mpos[0] - ox + self._pan_x) // ts if ts > 0 else -1
-        hy = (mpos[1] - oy + self._pan_y) // ts if ts > 0 else -1
+        # ox/oy already include _pan_x/_pan_y — subtract directly
+        hx = (mpos[0] - ox) // ts if ts > 0 else -1
+        hy = (mpos[1] - oy) // ts if ts > 0 else -1
         if 0 <= hx < self.board.width and 0 <= hy < self.board.height:
             self._win.set_clip(clip_rect)
             if not _revealed[hy, hx]:
@@ -760,8 +787,13 @@ class Renderer:
         px, py = pos
         pad = max(1, ts // 16)
 
+        # Mine flash overlay: red background when this cell was just hit
+        _flash_end = self.engine.mine_flash.get((x, y), 0)
+        _flashing = time.monotonic() < _flash_end
+
         if cell.is_revealed:
-            pygame.draw.rect(self._win, C["tile_reveal"], (px, py, ts, ts))
+            bg = C["red"] if _flashing else C["tile_reveal"]
+            pygame.draw.rect(self._win, bg, (px, py, ts, ts))
             if cell.is_mine:
                 self._draw_mine(px, py, ts)
             elif cell.neighbour_mines > 0:
