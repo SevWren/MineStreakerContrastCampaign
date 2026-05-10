@@ -1,5 +1,12 @@
 # MineStreakerContrastCampaign — Python dependencies
 # Install with: pip install -r requirements.txt
+#
+# Python version: 3.10, 3.11, or 3.12 recommended.
+# Python 3.13+ is NOT yet supported by pygame — pre-built wheels are unavailable
+# and source compilation fails on Windows (distutils.msvccompiler was removed in 3.12).
+# If you must use Python 3.13/3.14, install pygame separately first:
+#   pip install pygame --pre
+# then re-run: pip install -r requirements.txt
 
 # Core scientific stack (pipeline + game engine)
 numpy>=1.24,<3
@@ -14,6 +21,8 @@ scikit-image>=0.20
 numba>=0.57
 
 # Game frontend
+# Requires Python <=3.12 for pre-built wheels on Windows.
+# See note at top of file for Python 3.13/3.14 workaround.
 pygame>=2.3
 
 # Development / testing
