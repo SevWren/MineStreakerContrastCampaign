@@ -507,8 +507,9 @@ class Renderer:
                 old_tile = self._tile
                 self._tile = new_tile
                 # Adjust pan so the point under cursor stays fixed
-                self._pan_x = mx - (mx - self._pan_x) * new_tile / old_tile
-                self._pan_y = my - (my - self._pan_y) * new_tile / old_tile
+                # Cast to int: float pan causes range() TypeError in _draw_board
+                self._pan_x = int(mx - (mx - self._pan_x) * new_tile / old_tile)
+                self._pan_y = int(my - (my - self._pan_y) * new_tile / old_tile)
                 self._clamp_pan()
                 self._on_resize()
                 self._rebuild_num_surfs()
@@ -780,7 +781,10 @@ class Renderer:
             self._draw_question(px, py, ts)
         else:
             col = C["tile_hi"] if is_pressed else C["tile_hidden"]
-            rrect(self._win, col, (px, py, ts, ts), max(2, ts // 8))
+            # pygame 2.x draw.rect supports border_radius natively (single C call).
+            # rrect() did the same work in Python with 6 draw calls — ~6x slower.
+            pygame.draw.rect(self._win, col, (px, py, ts, ts),
+                             border_radius=max(2, ts // 8))
 
         # Cell border
         if in_anim:
