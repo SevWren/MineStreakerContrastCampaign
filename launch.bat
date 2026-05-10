@@ -113,7 +113,7 @@ if "!TILE!"=="" set TILE=32
 
 :: --- BUILD COMMAND ------------------------------------------
 :build_cmd
-set CMD="%PYTHON%" -m gameworks
+set CMD="%PYTHON%" gameworks\main.py
 
 if defined DIFF_ARG (
     set CMD=!CMD! !DIFF_ARG!
@@ -146,7 +146,7 @@ echo.
 
 if errorlevel 1 (
     echo.
-    echo  ERROR: Game exited with an error (code %ERRORLEVEL%).
+    echo  ERROR: Game exited with an error.
     echo  Make sure dependencies are installed: pip install -r requirements.txt
 )
 
