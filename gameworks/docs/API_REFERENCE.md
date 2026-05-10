@@ -32,7 +32,7 @@ Internal/private members (prefixed `_`) are excluded unless noted where they are
 ### `gameworks.__version__`
 
 ```python
-__version__: str = "0.1.0"
+__version__: str = "0.1.1"
 ```
 
 Package version string.
@@ -53,7 +53,9 @@ class CellState:
     neighbour_mines: int = 0
 ```
 
-Immutable snapshot of a single cell. Produced by `Board.snapshot()` and constructed inline by the renderer for performance. All fields are read-only (frozen dataclass).
+Immutable snapshot of a single cell. Produced by `Board.snapshot()`. All fields are read-only (frozen dataclass).
+
+> **Note (v0.1.1):** The renderer's hot cell loop no longer constructs `CellState` objects. Raw numpy `bool_`/`uint8` values are passed directly to `_draw_cell`. `CellState` is still used by `snapshot()` and may be used by callers outside the render loop.
 
 | Field | Type | Description |
 |---|---|---|
@@ -91,10 +93,10 @@ Neighbour counts are pre-computed at construction via `scipy.ndimage.convolve`.
 | `height` | int | Board height in tiles |
 | `total_mines` | int | Total number of mines |
 | `total_safe` | int | `width * height - total_mines` |
-| `revealed_count` | int | Total revealed cells (includes mine-hit cells) |
-| `safe_revealed_count` | int | Revealed non-mine cells only |
-| `flags_placed` | int | Number of flagged cells |
-| `questioned_count` | int | Number of `?`-marked cells |
+| `revealed_count` | int | Total revealed cells (includes mine-hit cells) — O(1) dirty-int counter |
+| `safe_revealed_count` | int | Revealed non-mine cells only — O(1) dirty-int counter |
+| `flags_placed` | int | Number of flagged cells — O(1) dirty-int counter |
+| `questioned_count` | int | Number of `?`-marked cells — O(1) dirty-int counter |
 | `mines_remaining` | int | `total_mines - flags_placed` (may be negative) |
 | `correct_flags` | int | Flags placed on actual mines |
 | `is_won` | bool | `True` when `_state == "won"` |
@@ -291,6 +293,12 @@ def restart(
 
 Reset the engine in-place. Increments `seed`. Reuses the same mode (random/image/npy). Optional `width`/`height`/`mines` override board dimensions.
 
+```python
+def dev_solve_board(self) -> MoveResult
+```
+
+**DEV tool only.** Instantly reveals all safe cells and flags all mines via direct numpy array writes. Resyncs the four dirty-int counters (`_n_flags`, `_n_questioned`, `_n_safe_revealed`, `_n_revealed`) from array state after the bulk operation. Returns a `MoveResult` reflecting the solved state. Intended for development and testing; should not be called during normal gameplay.
+
 ---
 
 ### Module-Level Functions
@@ -401,6 +409,7 @@ Initializes Pygame, creates the window, auto-scales tile size for large boards, 
 | `cascade` | AnimationCascade \| None | Active reveal animation |
 | `win_anim` | WinAnimation \| None | Active win animation |
 | `pressed_cell` | Tuple[int,int] \| None | Cell under mouse button (for press visual) |
+| `_show_dev` | bool | Whether the DEV TOOLS panel section is visible; toggled by `` ` `` (`K_BACKQUOTE`) |
 
 #### Methods
 
@@ -418,6 +427,7 @@ Translate a Pygame event into an action string. Returns one of:
 | `"click:x,y"` | Left-click reveal at `(x, y)` |
 | `"flag:x,y"` | Right-click flag cycle at `(x, y)` |
 | `"chord:x,y"` | Middle-click / Ctrl+click chord at `(x, y)` |
+| `"dev:solve"` | DEV TOOLS "Solve Board" button clicked (only emitted when `_show_dev` is `True`) |
 | `None` | No action (internal state updated, e.g. pan/zoom) |
 
 ```python
