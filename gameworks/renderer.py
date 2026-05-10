@@ -359,6 +359,7 @@ class Renderer:
         # ── State ────────────────────────────────────────────────────
         self.help_visible  = False
         self.fog            = False
+        self._show_dev      = False
         self.pressed_cell:  Optional[Tuple[int, int]] = None
         self.cascade:       Optional[AnimationCascade] = None
         self._pan_x         = 0
@@ -465,6 +466,8 @@ class Renderer:
                 self.help_visible = not self.help_visible
             elif ev.key == K_f:
                 self.fog = not self.fog
+            elif ev.key == K_BACKQUOTE:
+                self._show_dev = not self._show_dev
             # Arrow-key panning for keyboard users
             elif ev.key == K_LEFT:
                 self._pan_x = min(self._pan_x + self._tile * 3, 0)
@@ -611,7 +614,7 @@ class Renderer:
             return "save"
         if self._btn_restart.collidepoint(mx, my):
             return "restart"
-        if self._btn_dev_solve.collidepoint(mx, my):
+        if self._show_dev and self._btn_dev_solve.collidepoint(mx, my):
             return "dev:solve"
         return None
 
@@ -1054,19 +1057,20 @@ class Renderer:
             ts = self._font_small.render(label, True, C["bg"])
             win.blit(ts, ts.get_rect(center=rect.center))
 
-        # ── DEV section ─────────────────────────────────────────────
-        dev_sep_y = self._btn_dev_solve.y - self._btn_gap - 4
-        pygame.draw.line(win, C["border"], (px, dev_sep_y), (px + self._btn_w, dev_sep_y), 1)
-        dev_hdr = self._font_tiny.render("DEV TOOLS", True, C["orange"])
-        win.blit(dev_hdr, (px, dev_sep_y - dev_hdr.get_height() - 2))
+        # ── DEV section (toggle with ` key) ─────────────────────────
+        if self._show_dev:
+            dev_sep_y = self._btn_dev_solve.y - self._btn_gap - 4
+            pygame.draw.line(win, C["border"], (px, dev_sep_y), (px + self._btn_w, dev_sep_y), 1)
+            dev_hdr = self._font_tiny.render("DEV TOOLS", True, C["orange"])
+            win.blit(dev_hdr, (px, dev_sep_y - dev_hdr.get_height() - 2))
 
-        dev_active = not self.engine.board.game_over
-        dev_col = C["orange"] if dev_active else C["border"]
-        pill(win, dev_col, self._btn_dev_solve)
-        if self._btn_dev_solve.collidepoint(mx, my) and dev_active:
-            pygame.draw.rect(win, C["text_light"], self._btn_dev_solve, 2, border_radius=8)
-        dev_label = self._font_small.render("Solve Board", True, C["bg"] if dev_active else C["text_dim"])
-        win.blit(dev_label, dev_label.get_rect(center=self._btn_dev_solve.center))
+            dev_active = not self.engine.board.game_over
+            dev_col = C["orange"] if dev_active else C["border"]
+            pill(win, dev_col, self._btn_dev_solve)
+            if self._btn_dev_solve.collidepoint(mx, my) and dev_active:
+                pygame.draw.rect(win, C["text_light"], self._btn_dev_solve, 2, border_radius=8)
+            dev_label = self._font_small.render("Solve Board", True, C["bg"] if dev_active else C["text_dim"])
+            win.blit(dev_label, dev_label.get_rect(center=self._btn_dev_solve.center))
 
         # Stats — _btn_restart.bottom is already an absolute Y coordinate,
         # so do NOT add oy again (that was the double-count bug on large boards).
