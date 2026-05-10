@@ -98,6 +98,38 @@ __pycache__/
 .tox/
 .ipynb_checkpoints/
 
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+.env.*
+.env.local
+
+# Test coverage and CI reports
+.coverage
+coverage.xml
+junit.xml
+
+# Log files
+*.log
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.iml
+
 # Temporary or scratch files
 *.plan
 *.tmp
