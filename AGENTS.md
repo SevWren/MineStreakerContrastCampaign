@@ -442,6 +442,121 @@ python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed
 python run_benchmark.py --regression-only
 ```
 
+## Gameworks Package Contract
+
+`gameworks/` is the interactive Pygame-based Minesweeper game. It lives independently
+of the reconstruction pipeline. All gameworks documentation is the source of truth under
+`gameworks/docs/`. Read the relevant doc before changing behaviour.
+
+Gameworks doc source-of-truth priority:
+1. Current user correction for the task.
+2. `gameworks/docs/DESIGN_PATTERNS.md` — module discipline, pipeline alignment, and
+   all recommended improvements (R2–R9).
+3. `gameworks/docs/ARCHITECTURE.md` — module ownership, state machines, data flow.
+4. `gameworks/docs/API_REFERENCE.md` — public API contracts for every class/function.
+5. `gameworks/docs/GAME_DESIGN.md` — rules, scoring, streak tiers, board modes.
+6. `gameworks/docs/DEVELOPER_GUIDE.md` — setup, testing, extension patterns.
+
+### Module Ownership Boundaries
+
+| Module | Owns | Must NOT import |
+|---|---|---|
+| `engine.py` | `Board`, `GameEngine`, scoring, mine placement, board loading | `pygame`, `renderer`, `main` |
+| `renderer.py` | Pygame window, all drawing, animations, event→action translation | `main`, pipeline modules |
+| `main.py` | CLI parsing, `GameLoop` state machine, board construction wiring | pipeline modules (except inside `_build_engine`) |
+
+These boundaries are hard rules. An import that crosses them is a bug, not a style issue.
+
+### Modular Design Rules
+
+**1. Frozen config dataclass (R2)**
+Game configuration must use a `GameConfig` frozen dataclass rather than flat keyword
+arguments. `GameEngine` accepts a single `config: GameConfig`. `restart()` produces a new
+frozen config instance (incrementing seed). Do not scatter config fields as loose instance
+attributes.
+
+**2. Rich result dataclasses at boundaries (R3)**
+Board loader functions (`load_board_from_npy`, `load_board_from_pipeline`) must return a
+`BoardLoadResult` dataclass, not a naked `Board`. `format_detected`, `source_path`, and
+`warnings` fields are required. `GameEngine` must expose `self.load_result`.
+
+**3. Pure engine core (P4)**
+`engine.py` contains no I/O, no Pygame, no clock reads, no mutable global state. All
+scoring math is expressed as functions of inputs — no silent mutation of shared objects.
+
+**4. Single-responsibility per module (P1)**
+Each module has one named job. If a change requires adding a second distinct concern to a
+module (e.g., adding file format logic to `renderer.py`, or adding draw calls to
+`engine.py`), stop and create the appropriate module or helper instead.
+
+**5. Atomic file saves (R8)**
+All `.npy` saves use `os.replace` via a `.tmp` intermediate:
+```python
+np.save(tmp_path, arr)
+os.replace(tmp_path, final_path)
+```
+Direct `np.save(final_path, arr)` is forbidden for any user-facing save operation.
+
+**6. Schema versioning for saved artifacts (R9)**
+Every `.npy` board save must write a companion `.json` sidecar containing at minimum:
+`schema`, `width`, `height`, `mines`, `seed`, `saved_at`.
+The schema string is the module-level constant `GAME_SAVE_SCHEMA_VERSION` in `engine.py`.
+`load_board_from_npy` reads the sidecar when present and populates `BoardLoadResult.warnings`
+on schema mismatch. Missing sidecar is a warning, not an error (backward compatibility).
+
+**7. Preflight check before game loop (R6)**
+`main.py` must call `preflight_check(args)` before constructing `GameLoop`. It must
+validate file paths and import availability and print actionable error messages before
+any Pygame window opens. The game loop must not be the first place a missing file is
+detected.
+
+**8. No ad-hoc result tuples**
+Every function that returns more than one meaningful value must return a dataclass, not a
+bare tuple. `Board.reveal` and `Board.chord` return `(bool, list)` — this is acceptable
+only as an internal primitive. Any new public function returning compound results must use
+a dataclass.
+
+### Import Boundary Enforcement
+
+The following import is forbidden and must be caught by the architecture test:
+
+```python
+# engine.py — FORBIDDEN
+import pygame          # any form
+from pygame import *
+```
+
+Run the architecture boundary test before committing any gameworks change:
+
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+```
+
+The engine test suite must remain runnable without a display server. If a change breaks
+headless execution of `tests/test_gameworks_engine.py`, it is a regression.
+
+### Gameworks Test Commands
+
+```bash
+# Headless engine tests (no display required)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+
+# Full test suite
+python -m unittest discover -s tests -p "test_*.py"
+```
+
+### Gameworks Versioning
+
+When gameworks behaviour changes:
+1. Update `gameworks/__init__.py`: `__version__ = "x.y.z"`
+2. Add a section to `gameworks/docs/CHANGELOG.md`.
+3. Run the full gameworks test suite.
+4. Commit: `gameworks: <imperative summary>`
+
+Do not bump the gameworks version for documentation-only changes.
+
+---
+
 ## Coding Style
 - Follow PEP 8 with 4-space indentation.
 - Use type hints for public functions.
