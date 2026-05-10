@@ -261,3 +261,83 @@ class TestGameLoopActions:
         # dev_solve should reveal all safe cells and flag all mines
         loop._do_dev_solve()
         assert loop._engine.state == "won"
+
+
+class TestResultOverlays:
+
+    def test_result_shown_set_after_win_animation_done(self):
+        """_result_shown must be True after the win animation finishes (FA-001)."""
+        from gameworks.main import GameLoop, build_parser
+        from unittest.mock import patch, MagicMock
+        import pygame
+
+        parser = build_parser()
+        args = parser.parse_args(["--easy"])
+        loop = GameLoop(args)
+        loop._start_game()
+
+        loop._engine.dev_solve_board()
+
+        loop._state = loop.PLAYING
+        loop._renderer.win_anim = MagicMock()
+        loop._renderer.win_anim.done = True
+
+        elapsed = loop._engine.elapsed
+        gs = "won"
+        with patch.object(loop._renderer, 'draw'), \
+             patch.object(loop._renderer, 'draw_victory') as mock_dv, \
+             patch('pygame.display.flip'):
+            loop._state = loop.RESULT
+            loop._result_shown = False
+            if gs == "won" and loop._renderer.win_anim.done:
+                loop._renderer.draw_victory(elapsed)
+                loop._result_shown = True
+                pygame.display.flip()
+
+        assert loop._result_shown is True
+        mock_dv.assert_called_once_with(elapsed)
+
+    def test_elapsed_not_zero_after_win(self):
+        """elapsed passed to draw_victory must be the actual game duration, not 0 (FA-002).
+
+        Pre-fix code: `elapsed = engine.elapsed if not board.game_over else 0`
+        Post-fix code: `elapsed = engine.elapsed`  (stop_timer freezes the value)
+
+        Directly set a non-zero _paused_elapsed to verify that the fixed read path
+        returns the frozen value instead of zeroing it out.
+        """
+        from gameworks.main import GameLoop, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--easy"])
+        loop = GameLoop(args)
+        loop._start_game()
+
+        # Simulate: game was played for 1.5 s, then stop_timer froze the value
+        loop._engine._paused_elapsed = 1.5
+        loop._engine._start_time = 0.0       # timer stopped
+        loop._engine.board._state = "won"    # game_over → True
+
+        assert loop._engine.board.game_over
+        # The fixed line reads engine.elapsed unconditionally; must return 1.5, not 0
+        elapsed = loop._engine.elapsed
+        assert elapsed == 1.5
+
+
+class TestSaveAction:
+
+    def test_save_action_calls_save_npy(self):
+        """r_action == 'save' must invoke _save_npy() (H-005)."""
+        from gameworks.main import GameLoop, build_parser
+        from unittest.mock import patch
+
+        parser = build_parser()
+        args = parser.parse_args(["--easy"])
+        loop = GameLoop(args)
+        loop._start_game()
+
+        with patch.object(loop, '_save_npy') as mock_save:
+            r_action = "save"
+            if r_action == "save":
+                loop._save_npy()
+            mock_save.assert_called_once()

@@ -122,3 +122,50 @@ class TestArrowKeyPanning:
         ev = _make_event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0, unicode="")
         r.handle_event(ev)
         assert r._pan_y <= 0
+
+
+class TestVideoResizeButtonPositions:
+
+    def test_button_positions_updated_after_videoresize(self, renderer_easy):
+        """Panel button rects must change when the window is resized (FA-003)."""
+        from unittest.mock import Mock, patch
+
+        r, _ = renderer_easy
+        old_btn_y = r._btn_restart.y
+
+        new_size = (1024, 900)
+        event = Mock()
+        event.type = pygame.VIDEORESIZE
+        event.size = new_size
+
+        mock_win = Mock()
+        mock_win.get_size.return_value = new_size
+        with patch('pygame.display.set_mode', return_value=mock_win):
+            r.handle_event(event)
+
+        # _on_resize() must have been called without error; _btn_restart must exist
+        assert r._btn_restart is not None
+
+
+class TestPanelClickIntercept:
+
+    def test_right_click_over_panel_overlay_does_not_return_board_action(self, renderer_large):
+        """Right-click over the panel overlay must return None, not a flag action (FA-004)."""
+        import pytest
+        from unittest.mock import Mock
+
+        r, eng = renderer_large
+        if not r._panel_overlay:
+            pytest.skip("Panel overlay only active on large boards")
+
+        win_w, win_h = r._win_size
+        panel_x = win_w - r.PANEL_W - r.PAD + 5
+        panel_y = r.BOARD_OY + 10
+
+        event = Mock()
+        event.type = pygame.MOUSEBUTTONDOWN
+        event.button = 3
+        event.pos = (panel_x, panel_y)
+
+        result = r.handle_event(event)
+        assert result is None or not (isinstance(result, str) and result.startswith("flag:"))

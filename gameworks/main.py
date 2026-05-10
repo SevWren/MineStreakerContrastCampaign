@@ -173,6 +173,9 @@ class GameLoop:
                     if self._state == self.PLAYING:
                         self._do_dev_solve()
 
+                elif r_action == "save":        # H-005: wire Save button to _save_npy()
+                    self._save_npy()
+
                 elif ev.type == pygame.QUIT:
                     running = False
                     break
@@ -183,7 +186,7 @@ class GameLoop:
                 break
 
             # ── State update ──────────────────────────────────────────
-            elapsed = self._engine.elapsed if not self._engine.board.game_over else 0
+            elapsed = self._engine.elapsed   # FA-002: engine.stop_timer() already freezes this on win
 
             if self._state == self.PLAYING:
                 if self._engine.state == "won":
@@ -214,6 +217,7 @@ class GameLoop:
                 elif gs == "won":
                     self._renderer.draw_victory(elapsed)
                     self._result_shown = True
+                    pygame.display.flip()   # FA-001: second flip required — draw() already flipped
                 # no "lost" branch — game never ends on mine hit
 
             self._renderer._clock.tick(FPS)

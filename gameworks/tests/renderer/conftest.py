@@ -55,3 +55,14 @@ def renderer_medium():
 def animation_positions():
     """Standard list of (x, y) positions for animation tests."""
     return [(i, 0) for i in range(10)]
+
+
+@pytest.fixture
+def renderer_large():
+    """Return an initialised (Renderer, GameEngine) for a 300×370 board where _panel_overlay is True."""
+    from gameworks.engine import GameEngine
+    from gameworks.renderer import Renderer
+    eng = GameEngine(mode="random", width=300, height=370, mines=0, seed=42)
+    eng.start()
+    r = Renderer(eng)
+    return r, eng

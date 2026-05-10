@@ -460,6 +460,8 @@ class Renderer:
         if ev.type == VIDEORESIZE:
             self._win = pygame.display.set_mode(ev.size, pygame.RESIZABLE)
             self._win_size = ev.size
+            self._cached_board_rect = None   # FA-003: invalidate before _on_resize reads it
+            self._on_resize()               # FA-003: recompute all button positions
             self._center_board()
             return None
 
@@ -500,10 +502,16 @@ class Renderer:
         # Panel button clicks must be resolved BEFORE the board drag handler,
         # otherwise the drag handler intercepts them (board rect covers the
         # full window width for large boards) and returns None silently.
-        if ev.type == MOUSEBUTTONDOWN and ev.button == 1 and self._panel_overlay:
-            panel_action = self.handle_panel(ev.pos)
-            if panel_action:
-                return panel_action
+        if ev.type == MOUSEBUTTONDOWN and self._panel_overlay:
+            # FA-004: consume ALL mouse buttons over the panel overlay, not just left-click.
+            # Without this, right-click and middle-click fall through to board handlers
+            # and fire toggle_flag() / chord() on cells beneath the panel.
+            if ev.button == 1:
+                panel_action = self.handle_panel(ev.pos)
+                if panel_action:
+                    return panel_action
+            elif self._is_over_panel(ev.pos):
+                return None   # consume right/middle-click over panel silently
 
         if ev.type == MOUSEBUTTONDOWN and ev.button == 1 and b_rect.collidepoint(ev.pos):
             # Middle button (or ctrl+left) = chord
@@ -628,6 +636,16 @@ class Renderer:
         if self._show_dev and self._btn_dev_solve.collidepoint(mx, my):
             return "dev:solve"
         return None
+
+    def _is_over_panel(self, pos: Tuple[int, int]) -> bool:
+        """Return True if pos is within the overlay panel's bounding rectangle."""
+        if not self._panel_overlay:
+            return False
+        win_w, win_h = self._win_size
+        panel_x = win_w - self.PANEL_W - self.PAD
+        panel_rect = pygame.Rect(panel_x, self.BOARD_OY,
+                                 self.PANEL_W + self.PAD, win_h - self.BOARD_OY)
+        return panel_rect.collidepoint(pos)
 
     # ── Geometry helpers ──────────────────────────────────────────────
 
