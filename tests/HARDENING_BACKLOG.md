@@ -563,6 +563,12 @@ Each item identifies: file, test function, weakness class, and exact change requ
 ### test_negative_mine_count_is_rejected (L50-53)
 - **W-EDGE** — Does not test `total_mines=None` (should raise `TypeError`, not `ValueError`).
 
+### test_speed_policy_does_not_import_pygame (L71-73)
+- **W-NOGUARD** — `Path("demos/iter9_visual_solver/playback/speed_policy.py").read_text(...)` raises
+  `FileNotFoundError` (not a test failure) if the source file is missing or the working directory
+  is wrong. Add `self.assertTrue(path.exists(), msg=f"Source file missing: {path}")` before the
+  `read_text` call.
+
 ---
 
 ## tests/demo/iter9_visual_solver/test_status_panel.py
@@ -641,7 +647,7 @@ Each item identifies: file, test function, weakness class, and exact change requ
 | W-EDGE | 17 |
 | W-SUBTEST | 6 |
 | W-SRCCODE | 4 |
-| W-NOGUARD | 4 |
+| W-NOGUARD | 5 |
 | W-INDEX | 3 |
 | W-DISJUNCTION | 3 |
 | W-EXACT | 2 |
