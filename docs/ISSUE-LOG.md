@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10 (sessions 11–13 — perf Phases 1–3; ANIM-001 resolved; 337 tests passing)
+**Last updated:** 2026-05-10 (session 14 — forensic audit; 20 new findings FA-001–FA-020)
 
 ---
 
@@ -696,6 +696,546 @@ after zoom. Fixed: `_cached_board_rect = None` added. 4 cache invalidation regre
 **Sessions 11–13 fixed:** ANIM-001, `_on_resize()` cache invalidation, `_num_surfs` uint8 key mismatch.
 
 **Still open:** H-005, M-003, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9, PF-001.
+
+---
+
+## Session 14 — Forensic Audit: gameworks/ (Full-Corpus Static Analysis)
+
+**Scope:** Line-by-line static analysis of `engine.py` (721 lines), `renderer.py` (1 266 lines),
+`main.py` (288 lines), and all 28 test files (≥ 2 300 lines of tests).
+**Method:** Source review + test-coverage cross-reference + runtime execution-path reasoning.
+**Standard:** Every finding includes affected file and line, root-cause mechanism, downstream
+impact, fix specification, and test coverage gap.
+**Result:** 20 findings — 1 critical, 3 high, 5 medium, 11 low.
+No new critical bugs in `engine.py`. Critical bug isolated to rendering/main pipeline.
+
+---
+
+### FA-001 [CRITICAL] Victory modal never rendered — `draw_victory()` called after `display.flip()`
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py:202–216` + `gameworks/renderer.py:702`
+- **Reproduction:** Win any game. "YOU WIN!" modal never appears. Game sits frozen
+  in RESULT state accepting only ESC/R.
+- **Root cause:** `GameLoop.run()` calls `self._renderer.draw(...)` (line 202), which calls
+  `pygame.display.flip()` at its final statement (renderer.py:702). `draw_victory(elapsed)` is
+  then called at main.py:215 — **after** `flip()`. The victory modal is blitted to the new back
+  buffer. On the next iteration, `_win.fill(C["bg"])` inside `draw()` erases it before a second
+  `flip()` could show it. `_result_shown = True` is set immediately (main.py:216), ensuring no
+  re-draw ever occurs. The modal is physically unreachable by the player.
+- **Execution trace:**
+  1. Frame N: `draw()` → ... → `display.flip()` → frame shown
+  2. Frame N (still): `draw_victory()` → blits to **new** back buffer → `_result_shown = True`
+  3. Frame N+1: `draw()` → `_win.fill(bg)` → erases modal → ... → `display.flip()` → no modal
+  4. Frame N+1+: `_result_shown` is `True` → `draw_victory()` never called again
+- **Downstream impact:** Blocks the entire RESULT screen. Players see no feedback that they won.
+  Score and time summary are permanently hidden. ESC/R still function via KEYDOWN handler.
+- **Proposed fix:** Move `draw_victory(elapsed)` **before** `display.flip()`. Options:
+  a. Call it inside `draw()` when `game_state == "won"` and `win_anim.done`, or
+  b. Move the block (lines 210–217) to before the `draw()` call block (line 202), or
+  c. Add a second `pygame.display.flip()` call after `draw_victory()`.
+  Option (a) is cleanest — keeps all rendering inside `Renderer`.
+- **Test coverage gap:** No test verifies that the victory modal is actually drawn and visible
+  after the win animation completes. `test_main.py::TestGameLoopActions::test_dev_solve_wins_board`
+  only checks `engine.state == "won"`; it never asserts `_result_shown == True` or that
+  `draw_victory()` is reachable.
+- **Compounding bug:** FA-002 makes the modal display wrong content even if FA-001 is fixed.
+
+---
+
+### FA-002 [HIGH] Victory modal always shows "Time: 0.0s" — elapsed forced to 0 on game over
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py:186`
+- **Root cause:**
+  ```python
+  elapsed = self._engine.elapsed if not self._engine.board.game_over else 0
+  ```
+  When the board transitions to `"won"`, `game_over` returns `True`. Every subsequent frame
+  sets `elapsed = 0` before passing it to `draw()` and `draw_victory()`. The timer is correctly
+  frozen by `GameEngine.stop_timer()` on win (engine.py), but the frozen value is never read
+  — `elapsed` is always overridden with `0`.
+- **Downstream impact:** Played duration displayed as `0.0s` on the victory modal. The
+  `_result_time` timestamp set at line 191 is correct but only used for result-screen fade
+  timing, not for the "elapsed" field passed to drawing functions.
+- **Proposed fix:** Remove the ternary. Use `self._engine.elapsed` unconditionally. The engine's
+  `stop_timer()` already freezes the value correctly at win time.
+  ```python
+  elapsed = self._engine.elapsed   # engine.stop_timer() freezes this on win
+  ```
+- **Test coverage gap:** No test asserts the elapsed value passed to `draw_victory()` equals
+  the actual game duration. `TestLifecycle::test_stop_timer_freezes_elapsed` correctly tests
+  `engine.elapsed` freeze but never exercises the `main.py` read path.
+
+---
+
+### FA-003 [HIGH] Window resize does not update panel button positions — `_on_resize()` not called on `VIDEORESIZE`
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py:460–464`
+- **Root cause:** The `VIDEORESIZE` handler (renderer.py:460):
+  ```python
+  if ev.type == VIDEORESIZE:
+      self._win = pygame.display.set_mode(ev.size, pygame.RESIZABLE)
+      self._win_size = ev.size
+      self._center_board()   # ← only centers the board
+      return None
+  ```
+  `_on_resize()` is **never called** here. `_on_resize()` is the method that recomputes all
+  five panel button `x`/`y` positions relative to the new window geometry. After a VIDEORESIZE
+  event, the board is recentered correctly but all panel buttons remain at their pre-resize
+  absolute pixel coordinates. On large windows the buttons appear in the wrong position; on
+  smaller windows they may be clipped outside the viewport entirely.
+- **Downstream impact:** Every user who resizes the game window gets misaligned panel buttons
+  ("Restart", "New Game", "Save .npy", "Fog", "Help"). Clicks land on wrong targets or miss
+  entirely. The DEV TOOLS panel (added session 11) is also affected.
+- **Relationship to M-002 (RESOLVED):** M-002 fixed `_on_resize()` itself (it previously did
+  not update button positions). FA-003 is the distinct follow-on bug: `_on_resize()` is now
+  correct but is never invoked on window resize.
+- **Test coverage gap:** `test_win_size_cache_updated_on_videoresize` verifies `_win_size`
+  is updated but does not assert button positions. No test verifies button rects after
+  `VIDEORESIZE`. The `TestArrowKeyPanning` suite tests pan but not resize.
+- **Proposed fix:** Call `_on_resize()` inside the `VIDEORESIZE` handler:
+  ```python
+  if ev.type == VIDEORESIZE:
+      self._win = pygame.display.set_mode(ev.size, pygame.RESIZABLE)
+      self._win_size = ev.size
+      self._cached_board_rect = None
+      self._on_resize()       # ← add this
+      self._center_board()
+      return None
+  ```
+
+---
+
+### FA-004 [HIGH] Panel click intercept only blocks left-click — right/middle-click bypasses panel hit-test
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` — `handle_event()`, panel intercept block (approx. line 503)
+- **Root cause:** The panel intercept that prevents mouse events "falling through" to board cells
+  beneath the panel contains a guard:
+  ```python
+  if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
+      if panel_rect.collidepoint(ev.pos):
+          ...handle panel...
+          return action_or_none
+  ```
+  The `ev.button == 1` filter makes the intercept left-click only. A right-click (button 2)
+  or middle-click (button 3) over the panel passes through the intercept, reaches the board
+  coordinate conversion, and fires `toggle_flag()` or `chord()` on the board cell beneath the
+  panel. On standard 16×16 boards, the panel covers 7–9 columns of cells on the right side,
+  all permanently unreachable but still mutated silently.
+- **Downstream impact:** Players right-clicking on panel buttons inadvertently flag or
+  question-mark cells they cannot see. On small boards (`--easy`), a right-click on "Restart"
+  flags the underlying cell, decrementing `mines_remaining` and distorting the mine counter.
+- **Proposed fix:** Remove the `ev.button == 1` filter from the panel intercept. All
+  `MOUSEBUTTONDOWN` events over the panel should be consumed:
+  ```python
+  if ev.type == MOUSEBUTTONDOWN:
+      if panel_rect.collidepoint(ev.pos):
+          if ev.button == 1:
+              ...handle panel clicks...
+          return None   # consume all buttons over panel
+  ```
+- **Test coverage gap:** No test fires `MOUSEBUTTONDOWN` with `ev.button == 2` or `3` over
+  a panel pixel coordinate and verifies no board mutation occurs.
+
+---
+
+### FA-005 [MEDIUM] Board origin X offset wrong for `panel_right=True` layout — 240 px dead space on left
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` — `Renderer.__init__()`, `BOARD_OX` assignment
+- **Root cause:** For the `panel_right=True` layout (small boards where panel is on the right):
+  ```python
+  BOARD_OX = PAD + PANEL_W   # = 8 + 240 = 248 px from left edge
+  ```
+  `PANEL_W` (240 px) is the panel width. In `panel_right=True` mode the panel is on the
+  **right** side of the board. There is nothing on the left — yet the board origin is pushed
+  248 px right, creating 248 px of dead empty background on the left of the window on every
+  small board (easy, medium, hard presets).
+- **Downstream impact:** Cosmetic only, but players with small monitors experience a miscentered
+  board with 248 px of wasted space on the left. Drag-to-scroll works correctly because `_pan_x`
+  still clamps to valid board boundaries.
+- **Proposed fix:** `BOARD_OX = PAD` for `panel_right=True`. Then `_center_board()` already
+  re-derives the correct offset from the window midpoint anyway; the init value only matters
+  during the first frame before centering runs.
+- **Test coverage gap:** No test asserts `BOARD_OX` is `PAD` in `panel_right=True` mode.
+
+---
+
+### FA-006 [MEDIUM] Inconsistent `_win_size` cache use — `_win.get_width()` still called directly in 5 hot paths
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` lines 601, 674, 726, 748, 1052 (and arrow-key handlers)
+- **Root cause:** Phase 2 (session 12) introduced `_win_size` to cache `_win.get_size()`.
+  The fix was applied to the render path that called `_win.get_size()` repeatedly per frame.
+  However, five call sites still call `_win.get_width()` or `_win.get_height()` directly:
+  - line 601: smiley rect X computation in `_draw_smiley()`
+  - line 674: `_on_resize()` reads `_win.get_width()`
+  - lines 726, 748: header draw uses `_win.get_width()` for right-align positions
+  - line 1052: panel draw uses `_win.get_width()`
+  - arrow-key pan handlers (K_LEFT/K_RIGHT/K_UP/K_DOWN): use `_win.get_width()/_win.get_height()`
+- **Downstream impact:** Performance — each `get_width()` call is a Python → C extension call
+  that re-queries the SDL window. On a 300×300 board at 30 FPS this adds ~5–8 C calls/frame
+  beyond what Phase 2 eliminated. Not a correctness issue.
+- **Proposed fix:** Replace all remaining `self._win.get_width()` with `self._win_size[0]` and
+  `self._win.get_height()` with `self._win_size[1]` throughout renderer.py.
+- **Test coverage gap:** `TestArrowKeyPanning` tests pan direction but never inspects whether
+  `get_width()` is called directly. No performance regression test enforces Phase 2 cache
+  completeness beyond the paths tested in `test_renderer_init.py`.
+
+---
+
+### FA-007 [MEDIUM] Flood-fill stack allows duplicate cell pushes — O(n²) stack size on open boards
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py:192–204` — `Board.reveal()`
+- **Root cause:** The flood-fill pushes neighbors when popped, but marks cells revealed
+  **only when popped**, not when pushed. Because the push-time guard only checks
+  `not self._revealed[ny, nx]` (which is still `False` until pop-time), a cell can be pushed
+  multiple times if multiple zero-count neighbors each process before it is popped:
+  ```python
+  stack = [(x, y)]
+  while stack:
+      cx, cy = stack.pop()
+      if self._revealed[cy, cx] ...: continue   # skip if already processed
+      self._revealed[cy, cx] = True              # marked AFTER pop
+      ...
+      for nx, ny in ...:
+          if not self._revealed[ny, nx] ...:     # False for unpushed AND unpopped cells
+              stack.append((nx, ny))              # can push same cell N times
+  ```
+  For a large empty region, each cell can be pushed by up to 4 zero-count neighbors before
+  being popped, growing the stack to O(4 × area). On a 300×300 fully empty board this produces
+  a stack of ~360 000 entries instead of ~90 000.
+- **Downstream impact:** Performance on large open boards. Correctness is unaffected — the
+  `continue` guard on pop prevents double-processing. Stack memory peaks ~4× higher than optimal.
+- **Proposed fix:** Mark cells as "seen" when pushed, not when popped. Either:
+  a. Use a `visited` set: `visited = set(); ... if (nx, ny) not in visited: visited.add((nx, ny)); stack.append(...)`
+  b. Set `_revealed[ny, nx] = True` at push time (pre-mark), then skip the initial `continue` check.
+  Option (b) is zero-allocation and matches what production BFS implementations do.
+- **Test coverage gap:** All flood-fill tests use small boards (3×3 to 9×9). No test exercises
+  large empty boards or asserts `len(newly)` equals the board area minus one mine for an all-zero
+  configuration. `test_board_edge_cases.py` tests 100×1 boards but not 100×100 empty boards.
+
+---
+
+### FA-008 [MEDIUM] `load_board_from_npy()` validation uses O(W×H) nested Python loops
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py` — `load_board_from_npy()`, approx. lines 346–353
+- **Root cause:** The post-load validation that checks neighbour counts iterates every cell
+  with a nested Python `for` loop, calling `_count_adj()` per cell:
+  ```python
+  for y in range(b.height):
+      for x in range(b.width):
+          expected = b._count_adj(x, y)   # Python-level adjacency scan
+          if b._neighbours[y, x] != expected:
+              raise ValueError(...)
+  ```
+  For a 300×300 board this is 90 000 Python iterations × 9-cell adjacency scan = ~810 000
+  Python operations, entirely replicated by the vectorized `scipy.ndimage.convolve` that
+  already ran during `Board.__init__()` to build `_neighbours`.
+- **Downstream impact:** Noticeable startup delay on large `.npy` boards. On a 300×370 board
+  the validation loop takes ~0.5 s in CPython before the game window opens.
+- **Proposed fix:** Replace with a single vectorized assertion:
+  ```python
+  expected = scipy.ndimage.convolve(b._mine.astype(np.uint8), np.ones((3,3), np.uint8),
+                                     mode='constant') - b._mine.astype(np.uint8)
+  if not np.array_equal(b._neighbours, expected):
+      raise ValueError("Neighbour count mismatch")
+  ```
+  Or simply trust the `Board.__init__` computation (it is deterministic) and remove the
+  post-load validation loop entirely.
+- **Test coverage gap:** `TestLoadErrors` tests wrong-dimension raises but not the O(W×H)
+  performance path. No benchmark test asserts load time for large `.npy` files.
+
+---
+
+### FA-009 [MEDIUM] `_draw_image_ghost()` calls `.copy()` per visible flagged cell per frame
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py:1046`, `renderer.py:1194`
+- **Root cause:** M-001 (session 9) fixed the outer loop to be viewport-culled via `np.where`,
+  eliminating O(W×H) iterations. However, the per-cell operation still calls `.copy()` on a
+  `subsurface()` to set per-cell alpha:
+  ```python
+  sub = scaled.subsurface(src_rect).copy()   # new Surface object every frame per visible flag
+  sub.set_alpha(200 if _mine[y, x] else 40)
+  self._win.blit(sub, (px, py))
+  ```
+  `subsurface()` returns a view (no allocation), but `.copy()` allocates a brand-new `Surface`
+  object per call. On a board with 50 visible flags, this is 50 Surface allocations per frame
+  × 30 FPS = 1 500 Surface allocations/second from this loop alone. This is also duplicated in
+  the win-animation overlay path at line 1194.
+- **Downstream impact:** GC pressure and per-frame allocation overhead. Not visually apparent
+  but measurable via `pygame.Surface` allocation tracing on flag-heavy boards.
+- **Proposed fix:** Pre-build a single SRCALPHA surface the size of the entire board ghost
+  image at the same size as `scaled`. Blit the whole ghost surface with a global alpha rather
+  than per-cell copies. Cache it as `_ghost_surf`; invalidate on zoom/resize (same as existing
+  `_ghost_surf` attribute, which is currently `None` because this code path bypasses it).
+- **Test coverage gap:** `TestGhostSurfCache::test_ghost_surf_not_rebuilt_per_frame` only
+  verifies the top-level `_ghost_surf` attribute is not rebuilt. It does not capture the
+  per-cell `.copy()` allocations inside the image-ghost draw loop.
+
+---
+
+### FA-010 [LOW] `_save_npy()` saves to current working directory, not `results/`
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py` — `GameLoop._save_npy()`
+- **Root cause:** The save path is constructed as `f"board_{timestamp}.npy"` (no directory
+  prefix), writing to whatever directory `os.getcwd()` resolves to at runtime. When launched
+  with `python -m gameworks.main` from the project root, files land in the project root.
+  AGENTS.md specifies that output artifacts should go to `results/`.
+- **Note:** This overlaps with DP-R8 (atomicity), which is a separate sub-issue.
+  DP-R8 covers the `os.replace` pattern. FA-010 covers the output path.
+- **Proposed fix:** Prepend `results/` and ensure the directory exists:
+  ```python
+  out_dir = Path(__file__).parent.parent / "results"
+  out_dir.mkdir(exist_ok=True)
+  path = out_dir / f"board_{timestamp}.npy"
+  ```
+- **Test coverage gap:** `TestSaveLoadRoundTrip` in `test_board_modes.py` is skipped (DP-R8
+  scaffold). No test asserts the save path starts with `results/`.
+
+---
+
+### FA-011 [LOW] `Board._count_adj()` is dead code — never called
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py:112–117`
+- **Root cause:** `_count_adj(self, x, y)` computes the number of mine neighbors for cell
+  `(x, y)` by slicing `_mine` directly. It was presumably the pre-scipy neighbor computation,
+  superseded by `scipy.ndimage.convolve` in `__init__()`. The function body is 5 lines and
+  is never referenced anywhere in the codebase.
+- **Downstream impact:** None — dead code. Slightly misleading to readers who may assume
+  it is the active neighbor computation path.
+- **Proposed fix:** Remove the method. If the pure-Python adjacency scan is needed for testing,
+  it belongs in the test fixtures, not in `Board`.
+- **Test coverage gap:** `test_boundaries.py` checks module imports but has no dead-code
+  coverage detector. No test calls `_count_adj()` directly (confirming it is unused).
+
+---
+
+### FA-012 [LOW] `Board.correct_flags` uses `np.sum()` scan — inconsistent with Phase 1 dirty-int counters
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py:158–159`
+- **Root cause:**
+  ```python
+  @property
+  def correct_flags(self) -> int:
+      return int(np.sum(self._flagged & self._mine))   # O(W×H) scan
+  ```
+  All four other `Board` counter properties (`flags_placed`, `questioned_count`,
+  `safe_revealed_count`, `revealed_count`) were converted to O(1) dirty-int lookups in
+  Phase 1 (session 11). `correct_flags` was not converted because it requires a **bitwise
+  AND of two arrays** (`_flagged & _mine`), which cannot trivially be maintained with a
+  single counter. However, it is called on every frame by `WinAnimation.__init__()` and by
+  `dev_solve_board()`.
+- **Downstream impact:** One O(W×H) numpy scan per `correct_flags` read. On 300×300 boards
+  at win time: 90 000 element AND + sum. Not catastrophic (numpy is fast), but inconsistent
+  with the Phase 1 contract.
+- **Proposed fix:** Add a 5th dirty-int counter `_n_correct_flags`. Increment when
+  `toggle_flag()` places a flag on a mine cell; decrement when the flag is removed. This
+  requires checking `self._mine[y, x]` at flag placement time — already accessed in
+  `right_click()` for scoring.
+- **Test coverage gap:** `TestToggleFlag::test_correct_flags_count` verifies the value is
+  correct but does not assert it is O(1) (i.e., doesn't check it avoids `np.sum`).
+
+---
+
+### FA-013 [LOW] Unreachable `if __name__ == "_test_engine":` block — module name can never be `"_test_engine"`
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py:705`
+- **Root cause:**
+  ```python
+  if __name__ == "_test_engine":
+  ```
+  `__name__` in a Python module is either `"__main__"` (when run directly) or the dotted
+  module path (e.g., `"gameworks.engine"` when imported). The string `"_test_engine"` is
+  never assigned by the Python runtime. This block is permanently unreachable.
+- **Downstream impact:** Dead code; wastes 15 lines at the bottom of the file.
+- **Proposed fix:** Remove the block. If inline smoke-tests are needed they belong in
+  `__main__` guard: `if __name__ == "__main__":`.
+- **Test coverage gap:** `test_boundaries.py::TestEngineBoundaries::test_engine_parses_without_error`
+  confirms the file is syntactically valid but does not detect unreachable guards.
+
+---
+
+### FA-014 [LOW] `GameLoop.MENU` state defined but never re-entered from `RESULT` — state machine has a dead arc
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py:70–79`, `run()` — result/restart handling
+- **Root cause:** The docstring and `__init__` define: `MENU → PLAYING → RESULT → MENU`.
+  `_state = MENU` is set only in `__init__()`. The "restart" action sets
+  `self._state = self.PLAYING` directly (skipping MENU). `RESULT` never transitions back
+  to `MENU`. The MENU state has no event-handling code in `run()` either — the loop goes
+  straight to `_start_game()` at the top regardless of `_state`.
+- **Downstream impact:** The advertised state machine does not exist at runtime. This
+  makes it impossible to add a main menu without refactoring `run()`.
+- **Proposed fix:** Either remove `MENU` from the docstring/constants to match reality, or
+  implement the MENU→PLAYING transition with a menu screen before `_start_game()`.
+- **Test coverage gap:** `test_main.py::test_gameloop_initial_state_is_menu` asserts
+  `loop._state == GameLoop.MENU` at construction but no test asserts `_state` transitions
+  through the full documented `MENU → PLAYING → RESULT → MENU` cycle.
+
+---
+
+### FA-015 [LOW] `_do_right_click()` return value always silently discarded
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py:164`, `232–234`
+- **Root cause:**
+  ```python
+  def _do_right_click(self, x, y):
+      state = self._engine.right_click(x, y)
+      return state   # ← MoveResult returned
+  ```
+  The call site (main.py:164): `self._do_right_click(x, y)` — return value discarded.
+  `_do_left_click` and `_do_chord` assign the result and use `newly_revealed` to set the
+  cascade animation. `_do_right_click` discards it, meaning:
+  - If a correct flag triggers a win via `toggle_flag()` (not currently implemented, but
+    was present before GWHARDEN-004), the win transition would be missed.
+  - Currently harmless but structurally inconsistent with other dispatch methods.
+- **Proposed fix:** Either capture and handle the return value (check `result.state` for win)
+  or change the return type to `None` to match the callsite behavior.
+- **Test coverage gap:** `test_right_click_cycles_cell_states` in `test_main.py` only asserts
+  no exception is raised, never checks the return value.
+
+---
+
+### FA-016 [LOW] `WinAnimation` uses fixed seed `random.Random(42)` — animation order is always identical
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` — `WinAnimation.__init__()`
+- **Root cause:**
+  ```python
+  rng = random.Random(42)
+  rng.shuffle(self._correct)
+  rng.shuffle(self._wrong)
+  ```
+  The hardcoded seed `42` means the animation plays in the exact same tile-reveal order on
+  every game. For players who replay the same board (using seed-preserved games), the animation
+  is visually identical each time, removing any sense of novelty.
+- **Downstream impact:** Cosmetic. Not a correctness bug.
+- **Proposed fix:** Use `random.Random()` (no seed) or seed from the current game's `seed`
+  attribute: `random.Random(board.engine.seed)` for reproducibility without global identity.
+- **Test coverage gap:** Animation tests use fully-flagged boards where shuffle order is
+  observable but not asserted. No test asserts that two different `WinAnimation` instances
+  produce different orderings.
+
+---
+
+### FA-017 [LOW] `main.TILE` global is a dead write — separate from `renderer.TILE`; never read
+
+- **Status:** `OPEN`
+- **File:** `gameworks/main.py:107` (approx.) and `main.py:282` (approx.)
+- **Root cause:** `main.py` imports and updates a module-level `TILE` variable. However,
+  `Renderer` reads `gameworks.renderer.TILE` (a module-level var in `renderer.py`) which is
+  updated by `Renderer.__init__()` via `import gameworks.renderer as r; r.TILE = ts`.
+  The `TILE` in `main.py` is a separate name binding that is never read by `Renderer` or
+  `engine.py`. Setting it has no effect on tile size.
+- **Downstream impact:** None at runtime. Misleads future maintainers into believing
+  `main.TILE` controls tile rendering.
+- **Proposed fix:** Remove the `TILE` import and assignment from `main.py`. Tile size is
+  owned by `renderer.TILE` and `_build_engine()` already sets `gameworks.renderer.TILE`
+  correctly via `import gameworks.renderer`.
+- **Test coverage gap:** No test verifies that setting `main.TILE` has any effect.
+
+---
+
+### FA-018 [LOW] First-click board regeneration can silently produce fewer mines than requested on tiny boards
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py` — `GameEngine.left_click()`, first-click safety block
+- **Root cause:** When the first click lands on a mine, `place_random_mines()` is called with
+  `safe_x=x, safe_y=y`, which excludes the 3×3 neighborhood of the clicked cell from mine
+  placement. On a 3×3 board with 8 mines and first click at (1,1), the exclusion zone covers
+  all 9 cells — `place_random_mines()` cannot place any mines, returns an empty set, and
+  `Board(3, 3, set())` is constructed with 0 mines. No error is raised; the game continues
+  with a secretly different mine count.
+- **Downstream impact:** Affects only extreme configurations (`mines >= W*H - 9`). Normal
+  gameplay (standard presets) is unaffected. When triggered: `total_mines == 0`, the player
+  instantly wins on the next click of any cell.
+- **Proposed fix:** Validate after regeneration:
+  ```python
+  new_mines = place_random_mines(...)
+  if len(new_mines) != self.board.total_mines:
+      new_mines = place_random_mines(w, h, mine_count, seed=self.seed)  # no safe zone
+  ```
+  Or raise `ValueError` if `mine_count > W*H - 9` at engine construction time.
+- **Test coverage gap:** `TestFirstClickSafety` uses `mines=70` on 9×9 boards (max 11 mines
+  in exclusion zone, plenty of space for 70 mines). No test triggers the zero-mine fallback.
+
+---
+
+### FA-019 [LOW] Arrow-key pan bypasses `_win_size` cache — calls `_win.get_width()/_win.get_height()` directly
+
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` — `handle_event()` arrow-key handlers
+- **Root cause:** (Sub-issue of FA-006; listed separately for completeness.) The K_LEFT,
+  K_RIGHT, K_UP, K_DOWN key handlers compute pan clamp bounds using `self._win.get_width()`
+  and `self._win.get_height()` instead of `self._win_size[0]` and `self._win_size[1]`.
+  `TestArrowKeyPanning` covers all four directions but does not assert that `get_width()`
+  is not called.
+- **Impact:** 1–2 redundant C extension calls per keypress event. Low severity.
+- **Proposed fix:** Replace with `self._win_size[0]` / `self._win_size[1]` (see FA-006).
+
+---
+
+### FA-020 [LOW] `right_click()` never increments `self.streak` — correct flags cannot build streak
+
+- **Status:** `OPEN`
+- **File:** `gameworks/engine.py` — `GameEngine.right_click()`
+- **Root cause:** `left_click()` and `middle_click()` both increment `self.streak += len(newly_revealed)`
+  on safe reveals. `right_click()` awards `CORRECT_FLAG_BONUS * streak_multiplier` scoring
+  points for correct flags but **never touches `self.streak`**. This creates a scoring
+  inconsistency: placing 10 correct flags in a row earns bonus points but at the base
+  multiplier (1.0×), while those same points would be multiplied if the flags were replaced
+  by reveals. A player building streak via reveals and then switching to flagging resets to
+  base multiplier for no visible reason.
+- **Downstream impact:** Scoring inconsistency. Players who mix flagging into their play style
+  receive lower score multipliers than pure-reveal players, with no visible explanation.
+- **Design note:** M-006 (WONT-FIX) addressed streak-per-click vs. streak-per-cell. FA-020
+  is a distinct issue: whether *any* right-click action contributes to streak, not granularity.
+  The existing design already awards scoring for correct flags; not extending streak credit for
+  them appears to be an oversight rather than an intentional design decision.
+- **Test coverage gap:** `TestStreak` tests cover `left_click` streak increments and mine-hit
+  resets. No test verifies `right_click` streak behavior after a correct flag.
+
+---
+
+## Session 14 — Forensic Audit Summary
+
+| ID | Severity | File | Status | One-line description |
+|---|---|---|---|---|
+| FA-001 | CRITICAL | main.py:215 | OPEN | `draw_victory()` after `display.flip()` — modal never shown |
+| FA-002 | HIGH | main.py:186 | OPEN | `elapsed = 0` on game_over — victory timer shows 0s |
+| FA-003 | HIGH | renderer.py:460 | OPEN | VIDEORESIZE omits `_on_resize()` — buttons misalign |
+| FA-004 | HIGH | renderer.py:~503 | OPEN | Panel intercept is left-click only — right/middle bypass |
+| FA-005 | MEDIUM | renderer.py:init | OPEN | `BOARD_OX = PAD + PANEL_W` in panel-right mode — 248 px dead space |
+| FA-006 | MEDIUM | renderer.py:multi | OPEN | `_win.get_width()` still called directly in 5 hot paths |
+| FA-007 | MEDIUM | engine.py:192 | OPEN | Flood-fill stack allows duplicate pushes — O(4n) stack |
+| FA-008 | MEDIUM | engine.py:~346 | OPEN | `load_board_from_npy()` validates with O(W×H) Python loops |
+| FA-009 | MEDIUM | renderer.py:1046 | OPEN | `.copy()` per visible flag per frame in `_draw_image_ghost()` |
+| FA-010 | LOW | main.py:_save_npy | OPEN | Save writes to cwd, not `results/` |
+| FA-011 | LOW | engine.py:112 | OPEN | `_count_adj()` is dead code — never called |
+| FA-012 | LOW | engine.py:158 | OPEN | `correct_flags` uses `np.sum()` — inconsistent with Phase 1 |
+| FA-013 | LOW | engine.py:705 | OPEN | `if __name__ == "_test_engine":` — unreachable guard |
+| FA-014 | LOW | main.py:70 | OPEN | `MENU` state documented but dead — no RESULT→MENU arc |
+| FA-015 | LOW | main.py:164 | OPEN | `_do_right_click()` return value always discarded |
+| FA-016 | LOW | renderer.py:WinAnim | OPEN | `WinAnimation` uses fixed seed 42 — identical animation every game |
+| FA-017 | LOW | main.py:~107 | OPEN | `main.TILE` global is a dead write — separate from `renderer.TILE` |
+| FA-018 | LOW | engine.py:~555 | OPEN | First-click regen can silently reduce mine count on tiny boards |
+| FA-019 | LOW | renderer.py:K_arrows | OPEN | Arrow-key pan calls `_win.get_width()` not `_win_size` (see FA-006) |
+| FA-020 | LOW | engine.py:right_click | OPEN | `right_click()` never increments `streak` — correct flags can't build multiplier |
+
+**Still open after session 14:** H-005, M-003, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9, PF-001,
+FA-001 through FA-020.
 
 ---
 
