@@ -492,3 +492,65 @@ class TestDirtyIntCounters:
         # Validate against arrays
         assert b._n_flags == int(b._flagged.sum())
         assert b._n_questioned == int(b._questioned.sum())
+
+    def test_flags_placed_counter_increments_on_flag(self):
+        """flags_placed (_n_flags) must increment by 1 when hidden cell → flag."""
+        b = board()
+        initial = b.flags_placed
+        b.toggle_flag(3, 3)   # hidden → flag
+        assert b.flags_placed == initial + 1
+        assert b.flags_placed == int(b._flagged.sum())
+
+    def test_flags_placed_counter_decrements_on_question(self):
+        """flags_placed (_n_flags) must decrement by 1 when flag → question."""
+        b = board()
+        b.toggle_flag(3, 3)   # hidden → flag
+        flagged = b.flags_placed
+        b.toggle_flag(3, 3)   # flag → question
+        assert b.flags_placed == flagged - 1
+        assert b.flags_placed == int(b._flagged.sum())
+
+    def test_flags_placed_counter_decrements_on_hidden(self):
+        """flags_placed (_n_flags) must remain 0 when question → hidden."""
+        b = board()
+        b.toggle_flag(3, 3)   # hidden → flag
+        b.toggle_flag(3, 3)   # flag → question
+        b.toggle_flag(3, 3)   # question → hidden
+        assert b.flags_placed == 0
+        assert b.flags_placed == int(b._flagged.sum())
+
+    def test_questioned_count_increments_and_decrements(self):
+        """questioned count (_n_questioned) must increment on flag→question and decrement on question→hidden."""
+        b = board()
+        assert b._n_questioned == 0
+
+        b.toggle_flag(3, 3)   # hidden → flag
+        assert b._n_questioned == 0
+
+        b.toggle_flag(3, 3)   # flag → question
+        assert b._n_questioned == 1
+        assert b._n_questioned == int(b._questioned.sum())
+
+        b.toggle_flag(3, 3)   # question → hidden
+        assert b._n_questioned == 0
+        assert b._n_questioned == int(b._questioned.sum())
+
+    def test_safe_revealed_count_increments_per_safe_cell(self):
+        """safe_revealed_count (_n_safe_revealed) must increment by 1 per safe cell revealed, not count mine hits."""
+        mines = {(2, 2)}
+        b = Board(5, 5, mines)
+
+        # Reveal one safe cell with neighbors (won't flood-fill)
+        b.reveal(2, 1)   # cell adjacent to mine at (2,2)
+        assert b._n_safe_revealed == 1
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+
+        # Hit a mine — safe_revealed should NOT increment
+        b.reveal(2, 2)   # mine hit
+        assert b._n_safe_revealed == 1   # still 1, mine hit doesn't count
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+
+        # Reveal another safe cell
+        b.reveal(1, 1)   # another cell adjacent to mine
+        assert b._n_safe_revealed == 2
+        assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
