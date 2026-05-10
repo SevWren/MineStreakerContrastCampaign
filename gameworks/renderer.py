@@ -840,21 +840,22 @@ class Renderer:
         _questioned = self.board._questioned
         _neighbours = self.board._neighbours
 
+        # Hoist time.monotonic() out of cell loop — single syscall per frame instead of per cell
+        now = time.monotonic()
+
         for y in range(ty0, ty1):
             for x in range(tx0, tx1):
                 px = ox + x * ts
                 py = oy + y * ts
-                cell = CellState(
-                    is_mine       =bool(_mine[y, x]),
-                    is_revealed   =bool(_revealed[y, x]),
-                    is_flagged    =bool(_flagged[y, x]),
-                    is_questioned =bool(_questioned[y, x]),
-                    neighbour_mines=int(_neighbours[y, x]),
-                )
-                ip = cell.is_revealed and (x, y) in anim_set
+                ip = _revealed[y, x] and (x, y) in anim_set
                 in_win_anim = (x, y) in win_anim_set
-                self._draw_cell(x, y, cell, (px, py), ip,
-                                pressed == (x, y), self.fog, ts, in_win_anim)
+                self._draw_cell(
+                    x, y,
+                    _mine[y, x], _revealed[y, x], _flagged[y, x],
+                    _questioned[y, x], _neighbours[y, x],
+                    (px, py), ip, pressed == (x, y),
+                    self.fog, ts, in_win_anim, now
+                )
 
         # Loss overlay
         if game_state == "lost":
@@ -882,35 +883,50 @@ class Renderer:
 
         self._win.set_clip(old_clip)
 
-    def _draw_cell(self, x, y, cell: CellState, pos, in_anim, is_pressed, fog, ts=None,
-                    in_win_anim=False):
-        if ts is None:
-            ts = self._tile
+    def _draw_cell(self,
+                   x: int, y: int,
+                   is_mine,          # numpy bool_ — no bool() needed
+                   is_revealed,      # numpy bool_
+                   is_flagged,       # numpy bool_
+                   is_questioned,    # numpy bool_
+                   neighbour_mines,  # numpy uint8
+                   pos: Tuple[int, int],
+                   in_anim: bool,
+                   is_pressed: bool,
+                   fog: bool,
+                   ts: int,
+                   in_win_anim: bool,
+                   now: float):      # hoisted monotonic time
         px, py = pos
-        pad = max(1, ts // 16)
 
         # Mine flash overlay: red background when this cell was just hit
         _flash_end = self.engine.mine_flash.get((x, y), 0)
-        _flashing = time.monotonic() < _flash_end
+        _flashing = now < _flash_end
 
-        if cell.is_revealed:
+        # Guard assertion: tile size must match cached surfaces
+        assert self._num_tile == ts, (
+            f"_draw_cell: tile size mismatch — _num_tile={self._num_tile} != ts={ts}. "
+            "Call _rebuild_num_surfs() before drawing."
+        )
+
+        if is_revealed:
             bg = C["red"] if _flashing else C["tile_reveal"]
             pygame.draw.rect(self._win, bg, (px, py, ts, ts))
-            if cell.is_mine:
+            if is_mine:
                 self._draw_mine(px, py, ts)
-            elif cell.neighbour_mines > 0:
+            elif neighbour_mines > 0:
                 # Use pre-rendered surface from cache — avoids font.render() per cell per frame
-                if self._num_tile != ts:
-                    self._rebuild_num_surfs()
-                num_surf = self._num_surfs[cell.neighbour_mines]
-                self._win.blit(num_surf, num_surf.get_rect(center=(px + ts // 2, py + ts // 2)))
-        elif cell.is_flagged:
+                # Dict key cast: neighbour_mines is numpy uint8, dict keys are Python int
+                num_surf = self._num_surfs.get(int(neighbour_mines))
+                if num_surf:
+                    self._win.blit(num_surf, num_surf.get_rect(center=(px + ts // 2, py + ts // 2)))
+        elif is_flagged:
             if fog:
                 pygame.draw.rect(self._win, C["tile_hidden"], (px, py, ts, ts))
             else:
                 pygame.draw.rect(self._win, C["tile_flag"], (px, py, ts, ts))
             self._draw_flag(px, py, ts)
-        elif cell.is_questioned:
+        elif is_questioned:
             pygame.draw.rect(self._win, C["tile_flag"], (px, py, ts, ts))
             self._draw_question(px, py, ts)
         else:
