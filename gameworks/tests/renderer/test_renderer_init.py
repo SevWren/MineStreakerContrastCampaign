@@ -229,27 +229,27 @@ class TestPhase2Caches:
         # Cache should be invalidated
         assert r._cached_board_rect is None
 
-    def test_board_rect_cache_invalidated_on_zoom_change(self, renderer_easy):
-        """_cached_board_rect must be invalidated after MOUSEWHEEL zoom."""
-        r, _ = renderer_easy
-        from unittest.mock import Mock, patch
-        import pygame
+    def test_board_rect_cache_invalidated_on_zoom_change(self, renderer_panel_large):
+        """_cached_board_rect must be invalidated after MOUSEWHEEL zoom.
+
+        Uses renderer_panel_large (40×30) with _win_size=(800,600) so the dynamic
+        floor is 7 — well below the starting tile of 20 — guaranteeing that
+        a scroll-out event actually changes the tile and triggers invalidation.
+        (renderer_easy has min_fit_tile≈BASE_TILE at 800×600, so scroll-out
+        is a no-op there and the cache is correctly left unchanged.)
+        """
+        r, _ = renderer_panel_large
+        r._win_size = (800, 600)
+        r._tile = 20          # above the dynamic floor of 7
 
         # Populate cache
         _ = r._board_rect()
         assert r._cached_board_rect is not None
 
-        # Simulate MOUSEWHEEL zoom OUT (renderer starts at BASE_TILE=32, zoom in would be no-op)
-        event = Mock()
-        event.type = pygame.MOUSEWHEEL
-        event.y = -1  # scroll down = zoom out
+        # Scroll down = zoom out; tile will change (20→15), firing cache invalidation
+        event = pygame.event.Event(pygame.MOUSEWHEEL, x=0, y=-1, flipped=False)
+        r.handle_event(event)
 
-        # Monkeypatch pygame.mouse.get_pos to avoid undefined behavior
-        with patch('pygame.mouse.get_pos', return_value=(100, 100)):
-            r.handle_event(event)
-
-        # Cache should be invalidated (indirectly via _on_resize or _clamp_pan)
-        # After zoom, cache is cleared
         assert r._cached_board_rect is None
 
     def test_draw_smiley_uses_passed_mouse_pos(self, renderer_easy):

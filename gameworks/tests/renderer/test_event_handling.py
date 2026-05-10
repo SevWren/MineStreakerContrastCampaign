@@ -169,3 +169,66 @@ class TestPanelClickIntercept:
 
         result = r.handle_event(event)
         assert result is None or not (isinstance(result, str) and result.startswith("flag:"))
+
+
+class TestScrollWheelZoom:
+    """
+    Contract tests for MOUSEWHEEL zoom.
+
+    Covers: action-string return value, tile-size direction, BASE_TILE ceiling,
+    and the dynamic floor — all observable via handle_event() alone.
+
+    Tile-size arithmetic proofs live in test_zoom.py; this class tests only
+    the handle_event() surface (return value + tile changes).
+    """
+
+    # renderer_panel_large (40×30, panel_right=True) is used where the zoom-out
+    # floor must be clearly below BASE_TILE.
+    # With _win_size=(800,600): min_fit_tile = 7 < BASE_TILE=32.
+
+    def test_scroll_up_returns_none(self, renderer_easy):
+        r, _ = renderer_easy
+        r._tile = 16          # below BASE_TILE so zoom-in fires
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=1, flipped=False)
+        assert r.handle_event(ev) is None
+
+    def test_scroll_down_returns_none(self, renderer_panel_large):
+        r, _ = renderer_panel_large
+        r._win_size = (800, 600)
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=-1, flipped=False)
+        assert r.handle_event(ev) is None
+
+    def test_scroll_up_increases_tile_size(self, renderer_easy):
+        r, _ = renderer_easy
+        r._tile = 16
+        before = r._tile
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=1, flipped=False)
+        r.handle_event(ev)
+        assert r._tile > before
+
+    def test_scroll_down_decreases_tile_size(self, renderer_panel_large):
+        """Zoom-out on a large board (floor=7) must reduce the tile size."""
+        r, _ = renderer_panel_large
+        r._win_size = (800, 600)
+        r._tile = 28          # well above the floor of 7
+        before = r._tile
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=-1, flipped=False)
+        r.handle_event(ev)
+        assert r._tile < before
+
+    def test_scroll_up_capped_at_base_tile(self, renderer_easy):
+        from gameworks.renderer import BASE_TILE
+        r, _ = renderer_easy
+        r._tile = BASE_TILE
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=1, flipped=False)
+        r.handle_event(ev)
+        assert r._tile == BASE_TILE
+
+    def test_scroll_down_does_not_crash_at_floor(self, renderer_panel_large):
+        """Repeated scroll-down must not crash and must honour the floor."""
+        r, _ = renderer_panel_large
+        r._win_size = (800, 600)
+        ev = _make_event(pygame.MOUSEWHEEL, x=0, y=-1, flipped=False)
+        for _ in range(60):
+            r.handle_event(ev)
+        assert r._tile >= 1

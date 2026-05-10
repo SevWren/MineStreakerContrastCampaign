@@ -52,6 +52,26 @@ def renderer_medium():
 
 
 @pytest.fixture
+def renderer_panel_large():
+    """Return (Renderer, GameEngine) for a 40×30 board with _panel_right=True.
+
+    40×30 is large enough that at a forced 800×600 viewport the dynamic zoom
+    floor (min_fit_tile = 7) falls below MIN_TILE_SIZE (10), which makes it
+    the canonical fixture for zoom-floor behaviour tests.
+
+    Tests that care about deterministic floor values should set:
+        r._win_size = (800, 600)
+    after receiving this fixture, since the dummy display size may vary.
+    """
+    from gameworks.engine import GameEngine
+    from gameworks.renderer import Renderer
+    eng = GameEngine(mode="random", width=40, height=30, mines=60, seed=42)
+    eng.start()
+    r = Renderer(eng)
+    return r, eng
+
+
+@pytest.fixture
 def animation_positions():
     """Standard list of (x, y) positions for animation tests."""
     return [(i, 0) for i in range(10)]

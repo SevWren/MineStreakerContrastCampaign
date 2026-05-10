@@ -574,7 +574,33 @@ class Renderer:
             if ev.y > 0:
                 new_tile = min(BASE_TILE, self._tile + step)
             else:
-                new_tile = max(MIN_TILE_SIZE, self._tile - step)
+                win_w, win_h = self._win_size
+                # avail_w: board area width, excluding the side panel when present.
+                # panel_right=True  → subtract right panel (PANEL_W + PAD)
+                # panel_right=False → subtract right margin PAD (mirrors _clamp_pan and __init__ layout)
+                avail_w = win_w - self.BOARD_OX
+                if self._panel_right:
+                    avail_w -= self.PANEL_W + self.PAD
+                else:
+                    avail_w -= self.PAD
+                # avail_h: visible board area height.
+                # Use win_h - BOARD_OY - HEADER_H to match _clamp_pan's zero-pan
+                # threshold; without this, min_fit_tile would be computed from a
+                # viewport up to HEADER_H px taller than what _clamp_pan considers
+                # "fits", leaving a residual pan range at the floor zoom level.
+                avail_h = win_h - self.BOARD_OY - self.HEADER_H
+                # Guard against pathological window sizes (window smaller than
+                # offsets).  Without the clamp, negative avail values produce
+                # negative integer-division results that bypass max(1, ...).
+                avail_w = max(0, avail_w)
+                avail_h = max(0, avail_h)
+                min_fit_tile = max(1, min(avail_w // self.board.width,
+                                          avail_h // self.board.height))
+                # NOTE: if self._tile is already below min_fit_tile (e.g. the
+                # window was enlarged since the last zoom), this snaps the tile
+                # UP to min_fit_tile.  That is correct — it re-fits the board —
+                # but looks like zoom-out triggered zoom-in.
+                new_tile = max(min_fit_tile, self._tile - step)
             if new_tile != self._tile:
                 # Zoom centered on mouse position.
                 # MOUSEWHEEL events have no .pos in pygame 2 — use _last_mouse_pos.
