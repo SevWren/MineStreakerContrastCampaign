@@ -624,21 +624,71 @@ Pending implementation tests (activate when the corresponding R2/R3/R6/R8/R9 fea
 Before **every** `git push`, regardless of how small the change appears, execute
 every step below in order. If any step fails, fix the gap and restart from step 1.
 
----
-
-### Step 1 — Re-read every file you touched
-
-Open each file you edited and read the final state. Confirm the actual written
-code matches what you claimed to fix. Memory of what you *intended* to write is
-not sufficient — read the file.
+> **LLM-session note:** An LLM agent's memory of what it changed is unreliable.
+> Every step below that can be grounded in a shell command must be. Self-certification
+> ("I believe I checked this") is not sufficient evidence for any step.
 
 ---
 
-### Step 2 — Cross-check the full issue scope
+### Step 0 — Capture the pre-change failure baseline (before editing)
 
-If the task listed N problems, count the fixes present in the diff. A commit
-message that names 5 fixes with only 3 in the diff is a **failed push**. Tally
-explicitly; do not estimate.
+Run the relevant test suite *before* making any changes and save the output.
+This must happen at the start of the session, not after edits are complete.
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" 2>&1 | tee /tmp/baseline_failures.txt
+```
+
+If the session has already started without a baseline, run the suite on a
+`git stash` snapshot and restore:
+
+```bash
+git stash
+python -m unittest discover -s tests -p "test_*.py" 2>&1 | tee /tmp/baseline_failures.txt
+git stash pop
+```
+
+This baseline is the ground truth used in Step 6 to separate pre-existing
+failures from newly introduced regressions.
+
+---
+
+### Step 1 — Read the ground-truth diff, not memory
+
+Do not rely on recalling what you edited. Run:
+
+```bash
+git diff --staged
+```
+
+Read every hunk. For each changed block, confirm:
+- It belongs to the stated task scope.
+- It says what you intended, not what you remember intending.
+- No unintended lines were added or removed (e.g., debug prints, accidental
+  whitespace-only changes, edits in the wrong file).
+
+Any hunk not attributable to the stated task is an **unintended change** and
+must be reverted with `git restore --staged <file>` before continuing.
+
+Memory of what you *intended* to write is not evidence. The diff is.
+
+---
+
+### Step 2 — Cross-check scope with diff statistics
+
+Run:
+
+```bash
+git diff --staged --stat
+```
+
+Read the per-file insertion/deletion counts. Tally the number of distinct
+changes against the stated task scope. A commit message that names 5 fixes
+with a diff showing 3 files changed is a **failed push**.
+
+Draft the commit message **only after** reading `--staged` and `--stat`.
+Do not draft the message from memory and then check the diff — this ordering
+produces the mismatch problem this protocol was created to prevent.
 
 ---
 
@@ -648,31 +698,69 @@ For every bug fixed, follow the call chain from the broken call site through to
 the corrected return value. Confirm no intermediate function still passes the old
 (wrong) value or stale variable reference.
 
----
-
-### Step 4 — Check for partial fixes and co-located bugs
-
-A fix that corrects the primary symptom while leaving a secondary bug in the same
-function is incomplete. Read the entire function body of every function you
-changed, not just the lines you modified. Check callers for assumptions about
-return type or value that your change may have invalidated.
+State the specific **concrete wrong value** that would be returned or observed
+if the code regressed. "It would fail somehow" is not sufficient. Name the value.
 
 ---
 
-### Step 5 — Run AST parse on every edited `.py` file
+### Step 4 — Audit for partial fixes and unintended co-located changes
+
+Two separate checks:
+
+**Partial fixes:** A fix that corrects the primary symptom while leaving a
+secondary bug in the same function is incomplete. Read the entire function body
+of every function you changed, not just the lines you modified. Check callers
+for assumptions about return type or value that your change may have invalidated.
+
+**Unintended changes:** For every file in `git diff --staged`, read the full
+diff of that file and confirm there are no changes outside the intended scope.
+Common LLM-specific sources of unintended changes: rewriting a nearby docstring,
+reformatting an unrelated function, removing an import that was still needed,
+changing a variable name globally when only one site was intended.
+
+---
+
+### Step 5 — Run AST parse and pyflakes on every edited `.py` file
+
+**Syntax (AST parse):**
 
 ```bash
 python -c "import ast; ast.parse(open('FILE').read()); print('FILE OK')"
 ```
 
-Catches syntax errors that would crash at import time. Do this for every `.py`
-file in the diff — not just the ones you believe are syntactically changed.
+**Undefined names and unused imports (pyflakes):**
+
+```bash
+python -m pyflakes FILE.py
+```
+
+Run both on every `.py` file in `git diff --staged --name-only`. AST parse
+catches syntax errors; pyflakes catches the class of errors LLM edits most
+commonly introduce: referencing a name that was renamed mid-session, leaving
+an unused import from an abandoned approach, or shadowing a name from an outer
+scope. A clean pyflakes run is required before proceeding.
 
 ---
 
-### Step 6 — Run the relevant test suite and verify results
+### Step 6 — Run the relevant test suite, compare against baseline, and isolate new tests
 
-**gameworks/ changes** (engine, renderer, main, corridors):
+**Compare against baseline:**
+
+After running the suite, diff against the Step 0 baseline:
+
+```bash
+python -m unittest discover -s tests -p "test_*.py" 2>&1 | tee /tmp/after_failures.txt
+diff /tmp/baseline_failures.txt /tmp/after_failures.txt
+```
+
+Only lines that appear in `after_failures.txt` but not in `baseline_failures.txt`
+are regressions introduced by this change. All other failures are pre-existing
+and must be documented in the commit message and `docs/ISSUE-LOG.md` — they are
+not acceptable to silently push over.
+
+**Suite commands by change area:**
+
+*gameworks/ changes* (engine, renderer, main, corridors):
 
 ```bash
 # Package-local suite — unit, architecture, CLI, integration (no display required)
@@ -686,17 +774,30 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
 ```
 
-**Pipeline / reconstruction changes** (core, sa, solver, corridors, repair, report, pipeline):
+*Pipeline / reconstruction changes* (core, sa, solver, corridors, repair, report, pipeline):
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-**Demo changes** (`demos/`, `tests/demo/`):
+*Demo changes* (`demos/`, `tests/demo/`):
 
 ```bash
 python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 ```
+
+**Run each new test in isolation:**
+
+For every new test method added in this change, run it individually:
+
+```bash
+python -m pytest tests/test_foo.py::TestClass::test_new_method -v
+# or
+python -m unittest tests.test_foo.TestClass.test_new_method
+```
+
+A test that passes in the bulk suite but fails in isolation has a hidden
+dependency on test ordering or shared mutable state. Fix it before pushing.
 
 **Rules:**
 
@@ -713,12 +814,28 @@ python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 
 ---
 
-### Step 7 — Check test coverage for new behaviour
+### Step 7 — Verify new tests actually catch regressions
 
-For every bug you fixed, find the test that would catch a regression to the
-broken state. If no such test exists, write one before pushing. The test does
-not need to be elaborate — a single assertion that the broken symptom no longer
-occurs is sufficient.
+Writing a test that always passes regardless of the fix provides no protection.
+This is the most common LLM-specific test-quality failure: the test is written
+to match what the code currently does, not what it must do.
+
+For each new test added, verify it would fail without the change using one of
+these two methods:
+
+**Method A — Revert and run:**
+Temporarily revert the specific line(s) the test is guarding, run the test
+alone, confirm it fails, restore the line(s).
+
+**Method B — State the concrete failure:**
+Without running, state explicitly: "If this code regressed to `<old behaviour>`,
+this assertion would receive `<specific wrong value>` instead of
+`<expected value>`." Vague statements ("it would fail") are not acceptable.
+Name the wrong value.
+
+Method A is required for fixes where the regression is subtle. Method B is
+acceptable for new feature tests where the behaviour being tested did not
+previously exist.
 
 Extend the appropriate test file for the change:
 - `gameworks/tests/unit/test_board.py` — Board logic: reveal, flag, chord, flood-fill
@@ -737,14 +854,17 @@ Extend the appropriate test file for the change:
 
 ### Step 8 — Push
 
-Only after steps 1–7 pass completely. If any step above revealed a gap, fix it
+Only after steps 0–7 pass completely. If any step above revealed a gap, fix it
 and restart the checklist from step 1.
 
 ---
 
 This protocol exists because previous sessions pushed commits where: (a) the
 claimed fix list in the message did not fully match the diff, and (b) no test
-coverage was added for fixes, allowing regressions to go undetected.
+coverage was added for fixes, allowing regressions to go undetected. Steps 0–4
+were subsequently added to address the specific failure modes of LLM-driven
+development: unreliable session memory, self-certified verification, and tests
+written to match current behaviour rather than intended behaviour.
 
 ---
 
