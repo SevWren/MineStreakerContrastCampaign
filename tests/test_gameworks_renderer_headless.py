@@ -178,6 +178,46 @@ class TestWinAnimation:
         time.sleep(0.3)
         assert anim.done or len(anim.current()) > 0
 
+    def test_done_with_no_flags_c007_regression(self):
+        """C-007 regression: WinAnimation.done must become True when no flags are placed.
+
+        Old code: 'and self._correct' guard blocked phase 0→1 when _correct=[],
+        so done was permanently False for the most common win playstyle.
+        """
+        from gameworks.engine import Board
+        from gameworks.renderer import WinAnimation
+        mines = {(0, 0), (1, 1)}
+        b = Board(5, 5, mines)
+        # No flags placed at all — _correct=[] and _wrong=[]
+        anim = WinAnimation(b, speed=0.001)
+        time.sleep(0.1)
+        anim.current()  # drive phase forward
+        assert anim.done, (
+            "WinAnimation.done must be True with no flags (C-007 regression): "
+            f"_phase={anim._phase}, _correct={anim._correct}, _wrong={anim._wrong}"
+        )
+
+    def test_done_with_correct_flags_no_wrong_c007_regression(self):
+        """C-007 regression: WinAnimation.done must become True when only correct flags exist.
+
+        Old code: 'and self._wrong' guard blocked phase 1→2 when _wrong=[],
+        so done was permanently False even after the correct-flags animation finished.
+        """
+        from gameworks.engine import Board
+        from gameworks.renderer import WinAnimation
+        mines = {(0, 0), (1, 1)}
+        b = Board(5, 5, mines)
+        # All mines correctly flagged, zero wrong flags → _wrong=[]
+        b._flagged[0, 0] = True
+        b._flagged[1, 1] = True
+        anim = WinAnimation(b, speed=0.001)
+        time.sleep(0.1)
+        anim.current()  # drive phase forward
+        assert anim.done, (
+            "WinAnimation.done must be True with only correct flags (C-007 regression): "
+            f"_phase={anim._phase}, _correct={anim._correct}, _wrong={anim._wrong}"
+        )
+
     def test_finished_after_returns_float(self):
         from gameworks.renderer import WinAnimation
         anim = WinAnimation(self._make_board(), speed=0.01)

@@ -340,6 +340,101 @@ class TestGameEngineLifecycle:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  DEV: dev_solve_board() — regression tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDevSolveBoard:
+    """Regression tests for GameEngine.dev_solve_board() (DEV feature)."""
+
+    def test_returns_success_true_and_state_won(self):
+        eng = make_engine(w=5, h=5, mines=3)
+        result = eng.dev_solve_board()
+        assert result.success
+        assert result.state == "won"
+        assert eng.state == "won"
+        assert eng.board._state == "won"
+
+    def test_all_safe_cells_are_revealed(self):
+        eng = make_engine(w=5, h=5, mines=3)
+        eng.dev_solve_board()
+        board = eng.board
+        safe_unrevealed = [
+            (x, y)
+            for y in range(board.height)
+            for x in range(board.width)
+            if not board._mine[y, x] and not board._revealed[y, x]
+        ]
+        assert safe_unrevealed == [], (
+            f"Safe cells still unrevealed after dev_solve: {safe_unrevealed}"
+        )
+
+    def test_all_mines_are_flagged(self):
+        eng = make_engine(w=5, h=5, mines=3)
+        eng.dev_solve_board()
+        board = eng.board
+        unflagged_mines = [
+            (x, y)
+            for y in range(board.height)
+            for x in range(board.width)
+            if board._mine[y, x] and not board._flagged[y, x]
+        ]
+        assert unflagged_mines == [], (
+            f"Mines not flagged after dev_solve: {unflagged_mines}"
+        )
+
+    def test_no_wrong_flags_remain(self):
+        """dev_solve must clear any previously wrong flags on safe cells."""
+        eng = make_engine(w=5, h=5, mines=3)
+        board = eng.board
+        safe = next(
+            (x, y)
+            for y in range(board.height)
+            for x in range(board.width)
+            if not board._mine[y, x]
+        )
+        board._flagged[safe[1], safe[0]] = True   # wrong flag before solve
+        eng.dev_solve_board()
+        assert not board._flagged[safe[1], safe[0]], (
+            "Wrong flag on safe cell must be cleared by dev_solve"
+        )
+
+    def test_question_marks_are_cleared(self):
+        eng = make_engine(w=5, h=5, mines=3)
+        board = eng.board
+        safe = next(
+            (x, y)
+            for y in range(board.height)
+            for x in range(board.width)
+            if not board._mine[y, x]
+        )
+        board._questioned[safe[1], safe[0]] = True
+        eng.dev_solve_board()
+        assert not np.any(board._questioned), (
+            "All question marks must be cleared by dev_solve"
+        )
+
+    def test_noop_when_already_won(self):
+        eng = make_engine(w=5, h=5, mines=3)
+        eng.dev_solve_board()
+        result2 = eng.dev_solve_board()
+        assert not result2.success          # second call is a no-op
+        assert eng.state == "won"           # still won, no crash or regression
+
+    def test_timer_is_frozen_after_solve(self):
+        import time as _time
+        eng = make_engine(w=5, h=5, mines=3)
+        eng.left_click(4, 4)               # start the clock
+        _time.sleep(0.05)
+        eng.dev_solve_board()
+        t0 = eng.elapsed
+        _time.sleep(0.05)
+        t1 = eng.elapsed
+        assert t0 == t1, (
+            f"Elapsed must be frozen after dev_solve_board(); t0={t0:.4f} t1={t1:.4f}"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  NPY Loading
 # ─────────────────────────────────────────────────────────────────────────────
 

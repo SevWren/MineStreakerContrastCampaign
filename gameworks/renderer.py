@@ -209,13 +209,15 @@ class WinAnimation:
             idx = min(int(now / self.speed) + 1, len(self._correct))
             if idx >= len(self._correct):
                 self._phase = 1
-            return self._correct[:idx]
+            else:
+                return self._correct[:idx]
         if self._phase == 1:
             elapsed = now - len(self._correct) * self.speed
             idx = min(int(elapsed / self.speed) + 1, len(self._wrong))
             if idx >= len(self._wrong):
                 self._phase = 2
-            return self._correct + self._wrong[:idx]
+            else:
+                return self._correct + self._wrong[:idx]
         return self._all_positions[:]
 
     def finished_after(self) -> float:
@@ -305,9 +307,19 @@ class Renderer:
         self._font_small = pygame.font.SysFont("consolas", max(9, font_base - 2))
         self._font_tiny  = pygame.font.SysFont("consolas", max(8, font_base - 3))
 
+        # ── Panel placement ───────────────────────────────────────────
+        # For large boards where board height overflows the window height, the
+        # below-board panel lands off-screen (e.g. y=3772 on a 300×370 board at
+        # tile=10).  In that case, pin the panel to the window's right edge as a
+        # semi-transparent overlay so controls are always reachable.
+        self._panel_overlay = (not self._panel_right) and (bh_px > win_h - self.BOARD_OY)
+
         # ── UI rects (placed after knowing actual tile/font) ──────────
         if self._panel_right:
             px = self.board.width * self._tile + self.BOARD_OX + self.PAD
+            oy = self.BOARD_OY
+        elif self._panel_overlay:
+            px = win_w - self.PANEL_W - self.PAD
             oy = self.BOARD_OY
         else:
             px = self.PAD
@@ -625,6 +637,9 @@ class Renderer:
 
         if self._panel_right:
             px = self.board.width * ts + self.BOARD_OX + self.PAD
+            oy = self.BOARD_OY
+        elif self._panel_overlay:
+            px = self._win.get_width() - self.PANEL_W - self.PAD
             oy = self.BOARD_OY
         else:
             px = self.PAD
@@ -985,9 +1000,20 @@ class Renderer:
     # ── Right panel ───────────────────────────────────────────────────
 
     def _draw_panel(self, mouse_pos, game_state, elapsed):
+        win_w = self._win.get_width()
         if self._panel_right:
             px = self.board.width * self._tile + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
+        elif self._panel_overlay:
+            px = win_w - self.PANEL_W - self.PAD
+            oy = self.BOARD_OY
+            # Semi-transparent backdrop so panel text/buttons are readable over board tiles
+            _bd_w = self.PANEL_W + self.PAD * 2
+            _bd_h = self._win.get_height() - oy
+            if _bd_h > 0:
+                _ov = pygame.Surface((_bd_w, _bd_h), pygame.SRCALPHA)
+                _ov.fill((18, 18, 24, 215))
+                self._win.blit(_ov, (px - self.PAD, oy))
         else:
             px = self.PAD
             oy = int(self.BOARD_OY + self.board.height * self._tile + self.PAD)
