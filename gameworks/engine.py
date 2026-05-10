@@ -77,7 +77,8 @@ class Board:
 
     __slots__ = ("width", "height", "total_mines", "_mine", "_revealed",
                  "_flagged", "_questioned", "_neighbours", "_state",
-                 "_n_flags", "_n_questioned", "_n_safe_revealed", "_n_revealed")
+                 "_n_flags", "_n_questioned", "_n_safe_revealed", "_n_revealed",
+                 "_n_correct_flags")
 
     def __init__(self, width: int, height: int, mine_positions: Set[Tuple[int, int]]):
         self.width = width
@@ -104,16 +105,11 @@ class Board:
         self._n_questioned: int = 0
         self._n_safe_revealed: int = 0   # revealed non-mine cells only
         self._n_revealed: int = 0        # total revealed (includes mine-hit cells)
+        self._n_correct_flags: int = 0   # FA-012: flags placed on actual mines
 
         self._state: str = "playing"  # playing | won | lost
 
     # ── Internals ──────────────────────────────────────────────────────
-
-    def _count_adj(self, x: int, y: int) -> int:
-        x0, x1 = max(0, x - 1), min(self.width, x + 2)
-        y0, y1 = max(0, y - 1), min(self.height, y + 2)
-        sub = self._mine[y0:y1, x0:x1].astype(np.int32)
-        return int(sub.sum()) - int(self._mine[y, x])
 
     def _neighbours_iter(self, x: int, y: int):
         for dy in range(-1, 2):
@@ -156,7 +152,7 @@ class Board:
 
     @property
     def correct_flags(self) -> int:
-        return int(np.sum(self._flagged & self._mine))
+        return self._n_correct_flags   # FA-012: O(1) dirty-int; was O(W×H) np.sum()
 
     @property
     def is_won(self) -> bool:
@@ -219,6 +215,8 @@ class Board:
             # flag → question
             self._flagged[y, x] = False
             self._n_flags -= 1
+            if self._mine[y, x]:         # FA-012: reverse correct-flag counter on unflag
+                self._n_correct_flags -= 1
             self._questioned[y, x] = True
             self._n_questioned += 1
             return "question"
@@ -232,6 +230,8 @@ class Board:
         # hidden → flag
         self._flagged[y, x] = True
         self._n_flags += 1
+        if self._mine[y, x]:             # FA-012: maintain correct-flag counter
+            self._n_correct_flags += 1
         return "flag"
 
     def snapshot(self, x: int, y: int) -> CellState:
@@ -552,10 +552,16 @@ class GameEngine:
             self._start_time = time.time()
 
             if board._mine[y, x]:
-                # Regenerate around the click
+                # Regenerate around the click — safe zone excludes 3×3 neighbourhood
+                wanted = board.total_mines
                 mp = place_random_mines(
-                    board.width, board.height, board.total_mines,
+                    board.width, board.height, wanted,
                     safe_x=x, safe_y=y, seed=self.seed + 1)
+                if len(mp) < wanted:
+                    # FA-018: safe zone covered too many cells (e.g. tiny board) —
+                    # fall back to regen without safe zone to preserve mine count.
+                    mp = place_random_mines(
+                        board.width, board.height, wanted, seed=self.seed + 1)
                 self.board = Board(board.width, board.height, mp)
                 board = self.board
 
@@ -599,14 +605,17 @@ class GameEngine:
                 pts = int(CORRECT_FLAG_BONUS * mult)
                 self.score += pts
                 score_delta = pts
+                self.streak += 1            # FA-020: correct flag builds streak
             else:
                 self.score = max(0, self.score - WRONG_FLAG_PENALTY)
                 score_delta = -WRONG_FLAG_PENALTY
+                self.streak = 0            # FA-020: wrong flag resets streak
         elif placed == "question" and was_flagged:
-            # Reversing a flag — reverse the original score change
+            # Reversing a correct flag — reverse both score and streak contribution
             if board._mine[y, x]:
                 self.score = max(0, self.score - CORRECT_FLAG_BONUS)
                 score_delta = -CORRECT_FLAG_BONUS
+                self.streak = max(0, self.streak - 1)   # FA-020: undo the streak increment
             else:
                 self.score += WRONG_FLAG_PENALTY
                 score_delta = WRONG_FLAG_PENALTY
@@ -673,6 +682,7 @@ class GameEngine:
         board._n_revealed = int(board._revealed.sum())  # recount from array — mine-hit cells may also be revealed
         board._n_flags = board.total_mines
         board._n_questioned = 0
+        board._n_correct_flags = board.total_mines   # FA-012: all flags are correct after solve
 
         board._state = "won"
         self.stop_timer()
@@ -698,25 +708,3 @@ class GameEngine:
             m = mines if mines is not None else self.board.total_mines
             mp = place_random_mines(w, h, m, seed=self.seed)
             self.board = Board(w, h, mp)
-
-
-# ── Quick correctness test ──────────────────────────────────────────────────
-
-if __name__ == "_test_engine":
-    eng = GameEngine(mode="random", width=9, height=9, mines=10, seed=42)
-    eng.start()
-
-    # Click centre — should be safe
-    r = eng.left_click(4, 4)
-    assert not r.hit_mine, "First click hit a mine!"
-    print(f"First click OK, revealed {len(r.newly_revealed)} cells")
-
-    # Flag some cells
-    r2 = eng.right_click(0, 0)
-    assert r2.flagged is True
-    r3 = eng.right_click(0, 0)
-    assert r3.flagged is False
-    print("Flag toggle OK")
-
-    print(f"Difficulty preset easy: {GameEngine.DIFFICULTIES['easy']}")
-    print("Engine self-test PASSED")

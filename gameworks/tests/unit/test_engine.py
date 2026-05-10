@@ -244,6 +244,27 @@ class TestStreak:
             assert eng.streak_multiplier == expected, \
                 f"streak={streak}: expected {expected}×, got {eng.streak_multiplier}×"
 
+    def test_correct_flag_increments_streak(self):
+        """Placing a flag on a mine cell must increment streak (FA-020)."""
+        eng = make_engine()
+        mine_pos = next(iter(eng.board.all_mine_positions()))
+        eng.streak = 0
+        eng.right_click(*mine_pos)
+        assert eng.streak == 1, \
+            f"Correct flag did not increment streak: streak={eng.streak}"
+
+    def test_wrong_flag_resets_streak(self):
+        """Placing a flag on a safe cell must reset streak to 0 (FA-020)."""
+        eng = make_engine()
+        eng.streak = 5
+        for y in range(9):
+            for x in range(9):
+                if not eng.board._mine[y, x]:
+                    eng.right_click(x, y)
+                    assert eng.streak == 0
+                    return
+        pytest.skip("No safe cell found")
+
 
 # ---------------------------------------------------------------------------
 # mine_flash
@@ -452,3 +473,17 @@ class TestRestartModes:
         eng.restart()
         assert eng.state == "playing"
         assert eng.board.total_mines >= 1
+
+
+class TestFirstClickSafety:
+
+    def test_first_click_mine_count_preserved_on_tiny_board(self):
+        """On a tiny board where the safe zone covers all cells, mine count must not drop (FA-018)."""
+        eng = GameEngine(mode="random", width=3, height=3, mines=8, seed=0)
+        eng.start()
+        eng._first_click = True
+        # Place a single mine at the click target to trigger regen
+        eng.board = Board(3, 3, {(1, 1)})
+        result = eng.left_click(1, 1)
+        assert eng.board.total_mines == 1, \
+            f"Mine count changed after first-click regen: {eng.board.total_mines}"

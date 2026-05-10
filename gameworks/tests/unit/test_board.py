@@ -554,3 +554,58 @@ class TestDirtyIntCounters:
         b.reveal(1, 1)   # another cell adjacent to mine
         assert b._n_safe_revealed == 2
         assert b._n_safe_revealed == int((b._revealed & ~b._mine).sum())
+
+
+class TestDeadCodeRemoval:
+
+    def test_count_adj_does_not_exist(self):
+        """Board._count_adj must be removed — dead code superseded by scipy convolution (FA-011)."""
+        b = Board(5, 5, {(0, 0)})
+        assert not hasattr(b, '_count_adj'), \
+            "Board._count_adj still exists — should have been removed (FA-011)"
+
+
+class TestCorrectFlagsCounter:
+
+    def test_correct_flags_increments_on_mine_flag(self):
+        mines = {(0, 0), (1, 1)}
+        b = Board(5, 5, mines)
+        b.toggle_flag(0, 0)   # correct
+        assert b.correct_flags == 1
+        assert b._n_correct_flags == 1
+
+    def test_correct_flags_does_not_increment_on_wrong_flag(self):
+        mines = {(0, 0)}
+        b = Board(5, 5, mines)
+        b.toggle_flag(2, 2)   # wrong flag
+        assert b.correct_flags == 0
+        assert b._n_correct_flags == 0
+
+    def test_correct_flags_decrements_on_unflag(self):
+        mines = {(0, 0)}
+        b = Board(5, 5, mines)
+        b.toggle_flag(0, 0)   # correct flag
+        assert b._n_correct_flags == 1
+        b.toggle_flag(0, 0)   # → question (unflag)
+        assert b._n_correct_flags == 0
+        assert b.correct_flags == 0
+
+    def test_correct_flags_matches_array_after_mixed_operations(self):
+        import numpy as np
+        mines = {(0, 0), (1, 1), (2, 2)}
+        b = Board(5, 5, mines)
+        b.toggle_flag(0, 0)   # correct
+        b.toggle_flag(1, 1)   # correct
+        b.toggle_flag(3, 3)   # wrong
+        expected = int(np.sum(b._flagged & b._mine))
+        assert b._n_correct_flags == expected
+        assert b.correct_flags == expected
+
+    def test_dev_solve_resyncs_correct_flags_counter(self):
+        from gameworks.engine import GameEngine
+        mines = {(0, 0), (1, 1)}
+        eng = GameEngine(mode="random", width=5, height=5, mines=2, seed=42)
+        eng.board = Board(5, 5, mines)
+        eng.dev_solve_board()
+        assert eng.board._n_correct_flags == eng.board.total_mines
+        assert eng.board.correct_flags == eng.board.total_mines

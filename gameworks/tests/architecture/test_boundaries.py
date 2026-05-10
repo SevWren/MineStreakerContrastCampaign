@@ -212,3 +212,9 @@ class TestNoCircularImports:
         assert spec is not None, "gameworks.engine not found"
         # Import directly — if this raises, the module has a broken dependency
         import gameworks.engine  # noqa: F401
+
+    def test_engine_has_no_unreachable_name_guards(self):
+        """engine.py must not contain if __name__ == '_test_engine': (unreachable dead code, FA-013)."""
+        src = _source("engine.py")
+        assert '"_test_engine"' not in src and "'_test_engine'" not in src, \
+            "Unreachable __name__ == '_test_engine' guard still present in engine.py"
