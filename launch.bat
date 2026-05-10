@@ -12,9 +12,12 @@ cd /d "%~dp0"
 
 :: Detect Python - prefer venv, fall back to system
 set PYTHON=python
-if exist "venv\Scripts\python.exe"     set PYTHON=venv\Scripts\python.exe
-if exist ".venv\Scripts\python.exe"    set PYTHON=.venv\Scripts\python.exe
-if exist "env\Scripts\python.exe"      set PYTHON=env\Scripts\python.exe
+if exist "venv\Scripts\python.exe"      set PYTHON=venv\Scripts\python.exe
+if exist "env\Scripts\python.exe"       set PYTHON=env\Scripts\python.exe
+:: detect any .venv* folder (e.g. .venv, .venv313, .venv312)
+for /d %%D in (".venv*") do (
+    if exist "%%D\Scripts\python.exe" set PYTHON=%%D\Scripts\python.exe
+)
 
 echo.
 echo  ============================================================
@@ -113,7 +116,7 @@ if "!TILE!"=="" set TILE=32
 
 :: --- BUILD COMMAND ------------------------------------------
 :build_cmd
-set CMD="%PYTHON%" gameworks\main.py
+set CMD="%PYTHON%" -m gameworks.main
 
 if defined DIFF_ARG (
     set CMD=!CMD! !DIFF_ARG!
