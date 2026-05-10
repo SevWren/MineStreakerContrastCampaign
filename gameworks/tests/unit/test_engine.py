@@ -24,6 +24,8 @@ from gameworks.engine import (
     Board,
     GameEngine,
     MoveResult,
+    MINE_HIT_PENALTY,
+    REVEAL_POINTS,
     WRONG_FLAG_PENALTY,
     place_random_mines,
 )
@@ -153,6 +155,161 @@ class TestMoveResultReturns:
         eng = make_engine()
         result = eng.left_click(4, 4)
         assert isinstance(result.score_delta, int)
+
+
+# ---------------------------------------------------------------------------
+# middle_click() — chord scoring, penalty, streak, win
+# ---------------------------------------------------------------------------
+
+class TestMiddleClick:
+    """
+    Covers GameEngine.middle_click() behaviour end-to-end.
+
+    Board setup convention for all tests below:
+      - mine at (0, 0) only
+      - cell (1, 1) is revealed: neighbour_count = 1, adjacent to the mine
+      - cell (0, 0) is flagged:  flag_count == mine_count → chord fires
+    """
+
+    # ── helper ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _setup_chord_ready(w: int = 5, h: int = 5) -> GameEngine:
+        """Return an engine with one mine at (0,0), (1,1) revealed, (0,0) flagged."""
+        eng = GameEngine(mode="random", width=w, height=h, mines=1, seed=0)
+        eng.board = Board(w, h, {(0, 0)})
+        eng.start()
+        eng._first_click = False
+        eng.board.reveal(1, 1)          # reveal the clue cell
+        eng.board.toggle_flag(0, 0)     # flag the mine → chord condition satisfied
+        eng.streak = 0
+        eng.score = 0
+        return eng
+
+    @staticmethod
+    def _setup_chord_wrong_flag(w: int = 5, h: int = 5) -> GameEngine:
+        """Return an engine where the flag is on a safe cell (wrong flag scenario)."""
+        # mine at (0,0); flag placed on (2,0) which is NOT a mine
+        eng = GameEngine(mode="random", width=w, height=h, mines=1, seed=0)
+        eng.board = Board(w, h, {(0, 0)})
+        eng.start()
+        eng._first_click = False
+        # reveal (1,0) which has neighbour_count=1 (adjacent to mine at 0,0)
+        eng.board.reveal(1, 0)
+        # flag a safe neighbour of (1,0) instead of the mine
+        eng.board.toggle_flag(2, 0)
+        eng.streak = 0
+        eng.score = 0
+        return eng
+
+    # ── no-op cases ───────────────────────────────────────────────────────
+
+    def test_middle_click_noop_returns_zero_score_delta(self):
+        """Chord on cell with mismatched flag count must not change score."""
+        eng = GameEngine(mode="random", width=9, height=9, mines=10, seed=42)
+        eng.start()
+        # Cell (4,4) is unrevealed — chord must be a no-op
+        result = eng.middle_click(4, 4)
+        assert result.score_delta == 0
+        assert result.newly_revealed == []
+        assert not result.hit_mine
+
+    def test_middle_click_noop_leaves_streak_unchanged(self):
+        eng = GameEngine(mode="random", width=9, height=9, mines=10, seed=42)
+        eng.start()
+        eng.streak = 7
+        eng.middle_click(4, 4)    # unrevealed cell → no-op
+        assert eng.streak == 7
+
+    # ── safe chord ────────────────────────────────────────────────────────
+
+    def test_middle_click_safe_chord_reveals_neighbours(self):
+        eng = self._setup_chord_ready()
+        result = eng.middle_click(1, 1)
+        assert len(result.newly_revealed) > 0
+        assert not result.hit_mine
+
+    def test_middle_click_safe_chord_awards_points(self):
+        """Each revealed cell earns REVEAL_POINTS[n] * streak_multiplier."""
+        eng = self._setup_chord_ready()
+        result = eng.middle_click(1, 1)
+        assert result.score_delta > 0
+        assert eng.score > 0
+
+    def test_middle_click_safe_chord_increments_streak(self):
+        """Streak must increment by 1 after a chord that reveals at least one cell."""
+        eng = self._setup_chord_ready()
+        eng.streak = 3
+        eng.middle_click(1, 1)
+        assert eng.streak == 4
+
+    def test_middle_click_safe_chord_score_delta_matches_reveal_points(self):
+        """
+        Exact accounting: score_delta == sum of REVEAL_POINTS[n] * multiplier
+        for every revealed cell, at streak=0 (1.0× multiplier).
+        """
+        eng = self._setup_chord_ready()
+        result = eng.middle_click(1, 1)
+        expected = sum(
+            REVEAL_POINTS[int(eng.board._neighbours[ry, rx])]
+            for rx, ry in result.newly_revealed
+        )
+        assert result.score_delta == expected
+
+    # ── mine hit chord ────────────────────────────────────────────────────
+
+    def test_middle_click_mine_hit_deducts_penalty(self):
+        """Wrong-flag chord: MINE_HIT_PENALTY deducted, score floored at 0."""
+        eng = self._setup_chord_wrong_flag()
+        eng.score = 1000
+        result = eng.middle_click(1, 0)    # chord on the clue cell
+        assert result.hit_mine
+        assert eng.score == 1000 - MINE_HIT_PENALTY
+
+    def test_middle_click_mine_hit_resets_streak(self):
+        eng = self._setup_chord_wrong_flag()
+        eng.streak = 10
+        eng.middle_click(1, 0)
+        assert eng.streak == 0
+
+    def test_middle_click_mine_hit_penalty_floored_at_zero(self):
+        """Score must not go negative after mine hit."""
+        eng = self._setup_chord_wrong_flag()
+        eng.score = 0
+        eng.middle_click(1, 0)
+        assert eng.score >= 0
+
+    def test_middle_click_mine_hit_populates_mine_flash(self):
+        """mine_flash dict must contain the hit mine coord after a wrong-flag chord."""
+        eng = self._setup_chord_wrong_flag()
+        # The mine is at (0, 0) — it will be revealed by the wrong-flag chord
+        eng.middle_click(1, 0)
+        assert len(eng.mine_flash) > 0
+
+    def test_middle_click_mine_hit_game_continues(self):
+        """
+        Mine hit via chord does NOT end the game — state remains 'playing'.
+        This is consistent with direct left-click mine hit behaviour.
+        """
+        eng = self._setup_chord_wrong_flag()
+        result = eng.middle_click(1, 0)
+        assert result.state == "playing"
+
+    # ── win via chord ─────────────────────────────────────────────────────
+
+    def test_middle_click_triggers_win_when_last_cell_revealed(self):
+        """Chording the last safe cell must transition state to 'won'."""
+        # 3×1 board: mine at (2,0). Reveal clue (1,0). Flag mine (2,0). (0,0) unrevealed.
+        # Chord (1,0): reveals (0,0) — last safe cell → win.
+        eng = GameEngine(mode="random", width=3, height=1, mines=1, seed=0)
+        eng.board = Board(3, 1, {(2, 0)})
+        eng.start()
+        eng._first_click = False
+        eng.board.reveal(1, 0)
+        eng.board.toggle_flag(2, 0)
+
+        result = eng.middle_click(1, 0)   # chord reveals (0,0) — last safe cell
+        assert result.state == "won" or eng.board._state == "won"
 
 
 # ---------------------------------------------------------------------------

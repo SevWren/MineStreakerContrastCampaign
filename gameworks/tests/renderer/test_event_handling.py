@@ -171,6 +171,60 @@ class TestPanelClickIntercept:
         assert result is None or not (isinstance(result, str) and result.startswith("flag:"))
 
 
+class TestChordAction:
+    """
+    Contract tests for the two chord input paths in handle_event().
+
+    Verified: middle-click (button=2) and Ctrl+left-click both return "chord:x,y".
+    Panel overlay correctly silences middle-click over the panel area (FA-004).
+    """
+
+    def test_middle_click_on_board_returns_chord_action(self, renderer_easy):
+        """MOUSEBUTTONDOWN button=2 inside the board rect must return 'chord:x,y'."""
+        r, _ = renderer_easy
+        # Use _board_rect() to get the actual board position including centering pan.
+        br = r._board_rect()
+        cx = br.x + r._tile + r._tile // 2
+        cy = br.y + r._tile + r._tile // 2
+        ev = _make_event(pygame.MOUSEBUTTONDOWN, button=2, pos=(cx, cy))
+        result = r.handle_event(ev)
+        assert result is not None
+        assert result.startswith("chord:")
+        parts = result.split(":")[1].split(",")
+        assert len(parts) == 2
+        assert all(p.lstrip("-").isdigit() for p in parts)
+
+    def test_ctrl_left_click_on_board_returns_chord_action(self, renderer_easy):
+        """MOUSEBUTTONDOWN button=1 + KMOD_CTRL inside the board rect must return 'chord:x,y'."""
+        import unittest.mock as mock
+        r, _ = renderer_easy
+        br = r._board_rect()
+        cx = br.x + r._tile + r._tile // 2
+        cy = br.y + r._tile + r._tile // 2
+
+        with mock.patch("pygame.key.get_mods", return_value=pygame.KMOD_CTRL):
+            ev = _make_event(pygame.MOUSEBUTTONDOWN, button=1, pos=(cx, cy))
+            result = r.handle_event(ev)
+
+        assert result is not None
+        assert result.startswith("chord:")
+
+    def test_middle_click_over_panel_overlay_returns_none(self, renderer_large):
+        """Middle-click directly over the panel overlay area must return None (FA-004)."""
+        r, _ = renderer_large
+        if not r._panel_overlay:
+            pytest.skip("Panel overlay only active on large boards")
+
+        win_w, _ = r._win_size
+        # Target a point inside the panel overlay (right side of window)
+        panel_x = win_w - r.PANEL_W - r.PAD + 5
+        panel_y = r.BOARD_OY + 10
+
+        ev = _make_event(pygame.MOUSEBUTTONDOWN, button=2, pos=(panel_x, panel_y))
+        result = r.handle_event(ev)
+        assert result is None or not (isinstance(result, str) and result.startswith("chord:"))
+
+
 class TestScrollWheelZoom:
     """
     Contract tests for MOUSEWHEEL zoom.

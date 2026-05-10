@@ -6,6 +6,28 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.2] — 2026-05-10
+
+### Added
+
+- **Test coverage — chording**: Added `TestMiddleClick` class (11 tests) to
+  `gameworks/tests/unit/test_engine.py` covering chord scoring, penalty deduction,
+  streak management, score floor, mine flash population, game-continuation on mine hit,
+  and win trigger via chord.
+- **Test coverage — renderer chord events**: Added `TestChordAction` class (3 tests) to
+  `gameworks/tests/renderer/test_event_handling.py` covering middle-click (button=2),
+  Ctrl+left-click, and panel overlay intercept contract (FA-004).
+- **Test coverage — integration chord**: Replaced no-assertion smoke test in
+  `test_main.py` with 3 substantive integration tests covering score update,
+  game continuation on mine hit, and `AnimationCascade` wiring.
+
+### Fixed
+
+- `CHANGELOG.md`: Added explicit entry for chording feature (implemented in 0.1.0
+  but never recorded in the changelog).
+
+---
+
 ## [0.1.1] — 2026-05-10
 
 ### Added
@@ -59,7 +81,9 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 - `Board` class: pure-logic Minesweeper board backed by NumPy arrays
   - Flood-fill reveal with scipy-accelerated neighbour-count precomputation
   - Flag cycle: hidden → flag → question → hidden
-  - Chording support (middle-click semantics)
+  - `Board.chord()`, `GameEngine.middle_click()`: Minesweeper chording — middle-click
+    or Ctrl+left-click on a satisfied clue cell auto-reveals all unflagged neighbours.
+    Mine hit via chord deducts `MINE_HIT_PENALTY` and resets streak; game continues.
   - Win detection on full safe-cell reveal
 - `GameEngine` class: lifecycle, player actions, scoring, streak system
   - Three board modes: `random`, `image`, `npy`

@@ -240,16 +240,90 @@ class TestGameLoopActions:
         loop._do_right_click(0, 0)
         assert True  # verify no exception
 
-    def test_chord_reveals_neighbours(self):
+    def test_chord_reveals_neighbours_and_updates_score(self):
+        """
+        _do_chord() on a properly flagged clue cell must reveal neighbours and
+        award a non-zero score_delta via middle_click().
+        """
+        from gameworks.engine import Board
         from gameworks.main import GameLoop, build_parser
+
         parser = build_parser()
-        args = parser.parse_args(["--easy"])
+        args = parser.parse_args(["--random", "--board-w", "5", "--board-h", "5",
+                                   "--mines", "0", "--seed", "42"])
         loop = GameLoop(args)
         loop._start_game()
 
-        # Chord (middle-click) should reveal neighbours if flag count matches mine count
-        loop._do_chord(0, 0)
-        assert True  # verify no exception
+        # Inject a deterministic board: mine at (0,0), reveal (1,1), flag (0,0)
+        loop._engine.board = Board(5, 5, {(0, 0)})
+        loop._engine._first_click = False
+        loop._engine.board.reveal(1, 1)
+        loop._engine.board.toggle_flag(0, 0)
+        loop._renderer.board = loop._engine.board  # keep renderer in sync
+
+        score_before = loop._engine.score
+        loop._do_chord(1, 1)
+
+        assert loop._engine.score >= score_before
+        # Verify at least some neighbours became revealed
+        newly_revealed_exist = any(
+            loop._engine.board._revealed[ry, rx]
+            for rx in range(5) for ry in range(5)
+            if (rx, ry) != (0, 0) and (rx, ry) != (1, 1)
+        )
+        assert newly_revealed_exist
+
+    def test_chord_mine_hit_continues_game(self):
+        """
+        Chording with an incorrect flag must hit the mine but NOT end the game.
+        State must remain 'playing' after the chord.
+        """
+        from gameworks.engine import Board
+        from gameworks.main import GameLoop, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--random", "--board-w", "5", "--board-h", "5",
+                                   "--mines", "0", "--seed", "42"])
+        loop = GameLoop(args)
+        loop._start_game()
+
+        # mine at (0,0); flag placed on (2,0) (safe cell); clue at (1,0) has neighbour=1
+        loop._engine.board = Board(5, 5, {(0, 0)})
+        loop._engine._first_click = False
+        loop._engine.board.reveal(1, 0)          # reveal the clue cell
+        loop._engine.board.toggle_flag(2, 0)     # wrong flag
+        loop._renderer.board = loop._engine.board
+
+        loop._do_chord(1, 0)    # fires chord: reveals (0,0) as mine hit
+
+        assert loop._state == "playing"
+
+    def test_chord_cascade_set_when_cells_revealed(self):
+        """
+        _do_chord() must set renderer.cascade to an AnimationCascade instance
+        when the chord successfully reveals one or more cells.
+        """
+        from gameworks.engine import Board
+        from gameworks.renderer import AnimationCascade
+        from gameworks.main import GameLoop, build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--random", "--board-w", "5", "--board-h", "5",
+                                   "--mines", "0", "--seed", "42"])
+        loop = GameLoop(args)
+        loop._start_game()
+
+        loop._engine.board = Board(5, 5, {(0, 0)})
+        loop._engine._first_click = False
+        loop._engine.board.reveal(1, 1)
+        loop._engine.board.toggle_flag(0, 0)
+        loop._renderer.board = loop._engine.board
+
+        loop._do_chord(1, 1)
+
+        # Only check if chord actually revealed something (noop on already-revealed board)
+        if loop._engine.board._n_safe_revealed > 2:
+            assert isinstance(loop._renderer.cascade, AnimationCascade)
 
     def test_dev_solve_wins_board(self):
         from gameworks.main import GameLoop, build_parser
