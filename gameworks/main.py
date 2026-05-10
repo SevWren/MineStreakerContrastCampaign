@@ -169,6 +169,10 @@ class GameLoop:
                     if self._state == self.PLAYING:
                         self._do_chord(x, y)
 
+                elif r_action == "dev:solve":
+                    if self._state == self.PLAYING:
+                        self._do_dev_solve()
+
                 elif ev.type == pygame.QUIT:
                     running = False
                     break
@@ -235,6 +239,16 @@ class GameLoop:
             from .renderer import AnimationCascade
             self._renderer.cascade = AnimationCascade(result.newly_revealed)
         # Mine hit via chord is a penalty — game continues
+
+    def _do_dev_solve(self):
+        """DEV: instantly reveal all safe cells and flag all mines, then win the board.
+
+        Skips AnimationCascade — boards can have 100k+ safe cells and the cascade
+        would take hours at normal speed.  The game loop detects 'won' next frame
+        and fires the win sequence (animation + modal) through the normal path.
+        """
+        self._engine.dev_solve_board()
+        # board._state is now "won"; game loop picks it up on the next iteration
 
     def _save_npy(self):
         """Save current board's grid to an npy file."""

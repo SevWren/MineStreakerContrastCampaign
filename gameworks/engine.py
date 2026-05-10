@@ -630,6 +630,32 @@ class GameEngine:
         return MoveResult(hit_mine=hit, newly_revealed=revealed, state=board._state,
                           score_delta=score_delta, streak=self.streak, penalty=penalty)
 
+    def dev_solve_board(self) -> MoveResult:
+        """DEV ONLY: instantly set the board to fully solved state.
+
+        Reveals all safe (non-mine) cells in one numpy operation, places correct
+        flags on every mine, clears wrong flags and question marks, then
+        transitions to 'won' and stops the timer.
+
+        Does not award score.  Safe to call only while game is in PLAYING state.
+        Returns success=False (no-op) if the board is already in a terminal state.
+        """
+        board = self.board
+        if board.game_over:
+            return MoveResult(success=False, state=board._state)
+
+        # Reveal every safe cell atomically (no Python loop over W×H)
+        board._revealed[~board._mine] = True
+
+        # Put every mine in a correct-flag state; clear any wrong flags and ?-marks
+        board._flagged[:] = board._mine
+        board._questioned[:] = False
+
+        board._state = "won"
+        self.stop_timer()
+
+        return MoveResult(success=True, state="won", score_delta=0, streak=self.streak)
+
     def restart(self, width=None, height=None, mines=None):
         self._first_click = True
         self._start_time = 0.0

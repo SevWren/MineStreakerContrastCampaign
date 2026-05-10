@@ -207,13 +207,13 @@ class WinAnimation:
         now = time.monotonic() - self._start
         if self._phase == 0:
             idx = min(int(now / self.speed) + 1, len(self._correct))
-            if idx >= len(self._correct) and self._correct:
+            if idx >= len(self._correct):
                 self._phase = 1
             return self._correct[:idx]
         if self._phase == 1:
             elapsed = now - len(self._correct) * self.speed
             idx = min(int(elapsed / self.speed) + 1, len(self._wrong))
-            if idx >= len(self._wrong) and self._wrong:
+            if idx >= len(self._wrong):
                 self._phase = 2
             return self._correct + self._wrong[:idx]
         return self._all_positions[:]
@@ -324,6 +324,10 @@ class Renderer:
         self._btn_save    = pygame.Rect(px, oy + (btn_h + gap) * 3,           btn_w, btn_h)
         self._btn_restart = pygame.Rect(px, oy + (btn_h + gap) * 4,           btn_w, btn_h)
         self._btn_gap     = gap   # stored so _on_resize can rebuild layout without re-deriving
+
+        # DEV section — extra gap creates visual separation from normal controls
+        _dev_offset = (btn_h + gap) * 5 + gap * 3
+        self._btn_dev_solve = pygame.Rect(px, oy + _dev_offset,               btn_w, btn_h)
 
         # ── Image overlay ────────────────────────────────────────────
         self._image_surf: Optional[pygame.Surface] = None
@@ -585,6 +589,8 @@ class Renderer:
             return "save"
         if self._btn_restart.collidepoint(mx, my):
             return "restart"
+        if self._btn_dev_solve.collidepoint(mx, my):
+            return "dev:solve"
         return None
 
     # ── Geometry helpers ──────────────────────────────────────────────
@@ -628,6 +634,9 @@ class Renderer:
                                    self._btn_save, self._btn_restart)):
             btn.x = px
             btn.y = oy + (bh + gap) * i
+
+        self._btn_dev_solve.x = px
+        self._btn_dev_solve.y = oy + (bh + gap) * 5 + gap * 3
 
     # ══════════════════════════════════════════════════════════════════════
     #  Draw
@@ -1008,6 +1017,20 @@ class Renderer:
                 pygame.draw.rect(win, C["text_light"], rect, 2, border_radius=8)
             ts = self._font_small.render(label, True, C["bg"])
             win.blit(ts, ts.get_rect(center=rect.center))
+
+        # ── DEV section ─────────────────────────────────────────────
+        dev_sep_y = self._btn_dev_solve.y - self._btn_gap - 4
+        pygame.draw.line(win, C["border"], (px, dev_sep_y), (px + self._btn_w, dev_sep_y), 1)
+        dev_hdr = self._font_tiny.render("DEV TOOLS", True, C["orange"])
+        win.blit(dev_hdr, (px, dev_sep_y - dev_hdr.get_height() - 2))
+
+        dev_active = not self.engine.board.game_over
+        dev_col = C["orange"] if dev_active else C["border"]
+        pill(win, dev_col, self._btn_dev_solve)
+        if self._btn_dev_solve.collidepoint(mx, my) and dev_active:
+            pygame.draw.rect(win, C["text_light"], self._btn_dev_solve, 2, border_radius=8)
+        dev_label = self._font_small.render("Solve Board", True, C["bg"] if dev_active else C["text_dim"])
+        win.blit(dev_label, dev_label.get_rect(center=self._btn_dev_solve.center))
 
         # Stats — _btn_restart.bottom is already an absolute Y coordinate,
         # so do NOT add oy again (that was the double-count bug on large boards).
