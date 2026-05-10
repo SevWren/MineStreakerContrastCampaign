@@ -482,6 +482,15 @@ class Renderer:
         # ── Mouse drag for panning ───────────────────────────────────
         b_rect = self._board_rect()
 
+        # When the panel is an overlay it sits on top of the board area.
+        # Panel button clicks must be resolved BEFORE the board drag handler,
+        # otherwise the drag handler intercepts them (board rect covers the
+        # full window width for large boards) and returns None silently.
+        if ev.type == MOUSEBUTTONDOWN and ev.button == 1 and self._panel_overlay:
+            panel_action = self.handle_panel(ev.pos)
+            if panel_action:
+                return panel_action
+
         if ev.type == MOUSEBUTTONDOWN and ev.button == 1 and b_rect.collidepoint(ev.pos):
             # Middle button (or ctrl+left) = chord
             mods = pygame.key.get_mods()
