@@ -16,6 +16,7 @@ All documentation for this package lives here and is self-contained — independ
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Dev environment setup, testing, extending the package |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) | Pipeline alignment audit: design patterns, gaps, and recommended improvements |
+| [BUGS.md](BUGS.md) | All open bugs — flat register with root cause, fix spec, and test coverage gap per entry |
 
 ---
 
@@ -35,7 +36,8 @@ gameworks/
     ├── GAME_DESIGN.md
     ├── DEVELOPER_GUIDE.md
     ├── CHANGELOG.md
-    └── DESIGN_PATTERNS.md
+    ├── DESIGN_PATTERNS.md
+    └── BUGS.md
 ```
 
 ---

@@ -32,6 +32,7 @@ These are the canonical sources of truth for the game — read before modifying 
 | `gameworks/docs/DEVELOPER_GUIDE.md` | Dev setup, testing, extension patterns |
 | `gameworks/docs/CHANGELOG.md` | Version history |
 | `gameworks/docs/DESIGN_PATTERNS.md` | Pipeline alignment audit; R2–R9 improvement recommendations |
+| `gameworks/docs/BUGS.md` | All open bugs — flat register with severity, root cause, fix spec per entry |
 
 ## Active — Gameworks Tests
 
