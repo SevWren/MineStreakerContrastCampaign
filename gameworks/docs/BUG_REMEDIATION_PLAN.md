@@ -48,7 +48,7 @@ Phase 1 (CRITICAL + HIGH fixes)
 
 Phase 2 (Engine correctness)
   ├── FA-011  ← no dependencies (removes dead code, safe at any time)
-  ├── FA-012  ← FA-011 must be done first (removes _count_adj which FA-012 supersedes)
+  ├── FA-012  ← no dependencies (flag-counter addition is independent of neighbor-counter removal)
   ├── FA-013  ← no dependencies (removes dead code)
   ├── FA-018  ← no dependencies
   └── FA-020  ← no dependencies
@@ -518,7 +518,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
 - 342+ tests passing (337 baseline + 5 new)
 - 0 tests newly failing
 - `python -m pyflakes gameworks/main.py gameworks/renderer.py` produces no output
-- `git diff --staged --stat` shows only `gameworks/main.py` and `gameworks/renderer.py`
+- `git diff --staged --stat` shows `gameworks/main.py`, `gameworks/renderer.py`,
+  `gameworks/tests/integration/test_main.py`,
+  `gameworks/tests/renderer/test_event_handling.py`, and
+  `gameworks/tests/renderer/conftest.py` (and no other files)
 
 ---
 
@@ -1191,17 +1194,18 @@ The actual change is deleting those 4 lines.*
 
 ```python
     def test_main_does_not_declare_tile_global(self):
-        """main.py must not have a module-level TILE global (dead write, FA-017)."""
+        """main.py must not contain `global TILE` declarations (dead write, FA-017).
+
+        The pre-fix dead writes (`TILE = a.tile`, `TILE = args.tile`) live inside
+        _build_engine() and main() with a preceding `global TILE` statement.  They
+        are function-scoped, NOT module-level ast.Assign nodes, so an ast.parse /
+        tree.body walk would miss them entirely.  A plain string search is correct.
+        """
         src = _source("main.py")
-        # The global TILE = line is the dead write; renderer.TILE is the live one
-        # Check that no bare 'TILE = ' assignment exists at module level
-        import ast
-        tree = ast.parse(src)
-        for node in tree.body:   # module-level statements only
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "TILE":
-                        pytest.fail("main.py has module-level TILE = assignment (dead write)")
+        assert "global TILE" not in src, (
+            "main.py still declares `global TILE` (dead write, FA-017); "
+            "only gameworks/renderer.py should own the TILE binding"
+        )
 ```
 
 ---
@@ -1564,9 +1568,15 @@ New:
         final_path = results_dir / fname
         tmp_path = final_path.with_suffix(".tmp")
 
-        # DP-R8: atomic write — .tmp then os.replace (no partial files on crash)
+        # DP-R8: atomic write — .tmp then os.replace (no partial files on crash).
+        # IMPORTANT: pass a file object, not a str path.  np.save() auto-appends
+        # ".npy" when given a str that does not already end in ".npy", so
+        # np.save(str(tmp_path), grid) would create "board_X.tmp.npy" and the
+        # subsequent os.replace(tmp_path, final_path) would fail with FileNotFoundError
+        # because "board_X.tmp" was never created.  A file object bypasses that logic.
         try:
-            np.save(str(tmp_path), grid)
+            with open(tmp_path, 'wb') as _f:
+                np.save(_f, grid)
             os.replace(tmp_path, final_path)
             print(f"[SAVE] Board saved to {final_path}")
         except OSError as exc:
@@ -1815,7 +1825,9 @@ python -m pyflakes gameworks/engine.py gameworks/main.py
 **Phase 6 Definition of Done:**
 - `GameConfig` is importable: `from gameworks.engine import GameConfig`
 - `BoardLoadResult` is importable
-- `preflight_check([])` returns `[]`
+- `preflight_check(build_parser().parse_args([]))` returns `[]`
+  *(Note: `preflight_check` takes `argparse.Namespace`, not a list; `preflight_check([])`
+  would raise `AttributeError` on `[].image`.)*
 - `preflight_check(args_with_missing_file)` returns a non-empty list
 - `_save_npy()` writes a `.json` sidecar alongside every `.npy`
 - All previously-skipped tests in DP scaffold files now pass
@@ -1878,7 +1890,7 @@ r._show_dev = True
 ### Fix PF-001 — Pyflakes unused imports in 5 test locations
 
 **Files:**
-1. `gameworks/tests/unit/test_engine.py:23` — remove `place_random_mines` from import
+1. `gameworks/tests/unit/test_engine.py:28` — remove `place_random_mines` from import
 2. `gameworks/tests/architecture/test_boundaries.py:20` — remove `import os`
 3. `gameworks/tests/architecture/test_boundaries.py:214` — add `# noqa: F401` with comment:
    `import gameworks.engine  # noqa: F401 — intentional side-effect import`
@@ -1942,17 +1954,20 @@ python -m pyflakes gameworks/tests/unit/test_engine.py \
 
 ```python
     def _retry_game(self):
-        """Restart the game with the exact same board layout (seed unchanged)."""
-        eng = self._engine
-        saved_seed = eng.seed - 1   # seed is incremented on restart; undo the increment
-        eng.seed = saved_seed
+        """Restart the game with the exact same board layout (seed unchanged).
+
+        _build_engine() reads self.args.seed, not self._engine.seed.  args.seed
+        is set at launch and never mutated, so calling _start_game() again already
+        replays the identical random board without any seed manipulation.
+        Modifying self._engine.seed has no effect because _start_game() builds a
+        brand-new engine from args — the old engine object is discarded.
+        """
         self._start_game()
 ```
 
-**Note:** The exact implementation depends on how seeds are managed per mode. For `npy` and
-`image` modes, "retry" reloads the same file — which is equivalent to "new game". Only
-`random` mode has a meaningfully different retry (same seed → same mines). This is acceptable;
-document the behavior in the button label.
+**Note:** For `npy` and `image` modes, "retry" reloads the same file — equivalent to "new
+game". Only `random` mode produces a meaningfully different retry (same seed → same mines).
+This is acceptable; document the behavior difference in the button label.
 
 **New test:**
 
@@ -1960,7 +1975,7 @@ document the behavior in the button label.
 class TestRetryAction:
 
     def test_retry_preserves_seed(self):
-        """Retry must not increment the seed."""
+        """Retry must replay the same seed — args.seed must be unchanged after retry."""
         from gameworks.main import GameLoop, build_parser
         parser = build_parser()
         args = parser.parse_args(["--easy", "--seed", "77"])
@@ -1968,8 +1983,9 @@ class TestRetryAction:
         loop._start_game()
         original_seed = loop._engine.seed
         loop._retry_game()
-        # After retry, the board seed should be the same (or seed-1 then restored)
-        assert loop._engine.seed <= original_seed
+        # _retry_game() calls _start_game() which reads args.seed (never mutated);
+        # the new engine must have the identical seed value.
+        assert loop._engine.seed == original_seed
 ```
 
 ---
