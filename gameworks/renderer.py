@@ -352,8 +352,21 @@ class Renderer:
         self.win_anim: Optional[WinAnimation] = None
         self._ghost_surf: Optional[pygame.Surface] = None
 
+        # ── Render caches ─────────────────────────────────────────────
+        # Number surfaces: pre-rendered text for digits 1-8.
+        # Rebuilt only when tile size changes — eliminates font.render() per cell per frame.
+        self._num_surfs: dict = {}
+        self._num_tile: int = 0
+        # Reusable SRCALPHA surface for animation border (avoids per-frame allocation).
+        self._anim_surf: Optional[pygame.Surface] = None
+        self._anim_surf_ts: int = 0
+        # Reusable SRCALPHA surface for cursor highlight.
+        self._hover_surf: Optional[pygame.Surface] = None
+        self._hover_surf_ts: int = 0
+
         # Initial pan: center the board in the window
         self._center_board()
+        self._rebuild_num_surfs()
 
     def _center_board(self):
         """Pan so the board is centered in the window."""
@@ -361,6 +374,18 @@ class Renderer:
         bh = self.board.height * self._tile
         self._pan_x = max(0, (self._win.get_width() - bw) // 2)
         self._pan_y = max(0, (self._win.get_height() - bh) // 2)
+
+    def _rebuild_num_surfs(self):
+        """Pre-render digit surfaces 1-8 for the current tile size.
+        Called once at init and again whenever the tile size changes (scroll zoom).
+        Eliminates font.render() inside the per-cell draw loop.
+        """
+        font = self._font_med if self._tile >= 20 else self._font_small
+        self._num_surfs = {
+            n: font.render(str(n), True, NUM_COLS[n])
+            for n in range(1, 9)
+        }
+        self._num_tile = self._tile
 
     # ── Surface helpers ────────────────────────────────────────────────
 
@@ -476,8 +501,9 @@ class Renderer:
             else:
                 new_tile = max(MIN_TILE_SIZE, self._tile - step)
             if new_tile != self._tile:
-                # Zoom centered on mouse position
-                mx, my = ev.pos
+                # Zoom centered on mouse position.
+                # MOUSEWHEEL events have no .pos in pygame 2 — use get_pos().
+                mx, my = pygame.mouse.get_pos()
                 old_tile = self._tile
                 self._tile = new_tile
                 # Adjust pan so the point under cursor stays fixed
@@ -485,6 +511,7 @@ class Renderer:
                 self._pan_y = my - (my - self._pan_y) * new_tile / old_tile
                 self._clamp_pan()
                 self._on_resize()
+                self._rebuild_num_surfs()
             return None
 
         # ── Right-click anywhere on board ────────────────────────────
@@ -675,17 +702,27 @@ class Renderer:
         tx1 = min(self.board.width, (win_w - ox) // ts + 2)
         ty1 = min(self.board.height, (win_h - oy) // ts + 2)
 
-        # Draw visible cells
+        # Draw visible cells — read board arrays once to avoid per-cell snapshot() overhead
         pressed = self.pressed_cell
         mpos = mouse_pos
+        _mine       = self.board._mine
+        _revealed   = self.board._revealed
+        _flagged    = self.board._flagged
+        _questioned = self.board._questioned
+        _neighbours = self.board._neighbours
 
         for y in range(ty0, ty1):
             for x in range(tx0, tx1):
                 px = ox + x * ts
                 py = oy + y * ts
-                cell = self.board.snapshot(x, y)
+                cell = CellState(
+                    is_mine       =bool(_mine[y, x]),
+                    is_revealed   =bool(_revealed[y, x]),
+                    is_flagged    =bool(_flagged[y, x]),
+                    is_questioned =bool(_questioned[y, x]),
+                    neighbour_mines=int(_neighbours[y, x]),
+                )
                 ip = cell.is_revealed and (x, y) in anim_set
-                # During win anim, highlight animated flags as revealed
                 in_win_anim = (x, y) in win_anim_set
                 self._draw_cell(x, y, cell, (px, py), ip,
                                 pressed == (x, y), self.fog, ts, in_win_anim)
@@ -702,14 +739,16 @@ class Renderer:
         hx = (mpos[0] - ox + self._pan_x) // ts if ts > 0 else -1
         hy = (mpos[1] - oy + self._pan_y) // ts if ts > 0 else -1
         if 0 <= hx < self.board.width and 0 <= hy < self.board.height:
-            # Re-clip before drawing highlight
             self._win.set_clip(clip_rect)
-            cell = self.board.snapshot(hx, hy)
-            if not cell.is_revealed:
+            if not _revealed[hy, hx]:
                 hr = pygame.Rect(ox + hx * ts, oy + hy * ts, ts, ts)
-                s = pygame.Surface((ts, ts), pygame.SRCALPHA)
-                pygame.draw.rect(s, (255, 255, 255, 40), s.get_rect(), 1, border_radius=2)
-                self._win.blit(s, hr)
+                if self._hover_surf is None or self._hover_surf_ts != ts:
+                    self._hover_surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+                    self._hover_surf_ts = ts
+                self._hover_surf.fill((0, 0, 0, 0))
+                pygame.draw.rect(self._hover_surf, (255, 255, 255, 40),
+                                 self._hover_surf.get_rect(), 1, border_radius=2)
+                self._win.blit(self._hover_surf, hr)
 
         self._win.set_clip(old_clip)
 
@@ -725,9 +764,11 @@ class Renderer:
             if cell.is_mine:
                 self._draw_mine(px, py, ts)
             elif cell.neighbour_mines > 0:
-                font = self._font_med if ts >= 20 else self._font_small
-                surf = font.render(str(cell.neighbour_mines), True, NUM_COLS[cell.neighbour_mines])
-                self._win.blit(surf, surf.get_rect(center=(px + ts // 2, py + ts // 2)))
+                # Use pre-rendered surface from cache — avoids font.render() per cell per frame
+                if self._num_tile != ts:
+                    self._rebuild_num_surfs()
+                num_surf = self._num_surfs[cell.neighbour_mines]
+                self._win.blit(num_surf, num_surf.get_rect(center=(px + ts // 2, py + ts // 2)))
         elif cell.is_flagged:
             if fog:
                 pygame.draw.rect(self._win, C["tile_hidden"], (px, py, ts, ts))
@@ -743,10 +784,14 @@ class Renderer:
 
         # Cell border
         if in_anim:
-            s = pygame.Surface((ts, ts), pygame.SRCALPHA)
+            # Reuse pre-allocated SRCALPHA surface — avoids per-frame allocation
+            if self._anim_surf is None or self._anim_surf_ts != ts:
+                self._anim_surf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+                self._anim_surf_ts = ts
+            self._anim_surf.fill((0, 0, 0, 0))
             bcol = (*C["border"], 60)
-            pygame.draw.rect(s, bcol, (0, 0, ts, ts), 1, border_radius=max(2, ts // 8))
-            self._win.blit(s, (px, py))
+            pygame.draw.rect(self._anim_surf, bcol, (0, 0, ts, ts), 1, border_radius=max(2, ts // 8))
+            self._win.blit(self._anim_surf, (px, py))
         else:
             pygame.draw.rect(self._win, C["border"], (px, py, ts, ts), 1, border_radius=max(1, ts // 8))
 
@@ -789,17 +834,20 @@ class Renderer:
         ty0 = max(0, (-self._pan_y) // ts - 1)
         tx1 = min(self.board.width, (win_w - ox) // ts + 2)
         ty1 = min(self.board.height, (win_h - oy) // ts + 2)
+        _mine    = self.board._mine
+        _flagged = self.board._flagged
         for y in range(ty0, ty1):
             for x in range(tx0, tx1):
-                cell = self.board.snapshot(x, y)
+                is_mine    = bool(_mine[y, x])
+                is_flagged = bool(_flagged[y, x])
                 px = ox + x * ts
                 py = oy + y * ts
                 ts2 = ts // 2
-                if cell.is_mine and not cell.is_flagged:
+                if is_mine and not is_flagged:
                     cx, cy = px + ts2, py + ts2
                     pygame.draw.circle(self._win, C["mine_body"], (cx, cy), max(3, ts // 3))
                     pygame.draw.circle(self._win, C["mine_core"], (cx, cy), max(1, ts // 5))
-                if cell.is_flagged and not cell.is_mine:
+                if is_flagged and not is_mine:
                     pygame.draw.line(self._win, C["red"],
                                      (px + 4, py + 4), (px + ts - 4, py + ts - 4), max(1, ts // 6))
                     pygame.draw.line(self._win, C["red"],
