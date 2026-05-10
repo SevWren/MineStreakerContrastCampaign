@@ -14,6 +14,7 @@ import math
 import time
 from typing import List, Optional, Tuple
 
+import numpy as np
 import pygame
 from pygame.locals import *
 
@@ -174,17 +175,16 @@ class WinAnimation:
         self._start = time.monotonic()
         self._phase = 0  # 0 = correct flags, 1 = wrong flags, 2 = done
 
-        # Build ordered reveal list
+        # Build ordered reveal list using np.where — C-speed scan, no per-cell snapshot() calls.
+        import numpy as _np
+        flagged_ys, flagged_xs = _np.where(board._flagged)
         self._correct = []
         self._wrong = []
-        for y in range(board.height):
-            for x in range(board.width):
-                cs = board.snapshot(x, y)
-                if cs.is_flagged:
-                    if cs.is_mine:
-                        self._correct.append((x, y))
-                    else:
-                        self._wrong.append((x, y))
+        for y, x in zip(flagged_ys.tolist(), flagged_xs.tolist()):
+            if board._mine[y, x]:
+                self._correct.append((x, y))
+            else:
+                self._wrong.append((x, y))
 
         # Shuffle within each group for organic feel
         import random
@@ -323,6 +323,7 @@ class Renderer:
         self._btn_fog     = pygame.Rect(px, oy + (btn_h + gap) * 2,           btn_w, btn_h)
         self._btn_save    = pygame.Rect(px, oy + (btn_h + gap) * 3,           btn_w, btn_h)
         self._btn_restart = pygame.Rect(px, oy + (btn_h + gap) * 4,           btn_w, btn_h)
+        self._btn_gap     = gap   # stored so _on_resize can rebuild layout without re-deriving
 
         # ── Image overlay ────────────────────────────────────────────
         self._image_surf: Optional[pygame.Surface] = None
@@ -363,10 +364,18 @@ class Renderer:
         # Reusable SRCALPHA surface for cursor highlight.
         self._hover_surf: Optional[pygame.Surface] = None
         self._hover_surf_ts: int = 0
+        # Fog overlay — cached SRCALPHA surface, recreated only on window-size change.
+        self._fog_surf: Optional[pygame.Surface] = None
+        self._fog_surf_size: Tuple[int, int] = (0, 0)
+        # Image thumbnail — built once at init, never per-frame.
+        self._thumb_surf: Optional[pygame.Surface] = None
 
         # Initial pan: center the board in the window
         self._center_board()
         self._rebuild_num_surfs()
+        # Pre-build thumbnail once — avoids smoothscale every frame in _draw_panel
+        if self._image_surf:
+            self._thumb_surf = self._build_thumb()
 
     def _center_board(self):
         """Pan so the board is centered in its drawing area (not the full window)."""
@@ -382,7 +391,7 @@ class Renderer:
         self._pan_y = max(0, (avail_y - bh) // 2)
 
     def _rebuild_num_surfs(self):
-        """Pre-render digit surfaces 1-8 for the current tile size.
+        """Pre-render digit surfaces 1-8 and the '?' mark for the current tile size.
         Called once at init and again whenever the tile size changes (scroll zoom).
         Eliminates font.render() inside the per-cell draw loop.
         """
@@ -391,7 +400,19 @@ class Renderer:
             n: font.render(str(n), True, NUM_COLS[n])
             for n in range(1, 9)
         }
+        self._question_surf = font.render("?", True, C["flag_red"])
         self._num_tile = self._tile
+
+    def _build_thumb(self) -> pygame.Surface:
+        """Build the panel thumbnail once — never called per-frame."""
+        thumb_h = 64
+        ar = self._image_surf.get_width() / max(1, self._image_surf.get_height())
+        thumb_w = max(16, int(thumb_h * ar))
+        thumb = pygame.transform.smoothscale(self._image_surf, (thumb_w, thumb_h))
+        border = pygame.Surface((thumb_w + 4, thumb_h + 4))
+        border.fill(C["border"])
+        border.blit(thumb, (2, 2))
+        return border
 
     # ── Surface helpers ────────────────────────────────────────────────
 
@@ -585,15 +606,28 @@ class Renderer:
         self._pan_y = max(-max_py, min(0, self._pan_y))
 
     def _on_resize(self):
-        """Recompute panel position after resize."""
-        if not self._panel_right:
-            bx = self.PAD
-            oy = int(self.BOARD_OY + self.board.height * self._tile + self.PAD)
-            self._btn_new.x = bx
-            self._btn_help.x = bx
-            self._btn_fog.x = bx
-            self._btn_save.x = bx
-            self._btn_restart.x = bx
+        """Recompute button positions after zoom — handles both panel layouts.
+
+        Sub-bugs fixed:
+          2A: was computing oy but never assigning it to btn.y (panel_right=False)
+          2B: panel_right=True branch was entirely absent — buttons drifted as tile changed
+          2C: sy double-count in _draw_panel fixed separately (use btn.bottom directly)
+        """
+        ts   = self._tile
+        bh   = self._btn_new.height
+        gap  = self._btn_gap
+
+        if self._panel_right:
+            px = self.board.width * ts + self.BOARD_OX + self.PAD
+            oy = self.BOARD_OY
+        else:
+            px = self.PAD
+            oy = int(self.BOARD_OY + self.board.height * ts + self.PAD)
+
+        for i, btn in enumerate((self._btn_new, self._btn_help, self._btn_fog,
+                                   self._btn_save, self._btn_restart)):
+            btn.x = px
+            btn.y = oy + (bh + gap) * i
 
     # ══════════════════════════════════════════════════════════════════════
     #  Draw
@@ -615,7 +649,12 @@ class Renderer:
     def _draw_overlay(self):
         if not self.fog:
             return
-        surf = pygame.Surface(self._win.get_size(), pygame.SRCALPHA)
+        win_size = self._win.get_size()
+        # Recreate backing surface only when window is resized — avoids per-frame allocation.
+        if self._fog_surf is None or self._fog_surf_size != win_size:
+            self._fog_surf = pygame.Surface(win_size, pygame.SRCALPHA)
+            self._fog_surf_size = win_size
+        surf = self._fog_surf
         surf.fill((0, 0, 0, 140))
         ox, oy = self.BOARD_OX, self.BOARD_OY
         bw = self.board.width * self._tile
@@ -868,8 +907,7 @@ class Renderer:
     def _draw_question(self, px, py, ts=None):
         if ts is None:
             ts = self._tile
-        font = self._font_med if ts >= 20 else self._font_small
-        surf = font.render("?", True, C["flag_red"])
+        surf = self._question_surf  # pre-rendered in _rebuild_num_surfs — no per-frame font.render()
         self._win.blit(surf, surf.get_rect(center=(px + ts // 2, py + ts // 2)))
 
     def _draw_loss_overlay(self, ox, oy):
@@ -910,18 +948,31 @@ class Renderer:
 
         scaled = self._ghost_surf
         ts = self._tile
+        _flagged = self.board._flagged
+        _mine    = self.board._mine
 
-        for y in range(self.board.height):
-            for x in range(self.board.width):
-                cell = self.board.snapshot(x, y)
-                if not cell.is_flagged:
-                    continue
-                px = ox + x * ts
-                py = oy + y * ts
-                src_rect = pygame.Rect(x * ts, y * ts, ts, ts)
-                sub = scaled.subsurface(src_rect).copy()
-                sub.set_alpha(200 if cell.is_mine else 40)
-                self._win.blit(sub, (px, py))
+        # Viewport culling — only iterate cells actually on screen (matches _draw_board bounds)
+        win_w, win_h = self._win.get_size()
+        tx0 = max(0, (-self._pan_x) // ts - 1)
+        ty0 = max(0, (-self._pan_y) // ts - 1)
+        tx1 = min(self.board.width,  (win_w - ox) // ts + 2)
+        ty1 = min(self.board.height, (win_h - oy) // ts + 2)
+
+        # np.where scans the flagged slice at C speed — no Python loop over W×H.
+        # Only flagged cells in the visible viewport produce Python-level iterations.
+        ys, xs = np.where(_flagged[ty0:ty1, tx0:tx1])
+        if ys.size == 0:
+            return
+        ys = ys + ty0
+        xs = xs + tx0
+
+        for y, x in zip(ys, xs):
+            px = ox + int(x) * ts
+            py = oy + int(y) * ts
+            src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
+            sub = scaled.subsurface(src_rect).copy()
+            sub.set_alpha(200 if _mine[y, x] else 40)
+            self._win.blit(sub, (px, py))
     # ── Right panel ───────────────────────────────────────────────────
 
     def _draw_panel(self, mouse_pos, game_state, elapsed):
@@ -958,9 +1009,10 @@ class Renderer:
             ts = self._font_small.render(label, True, C["bg"])
             win.blit(ts, ts.get_rect(center=rect.center))
 
-        # Stats
+        # Stats — _btn_restart.bottom is already an absolute Y coordinate,
+        # so do NOT add oy again (that was the double-count bug on large boards).
         base = self._font_small.get_height()
-        sy = oy + self._btn_restart.bottom + 12
+        sy = self._btn_restart.bottom + 12
         stats = [
             f"Board: {self.board.width} x {self.board.height}",
             f"Mines: {self.board.total_mines}",
@@ -1003,17 +1055,10 @@ class Renderer:
         mode_text = "Mode: Image-Reveal" if self._image_enabled else "Mode: Classic"
         win.blit(self._font_tiny.render(mode_text, True, C["cyan"]), (px, by))
 
-        # Image preview thumbnail (top-right of panel)
-        if self._image_surf:
-            thumb_h = 64
-            ar = self._image_surf.get_width() / max(1, self._image_surf.get_height())
-            thumb_w = max(16, int(thumb_h * ar))
-            thumb = pygame.transform.smoothscale(self._image_surf, (thumb_w, thumb_h))
-            # Add border
-            thumb_border = pygame.Surface((thumb_w + 4, thumb_h + 4))
-            thumb_border.fill(C["border"])
-            thumb_border.blit(thumb, (2, 2))
-            win.blit(thumb_border, (px + (self._btn_w - thumb_w - 4) // 2, oy - thumb_h - 14))
+        # Image preview thumbnail — pre-built in __init__, never rebuilt per-frame
+        if self._thumb_surf:
+            tw = self._thumb_surf.get_width()
+            win.blit(self._thumb_surf, (px + (self._btn_w - tw) // 2, oy - 64 - 14))
 
     # ── Victory overlay ───────────────────────────────────────────────
 

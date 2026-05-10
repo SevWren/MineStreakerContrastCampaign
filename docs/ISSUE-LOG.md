@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-10 (session 3)
 
 ---
 
@@ -86,18 +86,37 @@ Each entry carries a status, severity, and resolution notes.
 ## Medium — Shallow implementations / design gaps
 
 ### [M-001] `_draw_image_ghost` ignores viewport culling
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/renderer.py` — `_draw_image_ghost()`
-- **Detail:** Iterates every cell on the board (all `width × height`), calling `board.snapshot()` per cell to check `is_flagged`. For a 300×300 board this is 90 000 snapshot calls per frame even when only ~50 cells are visible. The main `_draw_board` already computes `tx0/ty0/tx1/ty1` viewport bounds; this method should use them too.
-- **Impact:** Frame-time regression proportional to board size in image mode.
+- **Detail:** Iterated every cell on the board (all `width × height`), calling `board.snapshot()` per cell. For a 300×300 board this was 90 000 snapshot calls per frame even when only ~50 cells are visible.
+- **Fix:** Replaced O(W×H) Python loop with `np.where(_flagged[ty0:ty1, tx0:tx1])` — C-speed flagged-cell scan bounded by the viewport. Python loop now runs only over visible flagged cells (typically < 500 on large boards). Eliminated all `snapshot()` calls; reads `_flagged` / `_mine` numpy arrays directly.
+- **Commit:** `perf(gameworks): M-001 np.where culling, M-002 _on_resize, 5x surface cache fixes`
 
 ---
 
 ### [M-002] `_on_resize()` does not update button Y positions after zoom
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/renderer.py` — `_on_resize()`
-- **Detail:** For boards ≥ 100 tiles wide (`_panel_right = False`) the panel sits below the board. `_on_resize` recalculates `oy = BOARD_OY + board.height * tile + PAD` but never assigns it to `self._btn_*.y`. Button hit areas drift from their visible positions after any zoom.
-- **Impact:** Buttons become unclickable after zooming on large boards (npy/image mode).
+- **Detail:** Three sub-bugs: (2A) oy recomputed but never applied to `btn.y`; (2B) `_panel_right=True` branch absent — panel X drifted on zoom for small boards; (2C) `sy = oy + _btn_restart.bottom + 12` double-counted the panel origin (stats rendered thousands of pixels below window on 300×370 boards).
+- **Fix:** Complete `_on_resize` rewrite — handles both panel modes, updates all five button x/y positions. Stored `_btn_gap` at init for stable layout re-derivation. Fixed `sy` to `_btn_restart.bottom + 12` (absolute coord, no double-add).
+- **Commit:** `perf(gameworks): M-001 np.where culling, M-002 _on_resize, 5x surface cache fixes`
+
+---
+
+### [P-001] Per-frame Surface allocations in fog, thumbnail, and question mark
+- **Status:** `RESOLVED`
+- **File:** `gameworks/renderer.py` — `_draw_overlay()`, `_draw_panel()`, `_draw_question()`
+- **Detail:** Four separate per-frame allocation hot-spots:
+  1. `_draw_overlay`: `pygame.Surface(win_size, SRCALPHA)` created every frame even when fog is static.
+  2. `_draw_panel`: `pygame.transform.smoothscale(image, thumb_size)` called every frame — allocates new Surface + CPU resample 30×/sec.
+  3. `_draw_question`: `font.render("?", ...)` called per questioned cell per frame — not cached like digit surfaces.
+  4. `WinAnimation.__init__`: O(W×H) `board.snapshot()` loop to find flagged cells at win time.
+- **Fix:**
+  - Fog: cached `_fog_surf` / `_fog_surf_size` — Surface recreated only on window resize.
+  - Thumbnail: `_build_thumb()` called once at init; `_thumb_surf` blitted in `_draw_panel` with no per-frame smoothscale.
+  - Question mark: `_question_surf` pre-rendered in `_rebuild_num_surfs()` alongside digit surfaces; `_draw_question` uses cached surface.
+  - WinAnimation: replaced nested `snapshot()` loop with `np.where(board._flagged)` — C-speed, no Python iterations over W×H.
+- **Commit:** `perf(gameworks): M-001 np.where culling, M-002 _on_resize, 5x surface cache fixes`
 
 ---
 
