@@ -285,9 +285,11 @@ New:
 on current tile size and window geometry. Without this call, buttons remain at their
 pre-resize pixel positions after any window resize event.
 
-Note: `_cached_board_rect = None` is added before `_on_resize()` because `_on_resize()`
-calls `_board_rect()` internally, which reads the cache; clearing it first forces a fresh
-recompute with the new window geometry.
+Note: `_cached_board_rect = None` is added before `_on_resize()` as belt-and-braces
+invalidation. `_on_resize()` already sets `self._cached_board_rect = None` as its first
+statement (line 664), so the pre-clear is redundant but harmless. The critical addition is
+the `_on_resize()` call itself, which recomputes all button positions using the new
+`self._win_size` that was set two lines earlier.
 
 **New test — `gameworks/tests/renderer/test_event_handling.py`:**
 
@@ -686,7 +688,7 @@ Old:
 ```python
         # Resync counters after bulk numpy ops
         board._n_safe_revealed = board.total_safe
-        board._n_revealed = int(board._revealed.sum())
+        board._n_revealed = int(board._revealed.sum())  # recount from array — mine-hit cells may also be revealed
         board._n_flags = board.total_mines
         board._n_questioned = 0
 ```
@@ -695,7 +697,7 @@ New:
 ```python
         # Resync counters after bulk numpy ops
         board._n_safe_revealed = board.total_safe
-        board._n_revealed = int(board._revealed.sum())
+        board._n_revealed = int(board._revealed.sum())  # recount from array — mine-hit cells may also be revealed
         board._n_flags = board.total_mines
         board._n_questioned = 0
         board._n_correct_flags = board.total_mines   # FA-012: all flags are correct after solve
@@ -761,7 +763,7 @@ python -m pyflakes gameworks/engine.py
 
 **File:** `gameworks/engine.py`
 
-**Change — remove lines 703–719 (the unreachable guard and its body):**
+**Change — remove lines 703–721 (the unreachable guard and its body; this is the end of the file):**
 
 Old:
 ```python
@@ -782,9 +784,11 @@ if __name__ == "_test_engine":
     r3 = eng.right_click(0, 0)
     assert r3.flagged is False
     print("Flag toggle OK")
+
+    print(f"Difficulty preset easy: {GameEngine.DIFFICULTIES['easy']}")
 ```
 
-New: *(delete the block entirely — the file ends at line 701 after the `restart` method)*
+New: *(delete the block entirely — the file ends at line 701 after the `restart` method closes)*
 
 **New test — `gameworks/tests/architecture/test_boundaries.py`:**
 
@@ -1007,23 +1011,31 @@ which is correct (no double-counting of `PANEL_W`).
 **File:** `gameworks/renderer.py`
 
 Replace all direct `self._win.get_width()` and `self._win.get_height()` calls with
-`self._win_size[0]` and `self._win_size[1]` at the five identified sites.
+`self._win_size[0]` and `self._win_size[1]` at the **11 identified lines** (13 individual
+calls across 11 lines).
 
-**Change A — smiley rect X computation (approx. line 601):**
-
-Old (find exact pattern):
-```python
-        self._win.get_width()
-```
-→ Replace with `self._win_size[0]` at each of the five named locations.
-
-Precise search pattern to find all occurrences:
+Run this first to get exact line numbers in the current file state:
 ```bash
 grep -n "_win\.get_width\|_win\.get_height" gameworks/renderer.py
 ```
 
-Run this before editing to get exact line numbers in the current file state. Then replace
-each instance. The canonical replacement mapping:
+Confirmed locations (verified against current source):
+
+| Line | Method | Old call | New expression |
+|---|---|---|---|
+| 483 | `handle_event` (K_RIGHT) | `self._win.get_width()` | `self._win_size[0]` |
+| 491 | `handle_event` (K_DOWN) | `self._win.get_height()` | `self._win_size[1]` |
+| 601 | `handle_event` (smiley) | `self._win.get_width()` | `self._win_size[0]` |
+| 674 | `_on_resize` | `self._win.get_width()` | `self._win_size[0]` |
+| 726 | `_draw_header` | `self._win.get_width()` | `self._win_size[0]` |
+| 739 | `_draw_header` | `self._win.get_width()` | `self._win_size[0]` |
+| 748 | `_draw_header` | `self._win.get_width()` | `self._win_size[0]` |
+| 1052 | `_draw_panel` | `self._win.get_width()` | `self._win_size[0]` |
+| 1061 | `_draw_panel` | `self._win.get_height()` | `self._win_size[1]` |
+| 1203 | `_draw_modal` | both `get_width()` and `get_height()` | `self._win_size[0]`, `self._win_size[1]` |
+| 1224 | `_draw_help` | both `get_width()` and `get_height()` | `self._win_size[0]`, `self._win_size[1]` |
+
+The canonical replacement mapping:
 
 | Old | New |
 |---|---|
@@ -1391,52 +1403,73 @@ class TestLoadValidationPerformance:
 
 **File:** `gameworks/renderer.py`
 
-The fix pre-builds a composited ghost surface once per image+zoom combination and caches it.
-This is a non-trivial refactor of `_draw_image_ghost()`. The full implementation:
-
-**Step 1:** Add a `_ghost_dirty: bool = True` flag to `__init__` alongside `_ghost_surf`.
-Set `_ghost_dirty = True` whenever the tile size or image changes (in `_on_resize()`).
-
-**Step 2:** Rewrite `_draw_image_ghost()` to build a full-board SRCALPHA surface once,
-then blit the pre-built surface offset by `(ox + pan_x, oy + pan_y)` each frame.
-
-**Outline (exact code to be filled during implementation):**
+**Actual bug (verified against source):** `_draw_image_ghost()` already caches the scaled
+ghost surface in `self._ghost_surf` (rebuilt only when board pixel dimensions change,
+renderer.py:1019). The actual per-frame allocation is on line 1046:
 
 ```python
-def _draw_image_ghost(self, ox, oy, tx0, ty0, tx1, ty1, ts):
-    """Blit the scaled source image ghost over flagged mine cells."""
-    if self._ghost_img is None:
-        return
-
-    # Rebuild composite ghost surface if tile size changed
-    if self._ghost_dirty or self._ghost_surf is None:
-        scaled_w = self.board.width * ts
-        scaled_h = self.board.height * ts
-        scaled = pygame.transform.smoothscale(self._ghost_img, (scaled_w, scaled_h))
-        surf = pygame.Surface((scaled_w, scaled_h), pygame.SRCALPHA)
-        # Paint flagged-mine cells at full alpha, flagged-safe cells at dim alpha
-        _mine = self.board._mine
-        _flagged = self.board._flagged
-        rows, cols = np.where(_flagged)
-        for y, x in zip(rows.tolist(), cols.tolist()):
-            alpha = 200 if _mine[y, x] else 40
-            src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
-            sub = scaled.subsurface(src_rect)
-            surf.blit(sub, src_rect.topleft)
-            surf.set_alpha(alpha, pygame.RLEACCEL)  # approximate
-        self._ghost_surf = surf
-        self._ghost_dirty = False
-
-    bx = ox + self._pan_x
-    by = oy + self._pan_y
-    self._win.blit(self._ghost_surf, (bx, by))
+sub = scaled.subsurface(src_rect).copy()   # .copy() called once per visible flagged cell per frame
+sub.set_alpha(200 if _mine[y, x] else 40)
 ```
 
-**Note:** The above outline is a starting point. The exact compositing strategy depends on
-whether per-cell alpha or full-surface alpha is required. A production-quality solution
-would blit with `special_flags=pygame.BLEND_RGBA_MULT` to modulate alpha per cell via a
-pre-built alpha mask. This requires a more detailed implementation than can be specified
-inline. The acceptance criterion is: no `.copy()` call inside any per-frame loop.
+`set_alpha()` requires a standalone Surface (subsurfaces share memory with the parent and
+`set_alpha` on them affects the whole parent). The `.copy()` exists to create a standalone
+Surface so `set_alpha` applies only to that cell. The fix is to eliminate the per-cell
+alpha approach entirely and use a pre-built per-cell alpha mask instead.
+
+**Actual function signature (renderer.py:1014):**
+```python
+def _draw_image_ghost(self, ox, oy, bw, bh):
+```
+
+**Step 1:** Add a `_ghost_alpha_surf: Optional[pygame.Surface] = None` cache alongside
+`_ghost_surf` in `__init__`. Invalidate it in `_on_resize()` alongside `_ghost_surf`.
+
+**Step 2:** Rewrite `_draw_image_ghost()` to pre-bake per-cell alpha into a full-board
+SRCALPHA surface once per flag-state change, then blit it without `.copy()`:
+
+**Outline (correct signature, to be completed during implementation):**
+
+```python
+def _draw_image_ghost(self, ox, oy, bw, bh):
+    """Blit the scaled source image ghost over flagged mine cells."""
+    if not self._image_surf:
+        return
+
+    ts = self._tile
+    _flagged = self.board._flagged
+    _mine    = self.board._mine
+
+    # Rebuild the scaled base surface only when board pixel size changes
+    if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
+        self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+        self._ghost_alpha_surf = None   # force alpha-surf rebuild too
+
+    # Rebuild the composited alpha surface only when flagged cells change.
+    # Uses a per-cell SRCALPHA blit so each tile has its own alpha — no .copy() needed.
+    flagged_key = _flagged.tobytes()   # fast fingerprint; rebuild when flags change
+    if self._ghost_alpha_surf is None or getattr(self, '_ghost_flag_key', None) != flagged_key:
+        alpha_surf = pygame.Surface((bw, bh), pygame.SRCALPHA)
+        scaled = self._ghost_surf
+        ys, xs = np.where(_flagged)
+        for y, x in zip(ys.tolist(), xs.tolist()):
+            alpha = 200 if _mine[y, x] else 40
+            src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
+            # blit sub with per-pixel alpha using BLEND_RGBA_MULT on a pre-filled cell surface
+            cell = pygame.Surface((ts, ts), pygame.SRCALPHA)
+            cell.blit(scaled, (0, 0), src_rect)
+            cell.fill((255, 255, 255, alpha), special_flags=pygame.BLEND_RGBA_MULT)
+            alpha_surf.blit(cell, src_rect.topleft)
+        self._ghost_alpha_surf = alpha_surf
+        self._ghost_flag_key = flagged_key
+
+    self._win.blit(self._ghost_alpha_surf, (ox, oy))
+```
+
+**Note:** The `flagged_key = _flagged.tobytes()` fingerprint is O(W×H/8) bytes — fast for
+typical boards. For very large boards (300×370 ≈ 13 KB), consider a cheaper dirty flag
+set by `toggle_flag()` instead. The acceptance criterion is: no `.copy()` call inside
+any per-frame loop (the cell-blit loop above only runs when flag state changes).
 
 **Acceptance criterion (automated):**
 
