@@ -18,3 +18,4 @@
 - TODO: Perform a semantic-tension review of the entire codebase after the image-sweep features and run-artifact revisions
 - TODO: Strengthen the pipeline features
 - TODO: Brainstorm, theory-craft, and hypothesize about ways to optimize the repair process, investigate additional repair methods that apply to the currently failing black-and-white line art, and eventually improve IRL source-image coverage
+- TODO: Implement Save / Resume / Load feature for `gameworks` — full design spec and implementation checklist at `docs/FEATURE_SAVE_RESUME_LOAD.md`. Branch: `feature/save-resume-load` cut from `frontend-game-mockup`. Supplementary docs required: `docs/SAVE_FORMAT_SPEC.md`, `docs/SCHEMA_MIGRATION.md`, `docs/SECURITY.md`. 16 pre-implementation defects were identified and resolved in the spec before any code is written.
