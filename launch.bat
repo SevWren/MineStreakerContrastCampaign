@@ -10,7 +10,7 @@ title Mine-Streaker Launcher
 :: Change to the directory this .bat lives in
 cd /d "%~dp0"
 
-:: Detect Python — prefer venv, fall back to system
+:: Detect Python - prefer venv, fall back to system
 set PYTHON=python
 if exist "venv\Scripts\python.exe"     set PYTHON=venv\Scripts\python.exe
 if exist ".venv\Scripts\python.exe"    set PYTHON=.venv\Scripts\python.exe
@@ -18,18 +18,18 @@ if exist "env\Scripts\python.exe"      set PYTHON=env\Scripts\python.exe
 
 echo.
 echo  ============================================================
-echo   Mine-Streaker — Image Minesweeper
+echo   Mine-Streaker - Image Minesweeper
 echo  ============================================================
 echo.
 
-:: ─── MODE ────────────────────────────────────────────────────
+:: --- MODE ---------------------------------------------------
 echo  Select board mode:
-echo    1) Random  — classic randomly generated board
-echo    2) Easy    — 9x9,  10 mines  (preset)
-echo    3) Medium  — 16x16, 40 mines (preset)
-echo    4) Hard    — 30x16, 99 mines (preset)
-echo    5) Load    — load a saved .npy board file
-echo    6) Image   — image-reveal mode (MineStreaker pipeline)
+echo    1) Random  - classic randomly generated board
+echo    2) Easy    - 9x9,  10 mines  (preset)
+echo    3) Medium  - 16x16, 40 mines (preset)
+echo    4) Hard    - 30x16, 99 mines (preset)
+echo    5) Load    - load a saved .npy board file
+echo    6) Image   - image-reveal mode (MineStreaker pipeline)
 echo.
 set /p MODE_CHOICE=" Mode [1]: "
 if "!MODE_CHOICE!"=="" set MODE_CHOICE=1
@@ -51,7 +51,7 @@ if "!MODE_CHOICE!"=="6" goto :ask_image
 
 if defined DIFF_ARG goto :ask_seed_tile
 
-:: ─── CUSTOM BOARD DIMENSIONS (random mode) ───────────────────
+:: --- CUSTOM BOARD DIMENSIONS (random mode) ------------------
 if "!ASK_DIMS!"=="1" (
     echo.
     set /p BOARD_W=" Board width  in tiles [300]: "
@@ -65,7 +65,7 @@ if "!ASK_DIMS!"=="1" (
 )
 goto :ask_seed_tile
 
-:: ─── LOAD .NPY ───────────────────────────────────────────────
+:: --- LOAD .NPY ----------------------------------------------
 :ask_load
 echo.
 set /p NPY_PATH=" Path to .npy board file: "
@@ -80,7 +80,7 @@ set BOARD_H=
 set MINES=
 goto :ask_seed_tile
 
-:: ─── IMAGE MODE ──────────────────────────────────────────────
+:: --- IMAGE MODE ---------------------------------------------
 :ask_image
 echo.
 set /p IMG_PATH=" Path to source image: "
@@ -102,7 +102,7 @@ set /p MINES=" Mine count (0 = auto) [0]: "
 if "!MINES!"=="" set MINES=0
 goto :ask_seed_tile
 
-:: ─── SEED & TILE SIZE ────────────────────────────────────────
+:: --- SEED & TILE SIZE ---------------------------------------
 :ask_seed_tile
 echo.
 set /p SEED=" Random seed [42]: "
@@ -111,7 +111,7 @@ if "!SEED!"=="" set SEED=42
 set /p TILE=" Tile size in pixels [32]: "
 if "!TILE!"=="" set TILE=32
 
-:: ─── BUILD COMMAND ───────────────────────────────────────────
+:: --- BUILD COMMAND ------------------------------------------
 :build_cmd
 set CMD="%PYTHON%" -m gameworks
 
@@ -126,11 +126,11 @@ if defined DIFF_ARG (
 
 set CMD=!CMD! --seed !SEED! --tile !TILE!
 
-:: ─── CONFIRM & LAUNCH ────────────────────────────────────────
+:: --- CONFIRM & LAUNCH ---------------------------------------
 echo.
-echo  ────────────────────────────────────────────────────────
+echo  --------------------------------------------------------
 echo  Command: !CMD!
-echo  ────────────────────────────────────────────────────────
+echo  --------------------------------------------------------
 echo.
 set /p CONFIRM=" Launch? [Y/n]: "
 if /i "!CONFIRM!"=="n" (
