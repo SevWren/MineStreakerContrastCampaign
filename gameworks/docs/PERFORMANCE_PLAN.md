@@ -371,40 +371,67 @@ pattern already in the codebase.
 Problem: `subsurface().copy()` + `set_alpha()` per flagged cell per frame allocates
 a new Surface for each one.
 
-Fix: pre-bake two versions of the ghost surface at init/zoom. No per-cell copy needed.
+#### Memory constraint — why full-board alpha copies are NOT used
+
+The natural first instinct is to pre-bake two full-board alpha variants of `_ghost_surf`.
+**Do not do this.** `_ghost_surf` is scaled to `board.width * tile × board.height * tile`.
+For the reference board (300×370 at 32px tiles):
+
+```
+9600 × 11840 pixels × 4 bytes RGBA32 = ~431 MB per surface
+```
+
+Two copies plus the original = **~1.3 GB** of surface memory. This will OOM most
+consumer machines. The fix must operate at tile granularity, not board granularity.
+
+#### Fix (P-04 — ghost cells with alpha): reusable tile-sized buffer
+
+Pre-allocate a single `ts×ts` SRCALPHA surface once per tile size. Per cell: blit the
+ghost tile into the buffer, set_alpha, blit buffer to window. Same number of blit
+operations as before, zero allocations per cell.
+
+Memory cost: one surface at `ts×ts` = 32×32×4 = **4 KB** at the default tile size.
 
 `__init__` — add after existing `_ghost_surf`:
 
 ```python
-self._ghost_mine_surf: Optional[pygame.Surface] = None   # ghost at alpha=200
-self._ghost_safe_surf: Optional[pygame.Surface] = None   # ghost at alpha=40
+self._ghost_cell_buf: Optional[pygame.Surface] = None  # ts×ts reuse buffer; no alloc per cell
+self._ghost_cell_buf_ts: int = 0
 ```
 
-`_draw_image_ghost` — when rebuilding `_ghost_surf`, also bake alpha variants:
+`_draw_image_ghost` — rebuild buffer only when tile size changes:
 
 ```python
-if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
-    self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
-    # Pre-bake alpha variants — eliminates per-cell .copy() on hot path
-    self._ghost_mine_surf = self._ghost_surf.copy()
-    self._ghost_mine_surf.set_alpha(200)
-    self._ghost_safe_surf = self._ghost_surf.copy()
-    self._ghost_safe_surf.set_alpha(40)
+ts = self._tile
+if self._ghost_cell_buf is None or self._ghost_cell_buf_ts != ts:
+    self._ghost_cell_buf = pygame.Surface((ts, ts), pygame.SRCALPHA)
+    self._ghost_cell_buf_ts = ts
 ```
 
-Per-cell loop — eliminate `.copy()`:
+Per-cell loop — replace `.copy().set_alpha()` with buffer reuse:
 
 ```python
 for y, x in zip(ys, xs):
     px = ox + int(x) * ts
     py = oy + int(y) * ts
     src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
-    surf = self._ghost_mine_surf if _mine[y, x] else self._ghost_safe_surf
-    self._win.blit(surf.subsurface(src_rect), (px, py))  # no .copy()
+    # Blit tile content into reusable buffer — no allocation, no .copy()
+    self._ghost_cell_buf.blit(self._ghost_surf, (0, 0), src_rect)
+    self._ghost_cell_buf.set_alpha(200 if _mine[y, x] else 40)
+    self._win.blit(self._ghost_cell_buf, (px, py))
 ```
 
-`_draw_win_animation_fx` (P-05) — win anim always uses alpha=255 (full opacity).
-Blit `_ghost_surf` subsurface directly:
+Why `set_alpha()` works here: `_ghost_cell_buf` is SRCALPHA. `set_alpha()` applies a
+per-surface alpha multiplier on top of per-pixel alpha. The ghost surf tiles have
+per-pixel alpha 255, so the multiplier directly controls the final opacity.
+
+#### Fix (P-05 — win animation cells): direct subsurface blit
+
+Win animation uses alpha=255 (full opacity). A `subsurface()` is directly blittable —
+the `.copy()` was only ever needed to detach the surface before calling `set_alpha()`.
+At full opacity no alpha call is needed, so the copy is eliminated entirely.
+
+`_draw_win_animation_fx` — replace `.copy()`:
 
 ```python
 for (x, y) in win_anim_set:
@@ -474,17 +501,19 @@ Invalidation trigger: window resize -> set both to `None` in VIDEORESIZE handler
 ### Tests to add in `gameworks/tests/renderer/test_surface_cache.py`
 
 ```
-test_ghost_mine_surf_stable_across_frames
-test_ghost_safe_surf_stable_across_frames
-test_ghost_alpha_surfs_rebuilt_on_zoom_change
+test_ghost_cell_buf_allocated_once_per_tile_size
+test_ghost_cell_buf_not_reallocated_across_frames   <- assert id() stable across 2 draw calls
+test_ghost_cell_buf_rebuilt_on_zoom_change
+test_win_anim_fx_blit_no_copy                       <- monkeypatch Surface.copy, assert 0 calls
 test_panel_overlay_surf_stable_across_frames
 test_panel_overlay_surf_rebuilt_on_resize
 test_modal_overlay_surf_stable_across_frames
 test_help_overlay_surf_stable_across_frames
 ```
 
-Each test uses the same id()-comparison pattern as the existing
-`test_fog_surf_stable_across_frames`.
+The first three tests use `id()` comparison on `_ghost_cell_buf` to verify the same
+surface object is reused across frames and rebuilt on zoom, matching the pattern of
+the existing `test_fog_surf_stable_across_frames`.
 
 ---
 
@@ -767,15 +796,34 @@ if self.cascade and not self.cascade.done:
 win_anim_set: set = set()
 if self.win_anim and not self.win_anim.done:
     current = self.win_anim.current()
-    key = (self.win_anim._phase, len(current))
+    key = (self.win_anim._phase, self.win_anim._idx)   # NOT len(current) — see note
     if key != self._win_anim_last_key:
         self._win_anim_set_cache = set(current)
         self._win_anim_last_key = key
     win_anim_set = self._win_anim_set_cache
 ```
 
-The set is only rebuilt when `_idx` or phase/count changes — typically once per
-`ANIM_TICK` interval (35ms), not once per frame (33ms).
+#### Why `(_phase, _idx)` and NOT `(_phase, len(current))`
+
+`len(current)` is the length of the running list returned by `win_anim.current()`,
+which grows by 1 on every call as revealed positions accumulate. The key changes
+**every frame** — the cache is rebuilt every frame, adding a key comparison and a
+dict write on top of the original cost. The "cache" becomes a regression.
+
+`_idx` is the animation cursor that advances only on timer ticks (`ANIM_TICK` interval,
+~35ms). Between ticks the key is stable and the set is reused across all frames in that
+tick window (typically 1–2 frames at 30 FPS).
+
+`_phase` is required because `WinAnimation` has multiple phases (phase 0 = correct
+flags, phase 1 = wrong flags, etc.) and `_idx` resets to 0 at each phase boundary.
+Without `_phase`, the cache would produce a false hit when phase 1 starts at `_idx=0`,
+matching the stale entry written when phase 0 started at `_idx=0`.
+
+The `cascade` cache uses `_idx` alone (no phase) because `AnimationCascade` is
+single-phase and `_idx` is monotonically increasing — no reset ever occurs.
+
+The set is rebuilt only when `_idx` advances — typically once per `ANIM_TICK`
+interval (35ms), not once per frame (33ms).
 
 ---
 
