@@ -53,6 +53,19 @@ self._n_revealed: int = 0        # total revealed (includes mine-hit cells)
 
 #### `Board.reveal()` — increment counters at both write sites
 
+**Pre-condition:** These increments assume `reveal()` returns `(False, [])` early
+when `_revealed[y, x]` is already True (i.e., re-revealing an already-revealed cell
+is a no-op). Verify this guard exists before implementing — if it is absent, a
+second click on a revealed cell would double-increment the counters and corrupt all
+derived values. Search for the guard at the top of `reveal()`:
+
+```python
+if self._revealed[y, x]:
+    return False, []
+```
+
+If not present, add it before adding the counter increments.
+
 ```python
 # Mine-hit path (line ~177): after self._revealed[y, x] = True
 self._n_revealed += 1
@@ -111,10 +124,17 @@ After `board._revealed[~board._mine] = True` etc.:
 
 ```python
 board._n_safe_revealed = board.total_safe
-board._n_revealed      = board.total_safe
+board._n_revealed      = int(board._revealed.sum())  # recount from array — mine-hit cells may also be revealed
 board._n_flags         = board.total_mines
 board._n_questioned    = 0
 ```
+
+Why `_revealed.sum()` and not `total_safe`: the game continues after mine hits
+(no game-over). The user may have clicked mine cells before invoking dev_solve,
+leaving those cells revealed (`_revealed[y, x] = True`) but not safe. Setting
+`_n_revealed = total_safe` would undercount by the number of previously hit mines.
+Using `_revealed.sum()` is safe here — dev_solve is already in a bulk-numpy context;
+the single O(n) recount is a one-time cost on user action, not per-frame.
 
 ### Tests to add in `gameworks/tests/unit/test_board.py`
 
@@ -252,7 +272,8 @@ re-invoke `time.time()`). Add an architecture test to enforce this.
 test_win_size_cache_updated_on_videoresize
 test_board_rect_cache_invalidated_on_pan_change
 test_board_rect_cache_invalidated_on_zoom_change
-test_draw_smiley_uses_passed_mouse_pos   <- monkeypatch get_pos, verify not called
+test_draw_smiley_uses_passed_mouse_pos          <- monkeypatch get_pos, verify not called
+test_renderer_does_not_call_engine_elapsed      <- inspect renderer source, assert 'engine.elapsed' absent
 ```
 
 ---
@@ -329,8 +350,17 @@ Also remove:
 # DELETE: pad = max(1, ts // 16)            (verify unused then remove)
 ```
 
-Dict key cast: `self._num_surfs[int(neighbour_mines)]` — numpy uint8 key must be
-cast to Python int to match the dict's Python int keys.
+Dict key cast — `neighbour_mines` is a numpy `uint8`. The `_num_surfs` dict was
+built with Python `int` keys via `range()`. A numpy `uint8` key does not match a
+Python `int` key in a dict lookup, so the lookup silently returns `None`:
+
+```python
+# BEFORE (silent None return — numpy uint8 never matches Python int key):
+num_surf = self._num_surfs.get(neighbour_mines)
+
+# AFTER:
+num_surf = self._num_surfs.get(int(neighbour_mines))
+```
 
 ### 3C — Remove dead `_num_tile != ts` guard (P-20)
 
@@ -343,8 +373,15 @@ if self._num_tile != ts:
     self._rebuild_num_surfs()
 ```
 
-Add a guard assertion in `_rebuild_num_surfs()` instead so it fails loudly if the
-invariant is ever broken during development.
+Add a guard assertion in `_draw_cell()` instead, at the top of the method, so it
+fails loudly during development if the invariant is ever broken:
+
+```python
+assert self._num_tile == ts, (
+    f"_draw_cell: tile size mismatch — _num_tile={self._num_tile} != ts={ts}. "
+    "Call _rebuild_num_surfs() before drawing."
+)
+```
 
 ### Tests to add in `gameworks/tests/renderer/test_cell_draw.py`
 
@@ -415,7 +452,11 @@ for y, x in zip(ys, xs):
     px = ox + int(x) * ts
     py = oy + int(y) * ts
     src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
-    # Blit tile content into reusable buffer — no allocation, no .copy()
+    # Clear before blit — REQUIRED for images with any transparent pixels.
+    # SRCALPHA blit composites src OVER dest; alpha < 255 source pixels do NOT
+    # fully overwrite the previous cell's content. Omitting fill() produces
+    # ghost-on-ghost artifacts along anti-aliased edges.
+    self._ghost_cell_buf.fill((0, 0, 0, 0))
     self._ghost_cell_buf.blit(self._ghost_surf, (0, 0), src_rect)
     self._ghost_cell_buf.set_alpha(200 if _mine[y, x] else 40)
     self._win.blit(self._ghost_cell_buf, (px, py))
@@ -423,7 +464,11 @@ for y, x in zip(ys, xs):
 
 Why `set_alpha()` works here: `_ghost_cell_buf` is SRCALPHA. `set_alpha()` applies a
 per-surface alpha multiplier on top of per-pixel alpha. The ghost surf tiles have
-per-pixel alpha 255, so the multiplier directly controls the final opacity.
+per-pixel alpha 255 after the `fill()` + `blit()`, so the multiplier directly controls
+the final opacity.
+
+Why `fill((0,0,0,0))` does not undo the blit: `fill()` runs before `blit()`. The
+sequence is: clear → copy tile content in → set global alpha → blit to window.
 
 #### Fix (P-05 — win animation cells): direct subsurface blit
 
@@ -469,8 +514,17 @@ if self._panel_overlay_surf is None or self._panel_overlay_surf_size != sz:
 self._win.blit(self._panel_overlay_surf, (px - self.PAD, oy))
 ```
 
-Invalidation trigger: window resize — add `self._panel_overlay_surf = None` in
-VIDEORESIZE handler.
+Invalidation triggers — the overlay size `(_bd_w, _bd_h)` depends on **both** window
+size and tile size:
+
+- Window resize: add `self._panel_overlay_surf = None` in the VIDEORESIZE handler.
+- Zoom: add `self._panel_overlay_surf = None` at the start of `_rebuild_num_surfs()`
+  (called after every MOUSEWHEEL zoom event). The board pixel dimensions change with
+  tile size, so the cached overlay would be the wrong size after a zoom.
+
+Note: `_modal_overlay_surf` and `_help_overlay_surf` (Phase 4C) use `_win_size`
+only — their size does not change with tile size — so resize-only invalidation is
+correct for those two.
 
 ### 4C — Modal and help full-screen overlays (P-10)
 
@@ -553,6 +607,13 @@ def _tx(self, text: str, font: pygame.font.Font, color: tuple) -> pygame.Surface
         self._text_cache[key] = s
     return s
 ```
+
+**`color` must always be a plain Python tuple** — e.g. `(255, 255, 255)` or
+`(r, g, b, a)`. Do not pass `pygame.Color` objects. A `pygame.Color(255, 255, 255)`
+and a tuple `(255, 255, 255)` produce different hash values and will never share a
+cache entry, causing every call with a Color object to be a miss and a re-render.
+All `C["..."]` palette values used in the renderer must be defined as tuples in the
+colour constants dict, not as `pygame.Color` instances.
 
 Cache invalidation on font rebuild — in `_rebuild_num_surfs()`, add:
 
@@ -689,15 +750,32 @@ def _rebuild_btn_surfs(self):
             self._btn_surfs[(label, base_col, hover)] = s
 ```
 
-`_draw_panel` button loop — replace `pill()` + `font.render()` per button:
+`_draw_panel` button loop — `base_col` must be carried alongside each button.
+Change the buttons list from 2-tuples to 3-tuples so `base_col` is in scope:
 
 ```python
-for rect, label in buttons:
+# buttons list construction (in _draw_panel) — add base_col as third element:
+buttons = [
+    (self._btn_new,       "New Game",    C["green"]),
+    (self._btn_restart,   "Restart",     C["green"]),
+    (self._btn_help,      "Help",        C["blue"]),
+    (self._btn_fog,       fog_label,     C["purple"]),
+    (self._btn_save,      "Save .npy",   C["cyan"]),
+    (self._btn_dev_solve, "Solve Board", C["orange"] if solver_available else C["border"]),
+]
+
+# Draw loop — unpack all three:
+for rect, label, base_col in buttons:
     hover = rect.collidepoint(mx, my)
     surf = self._btn_surfs.get((label, base_col, hover))
     if surf:
         self._win.blit(surf, rect.topleft)
 ```
+
+`solver_available` is whatever boolean the current code uses to decide whether the
+Solve Board button is active (e.g., `eng.state == "playing"`). The key point is that
+`base_col` must flow from the list construction into the draw loop — it cannot be
+looked up from just `label` alone because "Solve Board" has two colour variants.
 
 `_on_resize()` — add at end:
 
@@ -825,6 +903,21 @@ single-phase and `_idx` is monotonically increasing — no reset ever occurs.
 The set is rebuilt only when `_idx` advances — typically once per `ANIM_TICK`
 interval (35ms), not once per frame (33ms).
 
+**Pre-condition — verify `WinAnimation._idx` exists before implementing:**
+The `AnimationCascade` tests explicitly reference `cascade._idx`. The `WinAnimation`
+tests reference `anim._phase`, `anim._correct`, `anim._wrong` — but not `anim._idx`.
+Before writing any Phase 7B code, grep the `WinAnimation` class body:
+
+```
+grep -n "_idx\|_step\|_cursor\|_pos" gameworks/renderer.py | grep -A2 "class WinAnimation"
+```
+
+If the cursor attribute is named something other than `_idx`, substitute it in both
+the key expression and the `_win_anim_last_key` init value. Using a wrong attribute
+name will silently read `None`, making the key `(_phase, None)` which equals itself
+every frame — the cache would appear to work in testing but rebuild on every phase
+transition instead of every tick.
+
 ---
 
 ## Phase 8 — Frame Timing Precision
@@ -862,11 +955,14 @@ responsiveness matters, this is the correct trade-off.
 ```
 Phase 1  ---> independent, safest, no renderer dependency
 Phase 2  ---> independent, no phase dependencies
-Phase 3  ---> depends on Phase 2 (uses _win_size, _last_mouse_pos)
-Phase 4  ---> depends on Phase 2 (uses _win_size in modal/help surfs)
+Phase 3  ---> independent (cell loop refactor: monotonic hoist, CellState removal,
+              dead guard removal — none of these depend on Phase 2 additions)
+Phase 4  ---> depends on Phase 2 (4C uses self._win_size added in Phase 2A;
+              4B must also be invalidated in _rebuild_num_surfs added by Phase 2 work)
 Phase 5  ---> independent (but uses font objects; run after fonts are stable)
 Phase 6  ---> depends on Phase 5 (_rebuild_btn_surfs calls font.render -> use _tx())
-Phase 7A ---> depends on Phase 3 (_mine_spike_offsets used in _draw_mine)
+Phase 7A ---> depends on Phase 3 (_mine_spike_offsets used in _draw_mine, which
+              Phase 3 refactors — implement after Phase 3 stabilises _draw_mine)
 Phase 7B ---> independent
 Phase 8  ---> independent, commit last
 ```
@@ -899,7 +995,7 @@ Per AGENTS.md, before each push:
 | 1     | P-06/07/08/23 | ~3 array scans eliminated/frame    | Counter vs np.sum()             |
 | 2     | P-15/17/18/21 | ~10 OS calls/frame eliminated      | Caching + hoisting              |
 | 3     | P-01/02/03/20 | ~50,000 Python object ops/frame    | No CellState, no bool(), no monotonic per cell |
-| 4     | P-04/05/09/10 | ~100+ Surface allocations/frame    | Pre-baked SRCALPHA surfaces     |
+| 4     | P-04/05/09/10 | ~100+ Surface allocations/frame    | Tile buf reuse + overlay caches |
 | 5     | P-11/12/22    | ~20 font.render() calls -> ~2/frame| String-keyed text cache         |
 | 6     | P-13          | 40 draw calls/frame -> 5 blits     | Pre-baked button surfaces       |
 | 7     | P-14/16       | 8 trig calls x N mines/frame -> 0  | Cached offsets + anim set cache |
