@@ -628,6 +628,17 @@ every step below in order. If any step fails, fix the gap and restart from step 
 > Every step below that can be grounded in a shell command must be. Self-certification
 > ("I believe I checked this") is not sufficient evidence for any step.
 
+**Automated helper — runs Steps 1, 2, 5, and 6 and prints auditable output:**
+
+```bash
+bash scripts/pre_push_check.sh                  # default: full test suite
+bash scripts/pre_push_check.sh --suite gameworks # gameworks tests only
+bash scripts/pre_push_check.sh --suite demo      # demo tests only
+```
+
+Post the complete script output as evidence before pushing. Steps 3, 4, and 7
+require reasoning and are not automated; complete them alongside the script run.
+
 ---
 
 ### Step 0 — Capture the pre-change failure baseline (before editing)
