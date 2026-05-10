@@ -18,6 +18,7 @@ All documentation for this package lives here and is self-contained — independ
 | [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) | Pipeline alignment audit: design patterns, gaps, and recommended improvements |
 | [BUGS.md](BUGS.md) | All open bugs — flat register with root cause, fix spec, and test coverage gap per entry |
 | [BUG_REMEDIATION_PLAN.md](BUG_REMEDIATION_PLAN.md) | 8-phase industry-standard remediation plan — exact code, tests, and verification commands for all 30 bugs |
+| [gameplay_visual_improvement_ideas.md](gameplay_visual_improvement_ideas.md) | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
 
 ---
 
@@ -39,7 +40,8 @@ gameworks/
     ├── CHANGELOG.md
     ├── DESIGN_PATTERNS.md
     ├── BUGS.md
-    └── BUG_REMEDIATION_PLAN.md
+    ├── BUG_REMEDIATION_PLAN.md
+    └── gameplay_visual_improvement_ideas.md
 ```
 
 ---

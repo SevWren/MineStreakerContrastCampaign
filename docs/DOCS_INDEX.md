@@ -34,6 +34,7 @@ These are the canonical sources of truth for the game — read before modifying 
 | `gameworks/docs/DESIGN_PATTERNS.md` | Pipeline alignment audit; R2–R9 improvement recommendations |
 | `gameworks/docs/BUGS.md` | All open bugs — flat register with severity, root cause, fix spec per entry |
 | `gameworks/docs/BUG_REMEDIATION_PLAN.md` | 8-phase remediation plan — exact code, tests, and verification commands for all 30 bugs |
+| `gameworks/docs/gameplay_visual_improvement_ideas.md` | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
 
 ## Active — Gameworks Tests
 
