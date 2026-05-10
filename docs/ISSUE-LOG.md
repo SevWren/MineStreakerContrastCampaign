@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10 (session 7 — fixes applied)
+**Last updated:** 2026-05-10 (session 8 — C-003/C-004/C-005/C-006/M-007/M-008 fixed)
 
 ---
 
@@ -90,7 +90,7 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
 ---
 
 ### [C-003] `sa.py` does not export `default_config` — `ImportError` on image mode startup
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:389`, `sa.py`
 - **Symptom:** Every launch with `--image` prints `[WARN] MineStreaker pipeline failed (cannot import name 'default_config' from 'sa' ...)` and falls back to a random board. Pipeline is never reached.
 - **Root cause:** `engine.py:389` does `from sa import default_config as _sa_cfg`. `sa.py` only exports `compile_sa_kernel`, `run_sa`, and `summarize_sa_output`. `default_config` was referenced as if already written but never implemented.
@@ -101,13 +101,13 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
   # params["sa"]     → kwargs for run_sa: n_iters, T_start, T_min, alpha, border, seed
   ```
 - **Canonical parameter values** (from `run_iter9.py`): `n_iters ≈ board_w*board_h*300`, `T_start=3.5`, `T_min=0.001`, `alpha=0.999996`, `border=3`.
-- **Fix:** Add `default_config(board_w, board_h, seed)` factory function to `sa.py`.
+- **Fix applied (session 8):** Added `default_config(board_w, board_h, seed)` to `sa.py` — calls `compile_sa_kernel()` and returns canonical SA params (`n_iters=board_w*board_h*300`, `T_start=3.5`, `T_min=0.001`, `alpha=0.999996`, `border=3`).
 - **Cascading bugs masked by this failure:** C-004, C-005 (never reached while C-003 exists).
 
 ---
 
 ### [C-004] `run_phase1_repair()` return value never unwrapped — `TypeError` on subscript
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:395–405`
 - **Symptom:** After C-003 is fixed, image mode crashes with `TypeError: 'Phase1RepairResult' object is not subscriptable`.
 - **Root cause:** `repair.py:run_phase1_repair()` returns a `Phase1RepairResult` dataclass (fields: `.grid`, `.sr`, `.stop_reason`, `.phase1_repair_hit_time_budget`). `engine.py:395` assigns the whole dataclass to `grid`:
@@ -116,23 +116,23 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
                            time_budget_s=90.0, max_rounds=300)
   ```
   Then `engine.py:403` attempts `grid[ry, rx]` — subscripting a dataclass → `TypeError`.
-- **Fix:** `grid = run_phase1_repair(...).grid`
+- **Fix applied (session 8):** `grid = run_phase1_repair(...).grid` — `.grid` attribute appended at `engine.py:399`.
 - **Masked by:** C-003.
 
 ---
 
 ### [C-005] Mine extraction uses `< 0` check — never matches SA `int8` grid — zero mines extracted
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:403`
 - **Symptom:** After C-003 and C-004 are fixed, pipeline produces 0 mines → `RuntimeError("Pipeline produced 0 mines")` → random fallback again.
 - **Root cause:** The SA pipeline uses `int8` format: `1=mine`, `0=safe`. No cell ever has a negative value. The check `if grid[ry, rx] < 0` is the *game-format* encoding (`-1=mine`), not the pipeline format. The condition is always `False` for valid SA output.
-- **Fix:** `if grid[ry, rx] == 1:`
+- **Fix applied (session 8):** `if grid[ry, rx] == 1:` at `engine.py:405`.
 - **Masked by:** C-004.
 
 ---
 
 ### [C-006] Fallback `except` block creates square board — ignores computed `board_h`
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:416–418`
 - **Symptom:** Every image-mode launch (even when pipeline fails gracefully) produces a `board_w × board_w` board instead of the correct `board_w × board_h` board. For `--image assets/line_art_a4.png --board-w 300`, expected `300×370`, actual `300×300`.
 - **Root cause:** At the time Bug C-003 fires (line 389), `board_h` has already been computed at line 368 (`board_h = info["board_height"]`). The `except` block ignores it:
@@ -145,14 +145,7 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
   - Image overlay in renderer is scaled to image aspect ratio but board tiles don't match — visual mismatch.
   - `_save_npy()` writes wrong dimensions.
   - `engine.restart()` re-uses `self.board.width` (= `board_w`, correct) for width, but `board_h` was never stored — every restart inherits the wrong square shape.
-- **Fix:**
-  ```python
-  _bh = board_h if 'board_h' in dir() else board_w
-  c = max(1, board_w * _bh // 8)
-  mp = place_random_mines(board_w, _bh, c, seed=seed)
-  return Board(board_w, _bh, mp)
-  ```
-  Cleaner: initialize `board_h = board_w` at the top of the `try` block so it is always defined.
+- **Fix applied (session 8):** `board_h` is always defined by the time the `except` block fires (it is computed at line 368, before line 389 where C-003 was triggering). Fixed `engine.py:416–418` to use `board_h` throughout: `board_w * board_h // 8`, `place_random_mines(board_w, board_h, ...)`, `Board(board_w, board_h, mp)`.
 
 ---
 
@@ -293,7 +286,7 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
 ---
 
 ### [M-007] Dead import in `load_board_from_pipeline` — `compile_sa_kernel` imported but never used directly
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:361`
 - **Detail:**
   ```python
@@ -301,12 +294,12 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
   ```
   After C-003 is fixed, `compile_sa_kernel` is called *inside* `default_config()` in `sa.py`, not directly in engine.py. `run_sa` is also called inside `run_sa(params["kernel"], ...)` from inside `sa.default_config`'s return value. Both imports in engine.py become dead code once the `default_config` refactor is applied.
 - **Impact:** Minor — no runtime effect. Confuses readers into thinking SA internals are called directly from engine.py.
-- **Fix:** After C-003 fix, reduce import to: `from sa import default_config as _sa_cfg` (the only symbol actually used at call sites).
+- **Fix applied (session 8):** `engine.py:361` reduced to `from sa import run_sa` — `compile_sa_kernel` removed. `default_config` is imported separately at line 389 where it is used.
 
 ---
 
 ### [M-008] `load_board_from_pipeline` inserts wrong directory into `sys.path` — `parents[2]` should be `parents[1]`
-- **Status:** `OPEN`
+- **Status:** `RESOLVED`
 - **File:** `gameworks/engine.py:355`
 - **Detail:**
   ```python
@@ -320,7 +313,7 @@ Each has a test scaffold in `gameworks/tests/` that is currently skipped.
   Inserting `parents[2]` adds the directory *above* the project to `sys.path`, not the project root. The pipeline modules (`sa.py`, `core.py`, `repair.py`, etc.) live at the project root, so they would not be found via this path manipulation.
 - **Why it doesn't crash today:** When launched as `python -m gameworks.main` from the project directory, Python's `-m` flag automatically inserts the CWD (the project root) into `sys.path[0]`. Imports succeed through the CWD entry, not through `parents[2]`. The wrong path is silently ignored.
 - **When it would fail:** Any invocation where `os.getcwd()` is not the project root — running from a parent directory, a test harness that changes cwd, or importing `GameEngine` programmatically from outside the project.
-- **Fix:** `project = str(Path(__file__).resolve().parents[1])`
+- **Fix applied (session 8):** `engine.py:355` changed to `parents[1]`.
 
 ---
 
@@ -555,7 +548,7 @@ All remaining test files and demo modules audited. No new bugs found.
 
 | Area | Status |
 |---|---|
-| `gameworks/engine.py`, `main.py`, `renderer.py` | Fully audited. C-001, C-002 resolved; C-003–C-007 open; H-001–H-004 resolved; H-005, M-003/M-004/M-007/M-008/M-009 open; M-005/M-006 WONT-FIX; P-001 resolved |
+| `gameworks/engine.py`, `main.py`, `renderer.py` | Fully audited. C-001–C-006 resolved; C-007 open; H-001–H-004 resolved; H-005, M-003/M-004/M-009 open; M-007/M-008 resolved; M-005/M-006 WONT-FIX; P-001 resolved |
 | `pipeline.py`, `run_iter9.py`, `run_benchmark.py` | Fully audited; R-008, R-009 resolved |
 | `report.py` | Fully audited; R-008 resolved |
 | `solver.py`, `repair.py`, `source_config.py` | Fully audited; no bugs |
@@ -564,6 +557,8 @@ All remaining test files and demo modules audited. No new bugs found.
 
 **Session 7 fixed:** R-008, R-009, T-001.
 
-**Still open:** C-003, C-004, C-005, C-006, C-007, H-005, M-003, M-004, M-007, M-008, M-009, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9.
+**Session 8 fixed:** C-003, C-004, C-005, C-006, M-007, M-008.
+
+**Still open:** C-007, H-005, M-003, M-004, M-009, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9.
 
 *Log maintained by: Claude Sonnet 4.6 via Maton Tasks*

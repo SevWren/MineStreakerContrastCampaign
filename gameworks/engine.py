@@ -352,13 +352,13 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
     import sys as _sys
     _backup = _sys.path.copy()
     try:
-        project = str(Path(__file__).resolve().parents[2])
+        project = str(Path(__file__).resolve().parents[1])
         if project not in _sys.path:
             _sys.path.insert(0, project)
 
         # ── Imports from the pipeline ──
         from core import load_image_smart, compute_asymmetric_weights
-        from sa import compile_sa_kernel, run_sa
+        from sa import run_sa
         from corridors import build_adaptive_corridors
         from repair import run_phase1_repair
         from board_sizing import derive_board_from_width
@@ -396,13 +396,13 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
             grid, target, weights, forbidden,
             time_budget_s=90.0,
             max_rounds=300,
-        )
+        ).grid
 
         # ── Extract mines ──
         positions: Set[Tuple[int, int]] = set()
         for ry in range(board_h):
             for rx in range(board_w):
-                if grid[ry, rx] < 0:
+                if grid[ry, rx] == 1:
                     positions.add((rx, ry))
 
         if not positions:
@@ -413,9 +413,9 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
     except Exception as exc:
         print(f"[WARN] MineStreaker pipeline failed ({exc}); falling back to random.")
         traceback.print_exc()
-        c = max(1, board_w * board_w // 8)
-        mp = place_random_mines(board_w, board_w, c, seed=seed)
-        return Board(board_w, board_w, mp)
+        c = max(1, board_w * board_h // 8)
+        mp = place_random_mines(board_w, board_h, c, seed=seed)
+        return Board(board_w, board_h, mp)
     finally:
         _sys.path = _backup
 

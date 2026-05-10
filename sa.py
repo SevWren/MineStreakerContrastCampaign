@@ -184,6 +184,28 @@ def run_sa(kernel, grid, target, weights, forbidden,
     return best_grid, float(best_loss), history
 
 
+def default_config(board_w: int, board_h: int, seed: int = 42) -> dict:
+    """
+    Return a ready-to-use SA configuration dict for the given board size.
+    Keys:
+      "kernel" — compiled SA kernel callable (from compile_sa_kernel)
+      "sa"     — kwargs dict for run_sa (n_iters, T_start, T_min, alpha, border, seed)
+    """
+    kernel = compile_sa_kernel()
+    n_iters = board_w * board_h * 300
+    return {
+        "kernel": kernel,
+        "sa": {
+            "n_iters": n_iters,
+            "T_start": 3.5,
+            "T_min": 0.001,
+            "alpha": 0.999996,
+            "border": 3,
+            "seed": seed,
+        },
+    }
+
+
 def summarize_sa_output(
     grid: np.ndarray,
     target: np.ndarray,
