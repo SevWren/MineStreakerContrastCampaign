@@ -2,14 +2,17 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import matplotlib
 import matplotlib.gridspec as gridspec
+import matplotlib.patches as mpatches
 import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+import report as report_module
 from report import (
     EXPLAINED_COLORBAR_LABELS,
     EXPLAINED_VALUE_EXPLANATIONS,
@@ -329,6 +332,72 @@ class ReportExplanationTests(unittest.TestCase):
             )
             self.assertTrue(out_path.exists())
             self.assertGreater(out_path.stat().st_size, 0)
+
+
+    def test_render_report_explained_legend_mine_count_uses_n_mines_not_subtraction(self):
+        """R-008 regression: legend 'Identified mines' count must equal sr.n_mines,
+        not sr.n_mines - sr.n_unknown. Catches the case where n_unknown > n_mines,
+        which the old formula made negative (suppressed to 0 by the max band-aid)."""
+        # n_unknown=5, n_mines=3 → old formula: max(3-5,0)=0; correct: 3
+        sr = _fake_solve_result(n_unknown=5, solvable=False)
+        self.assertEqual(sr.n_mines, 3)
+        self.assertEqual(sr.n_unknown, 5)
+
+        captured_labels = []
+        original_Patch = mpatches.Patch
+
+        def spy_Patch(*args, **kwargs):
+            captured_labels.append(kwargs.get("label", ""))
+            return original_Patch(*args, **kwargs)
+
+        with mock.patch.object(report_module.mpatches, "Patch", side_effect=spy_Patch):
+            with tempfile.TemporaryDirectory() as td:
+                out_path = Path(td) / "out.png"
+                render_report_explained(
+                    np.zeros((3, 3), dtype=np.float32),
+                    np.zeros((3, 3), dtype=np.int8),
+                    sr,
+                    np.array([1.0]),
+                    "test",
+                    str(out_path),
+                    metrics={},
+                    dpi=72,
+                )
+
+        mine_label = next((l for l in captured_labels if "mine" in l.lower()), None)
+        self.assertIsNotNone(mine_label, f"No mine-related patch label found; captured: {captured_labels}")
+        self.assertIn("(3)", mine_label)   # correct: n_mines=3
+        self.assertNotIn("(0)", mine_label)  # old max(...,0) band-aid would give 0
+        self.assertNotIn("(-2)", mine_label)  # old raw subtraction would give -2
+
+    def test_render_report_legend_mine_count_uses_n_mines_not_subtraction(self):
+        """R-008 regression: render_report (non-explained) legend must also use n_mines."""
+        from report import render_report
+
+        sr = _fake_solve_result(n_unknown=5, solvable=False)
+        captured_labels = []
+        original_Patch = mpatches.Patch
+
+        def spy_Patch(*args, **kwargs):
+            captured_labels.append(kwargs.get("label", ""))
+            return original_Patch(*args, **kwargs)
+
+        with mock.patch.object(report_module.mpatches, "Patch", side_effect=spy_Patch):
+            with tempfile.TemporaryDirectory() as td:
+                render_report(
+                    np.zeros((3, 3), dtype=np.float32),
+                    np.zeros((3, 3), dtype=np.int8),
+                    sr,
+                    np.array([1.0]),
+                    "test",
+                    str(Path(td) / "out.png"),
+                    dpi=72,
+                )
+
+        mine_label = next((l for l in captured_labels if "mine" in l.lower()), None)
+        self.assertIsNotNone(mine_label, f"No mine-related patch label found; captured: {captured_labels}")
+        self.assertIn("(3)", mine_label)
+        self.assertNotIn("(-2)", mine_label)
 
 
 if __name__ == "__main__":

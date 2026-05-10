@@ -27,7 +27,7 @@ Required explained ticks:
 - `Generated mine layout: white cells are safe cells. Black cells are mines.`
 - `Generated number values: 0 means a safe cell has no touching mines. 8 means a safe cell is surrounded by mines.`
 - `Difference values: 0 means the generated number matched the target at that cell. Higher values mean a larger visual mismatch. 4 or more means a large mismatch.`
-- `Solver result colors: gray means revealed safe cells, orange means flagged mines, and blue means unresolved cells.`
+- `Solver result colors: gray means revealed safe cells, orange means solver-identified mines, and blue means unresolved cells.`
 - `Optimizer progress: the line shows a match error score. Lower means the generated numbers are closer to the target image.`
 - `Optimizer work: each plotted point is saved after 50,000 attempted mine changes. This axis is optimizer work, not clock time.`
 

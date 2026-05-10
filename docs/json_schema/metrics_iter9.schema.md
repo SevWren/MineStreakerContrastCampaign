@@ -70,7 +70,7 @@ The top-level object contains:
   "label": "300x942",
   "board": "300x942",
   "cells": 282600,
-  "loss_per_cell": 1.52,
+  "abs_error_variance": 1.52,
   "mean_abs_error": 0.91,
   "hi_err": 1.1,
   "true_bg_err": 0.2,
@@ -126,7 +126,7 @@ The top-level object contains:
 | `label` | string | Yes | No | Board label: `<board_width>x<board_height>`. |
 | `board` | string | Yes | No | Same board label as `label`. |
 | `cells` | integer | Yes | No | `board_width * board_height`. |
-| `loss_per_cell` | number | Yes | No | Variance of final absolute error array. |
+| `abs_error_variance` | number | Yes | No | Population variance of the final absolute error array. Measures spread of per-cell errors, not their magnitude (use `mean_abs_error` for per-cell loss). |
 | `mean_abs_error` | number | Yes | No | Mean absolute difference between final neighbor counts and target field. |
 | `hi_err` | number | Yes | No | Mean absolute error in high-target region. Falls back to `0.0` if mask empty. |
 | `true_bg_err` | number | Yes | No | Mean absolute error in true-background region. Falls back to `0.0` if mask empty. |
@@ -657,7 +657,7 @@ ordinary_ambiguous_unknown
   "label": "300x942",
   "board": "300x942",
   "cells": 282600,
-  "loss_per_cell": 1.52,
+  "abs_error_variance": 1.52,
   "mean_abs_error": 0.91,
   "hi_err": 1.10,
   "true_bg_err": 0.20,

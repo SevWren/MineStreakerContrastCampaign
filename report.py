@@ -426,7 +426,7 @@ def render_report(target, grid, sr, history, title, save_path, dpi=120):
         axes[1][1].imshow(smap)
         legend = [
             mpatches.Patch(color=(0.7, 0.7, 0.7), label=f"Revealed ({sr.n_revealed})"),
-            mpatches.Patch(color=(1.0, 0.5, 0.0), label=f"Flagged ({sr.n_mines - sr.n_unknown})"),
+            mpatches.Patch(color=(1.0, 0.5, 0.0), label=f"Identified mines ({sr.n_mines})"),
             mpatches.Patch(color=(0.2, 0.4, 0.9), label=f"Unknown ({sr.n_unknown})"),
         ]
         axes[1][1].legend(handles=legend, loc="lower right", fontsize=7)
@@ -588,7 +588,7 @@ def render_report_explained(
     ax_solver.set_title("Solver result", fontsize=12)
     legend = [
         mpatches.Patch(color=(0.7, 0.7, 0.7), label=f"Revealed ({getattr(sr, 'n_revealed', 0)})"),
-        mpatches.Patch(color=(1.0, 0.5, 0.0), label=f"Flagged ({max(getattr(sr, 'n_mines', 0) - getattr(sr, 'n_unknown', 0), 0)})"),
+        mpatches.Patch(color=(1.0, 0.5, 0.0), label=f"Identified mines ({getattr(sr, 'n_mines', 0)})"),
         mpatches.Patch(color=(0.2, 0.4, 0.9), label=f"Unknown ({getattr(sr, 'n_unknown', 0)})"),
     ]
     ax_solver.legend(handles=legend, loc="lower right", fontsize=7)

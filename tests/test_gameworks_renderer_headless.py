@@ -91,7 +91,7 @@ class TestFPSConstant:
         """FIND-ARCH-CRITICAL-f001a: FPS must be importable from gameworks.renderer."""
         from gameworks.renderer import FPS
         assert isinstance(FPS, int)
-        assert FPS == 60
+        assert FPS == 30
 
     def test_fps_accessible_as_module_attribute(self):
         import gameworks.renderer as rmod

@@ -922,7 +922,7 @@ def run_iter9_single(
         "label": board_label,
         "board": board_label,
         "cells": int(bw * bh),
-        "loss_per_cell": float(err.var()),
+        "abs_error_variance": float(err.var()),
         "mean_abs_error": float(err.mean()),
         "hi_err": float(err[hi_mask].mean()) if np.any(hi_mask) else 0.0,
         "true_bg_err": float(err[true_bg].mean()) if np.any(true_bg) else 0.0,

@@ -209,6 +209,20 @@ class SourceImageCliContractTests(unittest.TestCase):
         legacy_script = PROJECT_ROOT / "run_iris3d_visual_report.py"
         self.assertFalse(legacy_script.exists())
 
+    def test_abs_error_variance_replaces_loss_per_cell_in_metrics_write_sites(self):
+        """R-009 regression: both metrics write sites must use abs_error_variance,
+        not the old misleading name loss_per_cell."""
+        for fname in ("run_iter9.py", "pipeline.py"):
+            source = (PROJECT_ROOT / fname).read_text(encoding="utf-8")
+            self.assertIn(
+                "abs_error_variance", source,
+                f"{fname} must contain abs_error_variance",
+            )
+            self.assertNotIn(
+                '"loss_per_cell"', source,
+                f"{fname} must not contain the old field name loss_per_cell",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
