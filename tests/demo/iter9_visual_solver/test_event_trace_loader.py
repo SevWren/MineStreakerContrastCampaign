@@ -33,6 +33,11 @@ class EventTraceLoaderTests(unittest.TestCase):
         self.assertEqual(store.mine_count, 1)
         self.assertEqual(store.steps.dtype.name, "uint32")
         self.assertEqual(store.state_codes.tolist(), [STATE_MINE, STATE_SAFE])
+        self.assertEqual(store.board_width, 3, msg="store.board_width must be set from the load parameter")
+        self.assertEqual(store.board_height, 2, msg="store.board_height must be set from the load parameter")
+        # steps must be monotonically increasing
+        steps = store.steps.tolist()
+        self.assertEqual(steps, sorted(steps), msg="loaded event steps must be in monotonic order")
 
     def test_load_event_trace_rejects_decreasing_steps(self):
         from demos.iter9_visual_solver.errors.trace_errors import DemoTraceValidationError

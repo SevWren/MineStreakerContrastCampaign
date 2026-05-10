@@ -54,14 +54,14 @@ class CliCommandsTests(unittest.TestCase):
         self.assertEqual(code, 0)
         loop.assert_called_once()
         kwargs = loop.call_args.kwargs
-        self.assertEqual(kwargs["events_per_second"], 120)
-        self.assertEqual(kwargs["events_per_frame"], 2)
-        self.assertEqual(kwargs["board_width"], 3)
-        self.assertEqual(kwargs["board_height"], 2)
-        self.assertEqual(kwargs["source_image_name"], "demo_source.png")
-        self.assertEqual(kwargs["seed"], 13)
-        self.assertEqual(kwargs["replay_source"], "final_grid_replay")
-        self.assertEqual(kwargs["finish_config"].mode, "close_immediately")
+        self.assertEqual(kwargs["events_per_second"], 120, msg="events_per_second should match base_events_per_second from config")
+        self.assertEqual(kwargs["events_per_frame"], 2, msg="events_per_frame should be 120 eps / 60 fps = 2")
+        self.assertEqual(kwargs["board_width"], 3, msg="board_width should be derived from grid shape")
+        self.assertEqual(kwargs["board_height"], 2, msg="board_height should be derived from grid shape")
+        self.assertEqual(kwargs["source_image_name"], "demo_source.png", msg="source_image_name should come from metrics")
+        self.assertEqual(kwargs["seed"], 13, msg="seed should come from metrics")
+        self.assertEqual(kwargs["replay_source"], "final_grid_replay", msg="replay_source should default to 'final_grid_replay'")
+        self.assertEqual(kwargs["finish_config"].mode, "close_immediately", msg="finish_config.mode should match config finish_behavior")
 
 
 if __name__ == "__main__":

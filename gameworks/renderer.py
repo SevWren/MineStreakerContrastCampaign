@@ -136,10 +136,11 @@ class AnimationCascade:
     Tiles revealed by a single action animate open one-by-one.
     """
 
-    def __init__(self, positions: List[Tuple[int, int]], speed: float = ANIM_TICK):
+    def __init__(self, positions: List[Tuple[int, int]], speed: float = ANIM_TICK, _clock=None):
         self.positions = positions
         self.speed = speed
-        self._start = time.monotonic()
+        self._clock = _clock if _clock is not None else time.monotonic
+        self._start = self._clock()
         self._idx = 0
 
     @property
@@ -150,7 +151,7 @@ class AnimationCascade:
         """Tiles visible so far, expanding as time passes."""
         if self.done:
             return self.positions[:]
-        elapsed = time.monotonic() - self._start
+        elapsed = self._clock() - self._start
         self._idx = min(int(elapsed / self.speed) + 1, len(self.positions))
         return self.positions[:self._idx]
 

@@ -85,7 +85,9 @@ class PygameLoopWithFakesTests(unittest.TestCase):
         self.assertTrue(result.closed_by_user)
 
     def test_loop_does_not_calculate_speed_formula(self):
-        source = Path("demos/iter9_visual_solver/rendering/pygame_loop.py").read_text(encoding="utf-8")
+        path = Path("demos/iter9_visual_solver/rendering/pygame_loop.py")
+        self.assertTrue(path.exists(), msg=f"Source file missing: {path}")
+        source = path.read_text(encoding="utf-8")
         forbidden = [
             "base_events_per_second",
             "mine_count_multiplier",
@@ -150,8 +152,8 @@ class PygameLoopWithFakesTests(unittest.TestCase):
             resizable=True,
             max_frames=2,
         )
-        self.assertEqual(fake.surface_calls.count((2, 1)), 1)
-        self.assertEqual(len(fake.transform.scale_calls), 2)
+        self.assertEqual(fake.surface_calls.count((2, 1)), 1, msg="Logical board surface (2, 1) must be created exactly once even after resize")
+        self.assertEqual(len(fake.transform.scale_calls), 2, msg="transform.scale must be called once per frame rendered (2 frames → 2 scale calls)")
 
     def test_loop_ignores_resize_when_resizable_false(self):
         from demos.iter9_visual_solver.rendering.pygame_loop import run_pygame_loop

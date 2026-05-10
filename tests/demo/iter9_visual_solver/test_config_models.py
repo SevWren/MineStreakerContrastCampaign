@@ -38,13 +38,17 @@ class ConfigModelsTests(unittest.TestCase):
             from demos.iter9_visual_solver.config.models import DemoConfig
         except ModuleNotFoundError:
             self.skipTest("DemoConfig is not implemented yet")
-        for invalid in [
-            invalid_config_missing_schema_version(),
-            invalid_config_bad_rgb_tuple(),
-            invalid_config_negative_speed(),
-        ]:
-            with self.assertRaises(Exception):
-                DemoConfig.model_validate(invalid)
+        import importlib as _il
+        _pydantic = _il.import_module("pydantic")
+        invalid_cases = [
+            ("missing_schema_version", invalid_config_missing_schema_version()),
+            ("bad_rgb_tuple", invalid_config_bad_rgb_tuple()),
+            ("negative_speed", invalid_config_negative_speed()),
+        ]
+        for name, invalid in invalid_cases:
+            with self.subTest(case=name):
+                with self.assertRaises((_pydantic.ValidationError, ValueError)):
+                    DemoConfig.model_validate(invalid)
 
 
 if __name__ == "__main__":

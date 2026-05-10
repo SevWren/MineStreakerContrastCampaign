@@ -21,7 +21,7 @@ class StatusPanelTests(unittest.TestCase):
             self.skipTest("draw_status_panel is not implemented yet")
         surface = FakeSurface((360, 600))
         draw_status_panel(surface, ["Board: 300 x 942"])
-        self.assertTrue(surface.fill_calls or surface.blit_calls)
+        self.assertTrue(surface.fill_calls, msg="draw_status_panel must produce at least one fill call")
 
     def test_status_panel_wraps_long_lines_to_panel_width(self):
         from demos.iter9_visual_solver.rendering.status_panel import wrap_status_line
@@ -134,6 +134,7 @@ class StatusPanelTests(unittest.TestCase):
             for source, dest in surface.blit_calls
             if getattr(source, "text", None)
         }
+        self.assertIn("Unknown:", text_positions, msg="'Unknown:' label was not rendered")
         self.assertLess(text_positions["Unknown:"][1] + font.get_linesize(), progress_bottom)
         self.assertGreaterEqual(text_positions["Mines: 49180 / 49180"][1], progress_bottom)
 

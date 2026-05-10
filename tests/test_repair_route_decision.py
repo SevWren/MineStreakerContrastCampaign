@@ -28,8 +28,9 @@ class RepairRouteDecisionTests(unittest.TestCase):
             phase2_full_repair_hit_time_budget=True,
         )
         with mock.patch("pipeline.run_phase2_full_repair", return_value=phase2_result):
-            with mock.patch("pipeline.solve_board", return_value=SolveResult(n_unknown=0, state=np.full((3, 3), SAFE, dtype=np.int8))):
+            with mock.patch("pipeline.solve_board", return_value=SolveResult(n_unknown=0, state=np.full((3, 3), SAFE, dtype=np.int8))) as solve_mock:
                 route = route_late_stage_failure(grid, grid.astype(np.float32), np.ones((3, 3), dtype=np.float32), np.zeros((3, 3), dtype=np.int8), sr, RepairRoutingConfig())
+        solve_mock.assert_called_once()
         self.assertEqual(route.selected_route, "phase2_full_repair", msg="Sealed cluster should route to phase2_full_repair")
         self.assertTrue(route.phase2_full_repair_hit_time_budget, msg="phase2_full_repair_hit_time_budget should reflect the repair result")
         self.assertTrue(route.decision["phase2_full_repair_hit_time_budget"], msg="decision dict must mirror route.phase2_full_repair_hit_time_budget")

@@ -23,6 +23,7 @@ class ArchitectureBoundariesTests(unittest.TestCase):
             self.skipTest("demo runtime package is not implemented yet")
         for package in ["cli", "config", "contracts", "domain", "errors", "io", "playback", "rendering"]:
             self.assertTrue((runtime_root / package).is_dir(), f"Missing runtime package: {package}")
+            self.assertTrue((runtime_root / package / "__init__.py").is_file(), f"Missing __init__.py in runtime package: {package}")
 
     def test_pygame_imports_are_rendering_only(self):
         runtime_root = Path("demos/iter9_visual_solver")

@@ -18,6 +18,7 @@ class ConfigLoaderTests(unittest.TestCase):
             config_path = run.write_demo_config(default_demo_config_dict())
             config = load_demo_config(config_path)
         self.assertEqual(config.schema_version, "iter9_visual_solver_demo_config.v1")
+        self.assertTrue(config.window.resizable, msg="config.window.resizable should be True per default config")
 
 
 if __name__ == "__main__":

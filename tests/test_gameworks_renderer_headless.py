@@ -108,35 +108,38 @@ class TestAnimationCascade:
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(10)]
         cascade = AnimationCascade(positions, speed=0.01)
-        assert not cascade.done
+        assert not cascade.done, "AnimationCascade should not be done immediately after construction"
 
     def test_current_starts_empty_or_small(self):
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(10)]
-        cascade = AnimationCascade(positions, speed=0.5)  # slow
+        cascade = AnimationCascade(positions, speed=0.5)  # 0.5s/cell — extremely slow
         current = cascade.current()
-        assert isinstance(current, list)
+        assert isinstance(current, list), "current() should return a list"
+        assert len(current) <= 1, (
+            f"At 0.5s/cell, no more than 1 cell should appear immediately after construction, got {len(current)}"
+        )
 
     def test_cells_revealed_over_time(self):
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(10)]
-        # speed=0.01s/cell — sleep 5× the required time for headroom on loaded machines.
-        cascade = AnimationCascade(positions, speed=0.01)
-        time.sleep(0.15)
+        fake_t = [0.0]
+        cascade = AnimationCascade(positions, speed=0.01, _clock=lambda: fake_t[0])
+        fake_t[0] = 0.15  # advance fake clock 150ms — should reveal >=3 cells at 10ms/cell
         current = cascade.current()
         assert len(current) >= 3, (
-            f"Expected >=3 cells revealed after 150ms at 10ms/cell, got {len(current)}"
+            f"Expected >=3 cells revealed at fake t=0.15s with speed=0.01s/cell, got {len(current)}"
         )
 
     def test_done_after_all_positions_elapsed(self):
         from gameworks.renderer import AnimationCascade
         positions = [(i, 0) for i in range(5)]
-        # speed=0.005s/cell → 5 cells = 25ms; sleep 10× for headroom.
-        cascade = AnimationCascade(positions, speed=0.005)
-        time.sleep(0.25)
+        fake_t = [0.0]
+        cascade = AnimationCascade(positions, speed=0.005, _clock=lambda: fake_t[0])
+        fake_t[0] = 0.25  # advance fake clock 250ms — all 5 cells at 5ms/cell should be done
         cascade.current()  # drive _idx forward before checking done
         assert cascade.done, (
-            f"Cascade with 5 cells at 5ms/cell should be done after 250ms"
+            f"Cascade with 5 cells at 5ms/cell should be done at fake t=0.25s"
         )
 
     def test_finished_after_returns_float(self):
@@ -177,7 +180,11 @@ class TestWinAnimation:
         from gameworks.renderer import WinAnimation
         anim = WinAnimation(self._make_board(), speed=0.001)
         time.sleep(0.3)
-        assert anim.done or len(anim.current()) > 0
+        anim.current()  # drive phase forward
+        assert anim.done, (
+            f"WinAnimation should be done after 300ms at 1ms/cell; "
+            f"_phase={anim._phase}, _correct={anim._correct}, _wrong={anim._wrong}"
+        )
 
     def test_done_with_no_flags_c007_regression(self):
         """C-007 regression: WinAnimation.done must become True when no flags are placed.
@@ -331,5 +338,5 @@ class TestRendererInit:
     def test_ghost_surf_initially_none(self):
         """Ghost surface cache must start as None (built lazily)."""
         r, _ = _make_renderer()
-        assert r._ghost_surf is None
+        assert r._ghost_surf is None, "Ghost surface cache must be None initially (built lazily on first draw)"
         pygame.quit()

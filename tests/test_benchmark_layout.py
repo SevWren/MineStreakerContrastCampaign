@@ -28,23 +28,37 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 class BenchmarkLayoutTests(unittest.TestCase):
     def test_benchmark_uses_shared_explained_report_renderer(self):
-        self.assertIs(run_benchmark.render_report_explained, report.render_report_explained)
-        self.assertIs(run_benchmark.render_repair_overlay_explained, report.render_repair_overlay_explained)
+        self.assertIs(run_benchmark.render_report_explained, report.render_report_explained,
+                      msg="run_benchmark.render_report_explained is not report.render_report_explained")
+        self.assertIs(run_benchmark.render_repair_overlay_explained, report.render_repair_overlay_explained,
+                      msg="run_benchmark.render_repair_overlay_explained is not report.render_repair_overlay_explained")
 
     def test_child_directory_naming(self):
         self.assertEqual(_child_dir_name(300, 370, 11), "300x370_seed11")
+        # seed=0 zero-padding contract
+        self.assertEqual(_child_dir_name(300, 370, 0), "300x370_seed0")
+        # single-digit dimensions
+        self.assertEqual(_child_dir_name(9, 9, 1), "9x9_seed1")
+        # large seed — no truncation
+        result = _child_dir_name(300, 370, 999999)
+        self.assertIn("999999", result)
 
     def test_preserved_child_artifact_filenames(self):
         names = benchmark_child_artifact_filenames("300x370")
-        self.assertEqual(names["metrics"], "metrics_300x370.json")
-        self.assertEqual(names["grid"], "grid_300x370.npy")
-        self.assertEqual(names["visual"], "visual_300x370.png")
-        self.assertEqual(names["visual_explained"], "visual_300x370_explained.png")
-        self.assertEqual(names["overlay"], "repair_overlay_300x370.png")
-        self.assertEqual(names["overlay_explained"], "repair_overlay_300x370_explained.png")
-        self.assertEqual(names["failure_taxonomy"], "failure_taxonomy.json")
-        self.assertEqual(names["repair_route_decision"], "repair_route_decision.json")
-        self.assertEqual(names["visual_delta_summary"], "visual_delta_summary.json")
+        self.assertEqual(set(names.keys()), {
+            "metrics", "grid", "visual", "visual_explained",
+            "overlay", "overlay_explained",
+            "failure_taxonomy", "repair_route_decision", "visual_delta_summary",
+        })
+        self.assertEqual(names["metrics"], "metrics_300x370.json", msg="metrics filename mismatch")
+        self.assertEqual(names["grid"], "grid_300x370.npy", msg="grid filename mismatch")
+        self.assertEqual(names["visual"], "visual_300x370.png", msg="visual filename mismatch")
+        self.assertEqual(names["visual_explained"], "visual_300x370_explained.png", msg="visual_explained filename mismatch")
+        self.assertEqual(names["overlay"], "repair_overlay_300x370.png", msg="overlay filename mismatch")
+        self.assertEqual(names["overlay_explained"], "repair_overlay_300x370_explained.png", msg="overlay_explained filename mismatch")
+        self.assertEqual(names["failure_taxonomy"], "failure_taxonomy.json", msg="failure_taxonomy filename mismatch")
+        self.assertEqual(names["repair_route_decision"], "repair_route_decision.json", msg="repair_route_decision filename mismatch")
+        self.assertEqual(names["visual_delta_summary"], "visual_delta_summary.json", msg="visual_delta_summary filename mismatch")
 
     def test_child_metrics_document_includes_explained_artifacts_and_review_hints(self):
         flat_metrics = {
@@ -90,19 +104,23 @@ class BenchmarkLayoutTests(unittest.TestCase):
             },
             phase_timing={},
         )
-        self.assertIn("visual_explained_png", doc["artifact_inventory"])
-        self.assertIn("repair_overlay_explained_png", doc["artifact_inventory"])
-        self.assertIn("best_artifact_to_open_first", doc["llm_review_summary"])
-        self.assertIn("best_artifact_to_open_second", doc["llm_review_summary"])
-        self.assertIn("best_repair_artifact_to_open_first", doc["llm_review_summary"])
-        self.assertIn("best_repair_artifact_to_open_second", doc["llm_review_summary"])
+        self.assertIn("visual_explained_png", doc["artifact_inventory"], msg="visual_explained_png missing from artifact_inventory")
+        self.assertIn("repair_overlay_explained_png", doc["artifact_inventory"], msg="repair_overlay_explained_png missing from artifact_inventory")
+        self.assertIn("best_artifact_to_open_first", doc["llm_review_summary"], msg="best_artifact_to_open_first missing from llm_review_summary")
+        self.assertIn("best_artifact_to_open_second", doc["llm_review_summary"], msg="best_artifact_to_open_second missing from llm_review_summary")
+        self.assertIn("best_repair_artifact_to_open_first", doc["llm_review_summary"], msg="best_repair_artifact_to_open_first missing from llm_review_summary")
+        self.assertIn("best_repair_artifact_to_open_second", doc["llm_review_summary"], msg="best_repair_artifact_to_open_second missing from llm_review_summary")
         for field in (
             "phase1_repair_hit_time_budget",
             "phase2_full_repair_hit_time_budget",
             "last100_repair_hit_time_budget",
         ):
-            self.assertIn(field, doc)
-            self.assertIn(field, doc["repair_route_summary"])
+            self.assertIn(field, doc, msg=f"{field} missing from doc")
+            self.assertIn(field, doc["repair_route_summary"], msg=f"{field} missing from doc['repair_route_summary']")
+        # Assert the specific boolean values from the input
+        self.assertFalse(doc["phase1_repair_hit_time_budget"], msg="phase1_repair_hit_time_budget should be False")
+        self.assertTrue(doc["phase2_full_repair_hit_time_budget"], msg="phase2_full_repair_hit_time_budget should be True (set in input)")
+        self.assertFalse(doc["last100_repair_hit_time_budget"], msg="last100_repair_hit_time_budget should be False")
 
     def test_rows_and_board_aggregates_include_repair_timeout_fields(self):
         metrics_docs = [
@@ -137,13 +155,16 @@ class BenchmarkLayoutTests(unittest.TestCase):
         self.assertEqual(aggregate["phase1_repair_timeout_count"], 1)
         self.assertEqual(aggregate["phase2_full_repair_timeout_count"], 0)
         self.assertEqual(aggregate["last100_repair_timeout_count"], 1)
-        self.assertTrue(aggregate["any_repair_timeout"])
+        self.assertTrue(aggregate["any_repair_timeout"], msg="any_repair_timeout should be True when at least one timeout occurred")
 
     def test_normal_root_derivation_default_and_out_dir(self):
         cfg = resolve_source_image_config("assets/line_art_irl_11_v2.png", project_root=PROJECT_ROOT)
         args_default = parse_args([], raw_argv=["run_benchmark.py"])
         root_default, run_id = _normal_benchmark_root(args_default, PROJECT_ROOT, cfg)
-        self.assertIn("results/benchmark", root_default.as_posix())
+        self.assertTrue(
+            root_default.as_posix().endswith("results/benchmark"),
+            msg=f"Expected path ending in 'results/benchmark', got {root_default.as_posix()}",
+        )
         self.assertIn(f"{cfg.stem}_benchmark", run_id)
 
         args_out = parse_args(["--out-dir", "results/custom_root"], raw_argv=["run_benchmark.py", "--out-dir", "results/custom_root"])
@@ -190,24 +211,24 @@ class BenchmarkLayoutTests(unittest.TestCase):
                 widths=[300],
                 seeds=[11],
             )
-            self.assertTrue((root / "benchmark_summary.json").exists())
-            self.assertTrue((root / "benchmark_summary.csv").exists())
-            self.assertTrue((root / "benchmark_summary.md").exists())
-            self.assertTrue((root / "benchmark_results.json").exists())
-            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
-            self.assertIn("benchmark_summary_json", paths)
+            self.assertTrue((root / "benchmark_summary.json").exists(), msg="benchmark_summary.json not written")
+            self.assertTrue((root / "benchmark_summary.csv").exists(), msg="benchmark_summary.csv not written")
+            self.assertTrue((root / "benchmark_summary.md").exists(), msg="benchmark_summary.md not written")
+            self.assertTrue((root / "benchmark_results.json").exists(), msg="benchmark_results.json not written")
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep", msg="Pre-existing file was overwritten")
+            self.assertIn("benchmark_summary_json", paths, msg="paths dict missing benchmark_summary_json key")
             summary = json.loads((root / "benchmark_summary.json").read_text(encoding="utf-8"))
             row = summary["rows"][0]
-            self.assertTrue(row["phase1_repair_hit_time_budget"])
-            self.assertFalse(row["phase2_full_repair_hit_time_budget"])
-            self.assertTrue(row["last100_repair_hit_time_budget"])
+            self.assertTrue(row["phase1_repair_hit_time_budget"], msg="row phase1_repair_hit_time_budget should be True")
+            self.assertFalse(row["phase2_full_repair_hit_time_budget"], msg="row phase2_full_repair_hit_time_budget should be False")
+            self.assertTrue(row["last100_repair_hit_time_budget"], msg="row last100_repair_hit_time_budget should be True")
             aggregate = summary["board_aggregates"][0]
-            self.assertEqual(aggregate["phase1_repair_timeout_count"], 1)
-            self.assertEqual(aggregate["phase2_full_repair_timeout_count"], 0)
-            self.assertEqual(aggregate["last100_repair_timeout_count"], 1)
-            self.assertTrue(aggregate["any_repair_timeout"])
+            self.assertEqual(aggregate["phase1_repair_timeout_count"], 1, msg="phase1_repair_timeout_count should be 1")
+            self.assertEqual(aggregate["phase2_full_repair_timeout_count"], 0, msg="phase2_full_repair_timeout_count should be 0")
+            self.assertEqual(aggregate["last100_repair_timeout_count"], 1, msg="last100_repair_timeout_count should be 1")
+            self.assertTrue(aggregate["any_repair_timeout"], msg="any_repair_timeout should be True when at least one timeout occurred")
             compatibility = json.loads((root / "benchmark_results.json").read_text(encoding="utf-8"))
-            self.assertIn("phase1_repair_hit_time_budget", compatibility[0])
+            self.assertIn("phase1_repair_hit_time_budget", compatibility[0], msg="compatibility row missing phase1_repair_hit_time_budget")
             with (root / "benchmark_summary.csv").open("r", encoding="utf-8", newline="") as handle:
                 csv_rows = list(csv.DictReader(handle))
             for field in (
@@ -215,10 +236,10 @@ class BenchmarkLayoutTests(unittest.TestCase):
                 "phase2_full_repair_hit_time_budget",
                 "last100_repair_hit_time_budget",
             ):
-                self.assertIn(field, csv_rows[0])
+                self.assertIn(field, csv_rows[0], msg=f"CSV row missing field: {field}")
             md_text = (root / "benchmark_summary.md").read_text(encoding="utf-8")
-            self.assertIn("phase1_timeouts", md_text)
-            self.assertIn("phase1_timeout", md_text)
+            self.assertIn("phase1_timeouts", md_text, msg="md missing 'phase1_timeouts'")
+            self.assertIn("phase1_timeout", md_text, msg="md missing 'phase1_timeout'")
 
     def test_regression_result_includes_route_timeout_booleans(self):
         with tempfile.TemporaryDirectory() as td:
@@ -269,9 +290,9 @@ class BenchmarkLayoutTests(unittest.TestCase):
                                     with mock.patch("run_benchmark.route_late_stage_failure", return_value=route):
                                         result = run_benchmark.run_regression_from_baseline(case, seed)
 
-        self.assertFalse(result["phase1_repair_hit_time_budget"])
-        self.assertTrue(result["phase2_full_repair_hit_time_budget"])
-        self.assertFalse(result["last100_repair_hit_time_budget"])
+        self.assertFalse(result["phase1_repair_hit_time_budget"], msg="phase1_repair_hit_time_budget should be False (not set in route)")
+        self.assertTrue(result["phase2_full_repair_hit_time_budget"], msg="phase2_full_repair_hit_time_budget should be True (set in route)")
+        self.assertFalse(result["last100_repair_hit_time_budget"], msg="last100_repair_hit_time_budget should be False (not set in route)")
 
 
 if __name__ == "__main__":

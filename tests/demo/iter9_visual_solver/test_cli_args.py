@@ -13,6 +13,8 @@ class CliArgsTests(unittest.TestCase):
             self.skipTest("parse_args is not implemented yet")
         args = parse_args(["--grid", "grid.npy", "--metrics", "metrics.json", "--config", "config.json"])
         self.assertEqual(args.grid, "grid.npy")
+        self.assertEqual(args.metrics, "metrics.json")
+        self.assertEqual(args.config, "config.json")
 
 
 if __name__ == "__main__":

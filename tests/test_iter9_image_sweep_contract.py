@@ -1,5 +1,6 @@
 ﻿import argparse
-import inspect
+import csv
+import io
 import json
 import subprocess
 import sys
@@ -172,7 +173,8 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             "--skip-existing",
             "--max-images",
         ]:
-            self.assertIn(flag, completed.stdout)
+            with self.subTest(flag=flag):
+                self.assertIn(flag, completed.stdout)
 
     def test_argparse_rejects_abbreviated_long_flags(self):
         bad_argv = [
@@ -193,13 +195,14 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             write_fake_png(image_dir / "alpha.png")
             write_fake_png(image_dir / "m.png")
             write_fake_png(image_dir / "nested" / "nested.png")
+            write_fake_png(image_dir / "a.jpg")
 
             discovered = run_iter9.discover_source_images(image_dir, "*.png", recursive=False, max_images=None)
+            names = [path.name for path in discovered]
 
-        self.assertEqual(
-            [path.name for path in discovered],
-            ["alpha.png", "m.png", "zeta.png"],
-        )
+        self.assertEqual(names, ["alpha.png", "m.png", "zeta.png"])
+        self.assertNotIn("nested.png", names, msg="nested/nested.png must be excluded when recursive=False")
+        self.assertNotIn("a.jpg", names, msg="a.jpg must be excluded when glob is *.png")
 
     def test_discovery_recursive_includes_nested_matches(self):
         with tempfile.TemporaryDirectory() as td:
@@ -485,10 +488,10 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
         self.assertEqual(rc, 0)
-        self.assertEqual(single_mock.call_count, 2)
-        self.assertEqual(compile_mock.call_count, 1)
-        self.assertEqual(warm_mock.call_count, 1)
-        self.assertEqual([row["status"] for row in summary["rows"]], ["succeeded", "succeeded"])
+        self.assertEqual(single_mock.call_count, 2, msg="run_iter9_single must be called once per image (2 images → 2 calls)")
+        self.assertEqual(compile_mock.call_count, 1, msg="compile_sa_kernel must be called exactly once (shared across images)")
+        self.assertEqual(warm_mock.call_count, 1, msg="ensure_solver_warmed must be called exactly once")
+        self.assertEqual([row["status"] for row in summary["rows"]], ["succeeded", "succeeded"], msg="Both images should have status='succeeded'")
 
     @mock.patch("run_iter9.run_iter9_single")
     @mock.patch("run_iter9.ensure_solver_warmed")
@@ -586,10 +589,10 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             summary = json.loads((out_root / "iter9_image_sweep_summary.json").read_text(encoding="utf-8"))
 
         self.assertEqual(rc, 1)
-        self.assertEqual(single_mock.call_count, 1)
-        self.assertEqual([row["status"] for row in summary["rows"]], ["failed"])
-        self.assertEqual(summary["runs_attempted"], 1)
-        self.assertEqual(summary["runs_failed"], 1)
+        self.assertEqual(single_mock.call_count, 1, msg="fail-fast should stop after first failure; single_run should be called only once")
+        self.assertEqual([row["status"] for row in summary["rows"]], ["failed"], msg="summary should contain exactly one failed row")
+        self.assertEqual(summary["runs_attempted"], 1, msg="runs_attempted should be 1 (only the failed run)")
+        self.assertEqual(summary["runs_failed"], 1, msg="runs_failed should be 1")
 
     @mock.patch("run_iter9.run_iter9_single")
     @mock.patch("run_iter9.ensure_solver_warmed")
@@ -715,7 +718,8 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         single_mock.assert_not_called()
         self.assertEqual(summary["rows"][0]["status"], "skipped_existing")
-        self.assertIn("420x510", summary["rows"][0].get("metrics_path", ""))
+        self.assertIn("metrics_path", summary["rows"][0], msg="skipped_existing row must contain 'metrics_path' key")
+        self.assertIn("420x510", summary["rows"][0]["metrics_path"], msg="metrics_path must include the board label '420x510'")
 
     def test_summaries_write_json_csv_and_markdown(self):
         with tempfile.TemporaryDirectory() as td:
@@ -805,7 +809,9 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             summary_csv_exists = summary_csv.exists()
             summary_md_exists = summary_md.exists()
             summary = json.loads(summary_json.read_text(encoding="utf-8"))
-            csv_header = summary_csv.read_text(encoding="utf-8").splitlines()[0].split(",")
+            csv_text = summary_csv.read_text(encoding="utf-8")
+            csv_rows_parsed = list(csv.reader(io.StringIO(csv_text)))
+            csv_header = csv_rows_parsed[0]
             md_text = summary_md.read_text(encoding="utf-8")
 
         self.assertTrue(summary_json_exists)
@@ -920,8 +926,12 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
         self.assertEqual(single_mock.call_args.kwargs["raw_argv"], raw_argv)
 
     def test_command_invocation_uses_raw_argv(self):
-        source = inspect.getsource(run_iter9.run_iter9_single)
-        self.assertIn('"argv": ["run_iter9.py", *[str(arg) for arg in raw_argv]]', source)
+        raw_argv = ["--image", "assets/input_source_image.png", "--seed", "11", "--allow-noncanonical"]
+        kwargs = make_minimal_metrics_doc_kwargs()
+        kwargs["command_invocation"] = {"argv": ["run_iter9.py", *[str(arg) for arg in raw_argv]]}
+        doc = run_iter9.build_metrics_document({}, **kwargs)
+        self.assertEqual(doc["command_invocation"]["argv"][0], "run_iter9.py", msg="argv must start with 'run_iter9.py'")
+        self.assertEqual(doc["command_invocation"]["argv"][1:], [str(a) for a in raw_argv], msg="argv[1:] must match the raw_argv values")
 
     def test_summary_markdown_escapes_table_cells(self):
         with tempfile.TemporaryDirectory() as td:
@@ -982,7 +992,7 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             "error_type",
             "error_message",
         ]
-        self.assertEqual(run_iter9.IMAGE_SWEEP_SUMMARY_FIELDS, expected_fields)
+        self.assertEqual(run_iter9.IMAGE_SWEEP_SUMMARY_FIELDS, expected_fields, msg="IMAGE_SWEEP_SUMMARY_FIELDS must match the exact expected field order")
 
     def test_summary_writer_accepts_image_dir_string_and_stores_images_discovered(self):
         with tempfile.TemporaryDirectory() as td:
@@ -1432,8 +1442,12 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
         self.assertIn("_300w_seed11", batch_context["batch_id"])
 
     def test_command_invocation_uses_exact_raw_argv_prefix(self):
-        source = inspect.getsource(run_iter9.run_iter9_single)
-        self.assertIn('["run_iter9.py", *[str(arg) for arg in raw_argv]]', source)
+        raw_argv = ["--image", "assets/input_source_image.png", "--out-dir", "results/x"]
+        kwargs = make_minimal_metrics_doc_kwargs()
+        kwargs["command_invocation"] = {"argv": ["run_iter9.py", *[str(arg) for arg in raw_argv]]}
+        doc = run_iter9.build_metrics_document({}, **kwargs)
+        self.assertEqual(doc["command_invocation"]["argv"][:1], ["run_iter9.py"], msg="argv prefix must be 'run_iter9.py'")
+        self.assertEqual(doc["command_invocation"]["argv"][1:], list(raw_argv), msg="argv tail must match raw_argv exactly")
 
 
 if __name__ == "__main__":

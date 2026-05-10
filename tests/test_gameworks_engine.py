@@ -72,15 +72,15 @@ class TestCriticalRegressions:
             for x in range(3):
                 if (x, y) != (0, 0):
                     b.reveal(x, y)
-        assert b._state == "won"
+        assert b._state == "won", f"Board state should be 'won' after all safe cells revealed and mine flagged, got {b._state!r}"
 
     def test_f002a_mine_hit_keeps_playing(self):
         """Mine hit returns hit=True but state stays 'playing' (no game-over)."""
         mp = {(4, 4)}
         b = Board(9, 9, mp)
         hit, _ = b.reveal(4, 4)
-        assert hit
-        assert b._state == "playing"   # game continues after mine hit
+        assert hit, "reveal on mine cell should return hit=True"
+        assert b._state == "playing", f"State should remain 'playing' after mine hit (no game-over), got {b._state!r}"
 
     def test_f001a_fps_importable(self):
         """FIND-ARCH-CRITICAL-f001a: FPS must be importable from renderer."""
@@ -91,11 +91,21 @@ class TestCriticalRegressions:
 
     def test_f005a_btn_w_stored_on_self(self):
         """FIND-ARCH-CRITICAL-f005a: Renderer must store _btn_w as instance attribute."""
+        import pygame as _pg
         pytest.importorskip("pygame", reason="pygame not installed")
-        import inspect
-        import gameworks.renderer as r
-        src = inspect.getsource(r.Renderer.__init__)
-        assert "self._btn_w" in src, "_btn_w must be stored on self in Renderer.__init__"
+        import os
+        os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+        _pg.init()
+        _pg.display.set_mode((800, 600))
+        from gameworks.engine import GameEngine
+        from gameworks.renderer import Renderer
+        eng = GameEngine(mode="random", width=9, height=9, mines=10, seed=42)
+        eng.start()
+        r = Renderer(eng)
+        assert hasattr(r, "_btn_w"), "_btn_w must be stored as an instance attribute on Renderer"
+        assert isinstance(r._btn_w, int) and r._btn_w > 0, f"_btn_w must be a positive int, got {r._btn_w!r}"
+        _pg.quit()
 
     def test_f006a_pipeline_npy_loads_correctly(self):
         """FIND-ARCH-CRITICAL-f006a: Pipeline format .npy (0/1) must load with correct mine count."""
@@ -168,21 +178,21 @@ class TestBoardLogic:
         mp = {(0, 0)}
         b = Board(3, 3, mp)
         # (1, 0) is directly right of the mine
-        assert int(b._neighbours[0, 1]) == 1
+        assert int(b._neighbours[0, 1]) == 1, f"Expected neighbour count 1 at (row=0,col=1), got {int(b._neighbours[0, 1])}"
         # (1, 1) is diagonal to the mine
-        assert int(b._neighbours[1, 1]) == 1
+        assert int(b._neighbours[1, 1]) == 1, f"Expected neighbour count 1 at (row=1,col=1), got {int(b._neighbours[1, 1])}"
         # (2, 2) is far from the mine
-        assert int(b._neighbours[2, 2]) == 0
+        assert int(b._neighbours[2, 2]) == 0, f"Expected neighbour count 0 at (row=2,col=2), got {int(b._neighbours[2, 2])}"
 
     def test_reveal_mine_returns_hit(self):
         """Mine hit returns hit=True but game continues (no game-over)."""
         mp = {(3, 3)}
         b = Board(9, 9, mp)
         hit, revealed = b.reveal(3, 3)
-        assert hit
+        assert hit, "reveal on mine cell should return hit=True"
         # No game-over: mine hit is a penalty, game keeps going
-        assert b._state == "playing"
-        assert b._revealed[3, 3]   # mine cell is revealed
+        assert b._state == "playing", "State should remain 'playing' after mine hit; mine hit is a penalty only"
+        assert b._revealed[3, 3], "Mine cell at (3,3) should be marked revealed on hit even though no game-over occurs"
 
     def test_reveal_safe_cell(self):
         mp = {(0, 0)}
@@ -202,15 +212,27 @@ class TestBoardLogic:
     def test_flag_cycle(self):
         b = make_board()
         result = b.toggle_flag(5, 5)
-        assert result == "flag"
-        assert b._flagged[5, 5]
+        assert result == "flag", f"First toggle should return 'flag', got {result!r}"
+        assert b._flagged[5, 5], "Cell should be flagged after first toggle"
         result = b.toggle_flag(5, 5)
-        assert result == "question"
-        assert b._questioned[5, 5]
+        assert result == "question", f"Second toggle should return 'question', got {result!r}"
+        assert b._questioned[5, 5], "Cell should be questioned after second toggle"
         result = b.toggle_flag(5, 5)
-        assert result == "hidden"
-        assert not b._flagged[5, 5]
-        assert not b._questioned[5, 5]
+        assert result == "hidden", f"Third toggle should return 'hidden', got {result!r}"
+        assert not b._flagged[5, 5], "Cell should not be flagged after third toggle"
+        assert not b._questioned[5, 5], "Cell should not be questioned after third toggle"
+
+    def test_flag_on_revealed_cell_is_silently_ignored(self):
+        """Toggling a flag on an already-revealed cell should be silently ignored."""
+        mp = {(0, 0)}
+        b = Board(5, 5, mp)
+        b.reveal(4, 4)
+        # The flood fill will reveal most cells; find one that is revealed
+        revealed_x, revealed_y = 4, 4
+        assert b._revealed[revealed_y, revealed_x], "Cell should be revealed after reveal()"
+        result = b.toggle_flag(revealed_x, revealed_y)
+        # Silently ignored: state should not have changed
+        assert not b._flagged[revealed_y, revealed_x], "Flagging a revealed cell should be silently ignored"
 
     def test_win_on_all_safe_cells_revealed(self):
         """Win condition: all safe cells revealed (no flagging required)."""
@@ -238,24 +260,49 @@ class TestBoardLogic:
         b.reveal(1, 1)  # cell adjacent to (0,0) — has count 1
         b.toggle_flag(0, 0)
         hit, revealed = b.chord(1, 1)
-        assert not hit
+        assert not hit, "chord on correctly flagged cell should not hit a mine"
+        # Assert that specific neighbours were revealed by the chord operation
+        assert len(revealed) > 0, "chord should reveal at least one neighbour"
+        # (0,1) and (1,0) are neighbours of (1,1) and not mines — should be revealed
+        assert (0, 1) in revealed or (1, 0) in revealed, f"Expected neighbour cells in revealed set, got {revealed}"
 
     def test_snapshot_fields(self):
         mp = {(2, 2)}
         b = Board(5, 5, mp)
         b.toggle_flag(2, 2)
         cs = b.snapshot(2, 2)
-        assert cs.is_mine
-        assert cs.is_flagged
-        assert not cs.is_revealed
+        assert cs.is_mine, "snapshot.is_mine should be True for a mine cell"
+        assert cs.is_flagged, "snapshot.is_flagged should be True after toggle_flag"
+        assert not cs.is_revealed, "snapshot.is_revealed should be False — cell not yet revealed"
+        assert cs.x == 2, f"snapshot.x should be 2, got {cs.x!r}"
+        assert cs.y == 2, f"snapshot.y should be 2, got {cs.y!r}"
+        assert cs.neighbour_count == 0, f"snapshot.neighbour_count for isolated mine should be 0, got {cs.neighbour_count!r}"
 
     def test_wrong_flag_positions(self):
         mp = {(0, 0)}
         b = Board(5, 5, mp)
         b.toggle_flag(1, 1)  # wrong flag (not a mine)
         wrongs = b.wrong_flag_positions()
-        assert (1, 1) in wrongs
-        assert (0, 0) not in wrongs
+        assert (1, 1) in wrongs, "(1,1) is flagged but not a mine — should be in wrong_flag_positions"
+        assert (0, 0) not in wrongs, "(0,0) is a mine but not flagged — should not be in wrong_flag_positions"
+
+    def test_wrong_flag_positions_zero_flags(self):
+        """Zero flags placed → wrong_flag_positions should return empty set."""
+        mp = {(0, 0)}
+        b = Board(5, 5, mp)
+        wrongs = b.wrong_flag_positions()
+        assert len(wrongs) == 0, f"No flags placed, expected empty set, got {wrongs}"
+
+    def test_wrong_flag_positions_multiple_wrong_flags(self):
+        """Multiple wrong flags placed simultaneously."""
+        mp = {(0, 0)}
+        b = Board(5, 5, mp)
+        b.toggle_flag(1, 1)
+        b.toggle_flag(2, 2)
+        wrongs = b.wrong_flag_positions()
+        assert (1, 1) in wrongs, "(1,1) should be in wrong_flag_positions"
+        assert (2, 2) in wrongs, "(2,2) should be in wrong_flag_positions"
+        assert len(wrongs) == 2, f"Expected 2 wrong flags, got {len(wrongs)}: {wrongs}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -332,11 +379,13 @@ class TestGameEngineLifecycle:
         eng._first_click = False
         eng.score = 500
         result = eng.left_click(0, 0)
-        assert result.hit_mine
-        assert eng.state == "playing"         # game continues
-        assert eng.score < 500               # penalty deducted
-        assert eng.streak == 0               # streak reset
-        assert result.penalty > 0
+        assert result.hit_mine, "left_click on mine should set hit_mine=True"
+        assert eng.state == "playing", "game should continue after mine hit (no game-over)"
+        # Assert exact penalty amount: score should equal 500 minus the penalty
+        assert result.penalty > 0, f"penalty should be positive after mine hit, got {result.penalty}"
+        expected_score = 500 - result.penalty
+        assert eng.score == expected_score, f"score should be 500 - penalty ({expected_score}), got {eng.score}"
+        assert eng.streak == 0, "streak should be reset to 0 after mine hit"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -468,3 +517,19 @@ class TestNpyLoading:
                 load_board_from_npy(path)
         finally:
             os.unlink(path)
+
+        g3d = np.zeros((3, 3, 3), dtype=np.int8)
+        path3d = save_game_format_npy(g3d)
+        try:
+            with pytest.raises(ValueError, match="Expected 2D array"):
+                load_board_from_npy(path3d)
+        finally:
+            os.unlink(path3d)
+
+        g4d = np.zeros((2, 2, 2, 2), dtype=np.int8)
+        path4d = save_game_format_npy(g4d)
+        try:
+            with pytest.raises(ValueError, match="Expected 2D array"):
+                load_board_from_npy(path4d)
+        finally:
+            os.unlink(path4d)

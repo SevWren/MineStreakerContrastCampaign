@@ -31,13 +31,19 @@ class EventBatchingTests(unittest.TestCase):
     def test_target_fps_must_be_positive(self):
         with self.assertRaisesRegex(ValueError, "target_fps=0.*> 0"):
             calculate_events_per_frame(events_per_second=600, target_fps=0)
+        with self.assertRaises((ValueError, TypeError)):
+            calculate_events_per_frame(events_per_second=600, target_fps=-1)
 
     def test_events_per_second_must_be_positive(self):
         with self.assertRaisesRegex(ValueError, "events_per_second=0.*> 0"):
             calculate_events_per_frame(events_per_second=0, target_fps=60)
+        with self.assertRaises((ValueError, TypeError)):
+            calculate_events_per_frame(events_per_second=-1, target_fps=60)
 
     def test_no_pygame_clock_is_required(self):
-        source = Path("demos/iter9_visual_solver/playback/event_batching.py").read_text(encoding="utf-8")
+        path = Path("demos/iter9_visual_solver/playback/event_batching.py")
+        self.assertTrue(path.exists(), msg=f"Source file missing: {path}")
+        source = path.read_text(encoding="utf-8")
         self.assertNotIn("pygame", source)
         self.assertNotIn("Clock", source)
 

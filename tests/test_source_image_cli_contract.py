@@ -21,7 +21,8 @@ class SourceImageCliContractTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stderr)
         for flag in ["--image", "--out-dir", "--board-w", "--seed", "--allow-noncanonical", "--image-manifest", "--run-tag"]:
-            self.assertIn(flag, proc.stdout)
+            with self.subTest(flag=flag):
+                self.assertIn(flag, proc.stdout)
 
     def test_run_benchmark_help_exposes_contract_flags(self):
         proc = subprocess.run(
@@ -42,7 +43,8 @@ class SourceImageCliContractTests(unittest.TestCase):
             "--regression-only",
             "--include-regressions",
         ]:
-            self.assertIn(flag, proc.stdout)
+            with self.subTest(flag=flag):
+                self.assertIn(flag, proc.stdout)
 
     def test_default_image_values(self):
         run_iter9 = importlib.import_module("run_iter9")
@@ -96,11 +98,12 @@ class SourceImageCliContractTests(unittest.TestCase):
     def test_run_tag_sanitization_contract(self):
         run_iter9 = importlib.import_module("run_iter9")
         sanitize = run_iter9.sanitize_run_tag
-        self.assertEqual(sanitize("alpha beta"), "alpha_beta")
-        self.assertEqual(sanitize("A--B__C"), "A_B_C")
-        self.assertEqual(sanitize("___---"), "")
-        self.assertLessEqual(len(sanitize("a" * 200)), 64)
-        self.assertEqual(sanitize("  !! a  $$ b -- "), "a_b")
+        self.assertEqual(sanitize("alpha beta"), "alpha_beta", msg="spaces should be replaced with underscores")
+        self.assertEqual(sanitize("A--B__C"), "A_B_C", msg="multiple dashes/underscores should be collapsed")
+        self.assertEqual(sanitize("___---"), "", msg="all separators should produce empty string")
+        self.assertLessEqual(len(sanitize("a" * 200)), 64, msg="sanitized tag must be at most 64 characters")
+        self.assertEqual(sanitize("  !! a  $$ b -- "), "a_b", msg="special chars and surrounding separators should be stripped")
+        self.assertEqual(sanitize(""), "", msg="empty string input should produce empty string")
 
     def test_metrics_helper_blocks_exist_and_flat_keys_preserved(self):
         run_iter9 = importlib.import_module("run_iter9")
@@ -175,7 +178,8 @@ class SourceImageCliContractTests(unittest.TestCase):
             "llm_review_summary",
         ]
         for key in required:
-            self.assertIn(key, doc)
+            with self.subTest(key=key):
+                self.assertIn(key, doc)
         self.assertEqual(doc["repair_route_selected"], "phase2_full_repair")
         self.assertIn("repair_route_result", doc)
         self.assertIn("visual_delta", doc)
@@ -191,7 +195,7 @@ class SourceImageCliContractTests(unittest.TestCase):
     def test_pipeline_run_board_is_present_and_deprecated(self):
         pipeline = importlib.import_module("pipeline")
         self.assertTrue(hasattr(pipeline, "run_board"))
-        self.assertIn("deprecated", (pipeline.run_board.__doc__ or "").lower())
+        self.assertIn("deprecated", (pipeline.run_board.__doc__ or "").lower(), msg="run_board.__doc__ must mention 'deprecated'")
         with mock.patch("assets.image_guard.verify_source_image", side_effect=RuntimeError("stop")):
             with self.assertWarnsRegex(DeprecationWarning, "deprecated"):
                 with self.assertRaisesRegex(RuntimeError, "stop"):
@@ -207,7 +211,7 @@ class SourceImageCliContractTests(unittest.TestCase):
 
     def test_removed_legacy_visual_report_script_is_absent(self):
         legacy_script = PROJECT_ROOT / "run_iris3d_visual_report.py"
-        self.assertFalse(legacy_script.exists())
+        self.assertFalse(legacy_script.exists(), msg=f"Legacy script {legacy_script} must have been removed")
 
     def test_abs_error_variance_replaces_loss_per_cell_in_metrics_write_sites(self):
         """R-009 regression: both metrics write sites must use abs_error_variance,

@@ -62,6 +62,8 @@ class RouteArtifactMetadataTests(unittest.TestCase):
             decision_payload = json.loads(Path(result["repair_route_decision"]).read_text(encoding="utf-8"))
             self.assertIn("phase2_full_repair_hit_time_budget", decision_payload)
             self.assertIn("last100_repair_hit_time_budget", decision_payload)
+            self.assertFalse(decision_payload["phase2_full_repair_hit_time_budget"], msg="route not invoked via phase2, so timeout flag must be False")
+            self.assertFalse(decision_payload["last100_repair_hit_time_budget"], msg="route not invoked via last100, so timeout flag must be False")
 
     def test_repair_route_decision_timeout_fields_on_not_invoked_paths(self):
         grid = np.zeros((3, 3), dtype=np.int8)
@@ -109,12 +111,13 @@ class RouteArtifactMetadataTests(unittest.TestCase):
             )
         )
 
-        for route in cases:
-            payload = self._write_decision_payload(route)
-            self.assertIn("phase2_full_repair_hit_time_budget", payload)
-            self.assertIn("last100_repair_hit_time_budget", payload)
-            self.assertFalse(payload["phase2_full_repair_hit_time_budget"])
-            self.assertFalse(payload["last100_repair_hit_time_budget"])
+        for i, route in enumerate(cases):
+            with self.subTest(case=i):
+                payload = self._write_decision_payload(route)
+                self.assertIn("phase2_full_repair_hit_time_budget", payload, msg=f"case {i}: phase2_full_repair_hit_time_budget missing from decision payload")
+                self.assertIn("last100_repair_hit_time_budget", payload, msg=f"case {i}: last100_repair_hit_time_budget missing from decision payload")
+                self.assertFalse(payload["phase2_full_repair_hit_time_budget"], msg=f"case {i}: phase2 was not run, timeout flag must be False")
+                self.assertFalse(payload["last100_repair_hit_time_budget"], msg=f"case {i}: last100 was not run, timeout flag must be False")
 
     def test_repair_route_decision_timeout_fields_on_invoked_paths(self):
         target = np.zeros((3, 3), dtype=np.float32)
@@ -143,8 +146,8 @@ class RouteArtifactMetadataTests(unittest.TestCase):
                     RepairRoutingConfig(),
                 )
         payload = self._write_decision_payload(route)
-        self.assertTrue(payload["phase2_full_repair_hit_time_budget"])
-        self.assertFalse(payload["last100_repair_hit_time_budget"])
+        self.assertTrue(payload["phase2_full_repair_hit_time_budget"], msg="phase2 was run with timeout=True, so phase2_full_repair_hit_time_budget must be True")
+        self.assertFalse(payload["last100_repair_hit_time_budget"], msg="last100 was not run, so last100_repair_hit_time_budget must be False")
 
         last100_state = np.full((3, 3), SAFE, dtype=np.int8)
         last100_state[1, 1] = UNKNOWN
@@ -166,8 +169,8 @@ class RouteArtifactMetadataTests(unittest.TestCase):
                 RepairRoutingConfig(enable_phase2=False),
             )
         payload = self._write_decision_payload(route)
-        self.assertFalse(payload["phase2_full_repair_hit_time_budget"])
-        self.assertTrue(payload["last100_repair_hit_time_budget"])
+        self.assertFalse(payload["phase2_full_repair_hit_time_budget"], msg="phase2 was not run, so phase2_full_repair_hit_time_budget must be False")
+        self.assertTrue(payload["last100_repair_hit_time_budget"], msg="last100 was run with timeout=True, so last100_repair_hit_time_budget must be True")
 
 
 if __name__ == "__main__":

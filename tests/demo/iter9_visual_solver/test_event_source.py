@@ -82,6 +82,26 @@ class EventSourceTests(unittest.TestCase):
                 board_height=3,
             )
 
+        with self.assertRaises(ValueError):
+            TypedPlaybackEventStore(
+                steps=np.array([0], dtype=np.uint32),
+                y=np.array([0], dtype=np.uint32),
+                x=np.array([5], dtype=np.uint32),
+                state_codes=np.array([STATE_SAFE], dtype=np.uint8),
+                board_width=5,
+                board_height=1,
+            )
+
+        # valid boundary: y == board_height - 1 must NOT raise
+        TypedPlaybackEventStore(
+            steps=np.array([0], dtype=np.uint32),
+            y=np.array([2], dtype=np.uint32),
+            x=np.array([0], dtype=np.uint32),
+            state_codes=np.array([STATE_SAFE], dtype=np.uint8),
+            board_width=1,
+            board_height=3,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

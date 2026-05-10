@@ -13,15 +13,17 @@ class RepairVisualDeltaTests(unittest.TestCase):
         target = np.zeros((2, 2), dtype=np.float32)
         result = compute_repair_visual_delta(before, after, target)
         json.dumps(result)
-        self.assertEqual(result["changed_cells"], 1)
-        self.assertEqual(result["removed_mines"], [[0, 1]])
+        self.assertEqual(result["changed_cells"], 1, msg="Expected 1 changed cell when one mine was removed")
+        self.assertEqual(result["removed_mines"], [[0, 1]], msg="Expected removed_mines=[[0,1]] for mine at (0,1)")
 
     def test_added_mines_are_reported(self):
         before = np.zeros((2, 2), dtype=np.int8)
         after = np.array([[1, 0], [0, 0]], dtype=np.int8)
         target = np.zeros((2, 2), dtype=np.float32)
         result = compute_repair_visual_delta(before, after, target)
-        self.assertEqual(result["added_mines"], [[0, 0]])
+        self.assertEqual(result["added_mines"], [[0, 0]], msg="Expected added_mines=[[0,0]] for mine added at (0,0)")
+        self.assertEqual(result["changed_cells"], 1, msg="Expected 1 changed cell when one mine was added")
+        self.assertEqual(result["removed_mines"], [], msg="Expected removed_mines=[] when no mines were removed")
 
     def test_no_changes_yields_zero_delta(self):
         grid = np.array([[0, 1], [0, 0]], dtype=np.int8)
@@ -38,8 +40,11 @@ class RepairVisualDeltaTests(unittest.TestCase):
         result = compute_repair_visual_delta(before, after, target)
         import json as _json
         _json.dumps(result)
-        for key in ("changed_cells", "removed_mines", "added_mines"):
-            self.assertIn(key, result, msg=f"Missing key: {key}")
+        self.assertEqual(
+            set(result.keys()),
+            {"changed_cells", "removed_mines", "added_mines"},
+            msg=f"Expected exact keys {{changed_cells, removed_mines, added_mines}}, got {set(result.keys())}",
+        )
 
 
 if __name__ == "__main__":

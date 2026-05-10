@@ -10,11 +10,17 @@ class SolverFailureTaxonomyTests(unittest.TestCase):
         sr = SolveResult(n_unknown=0, state=np.full((3, 3), SAFE, dtype=np.int8))
         result = classify_unresolved_clusters(np.zeros((3, 3), dtype=np.int8), sr)
         self.assertEqual(result["dominant_failure_class"], "no_unknowns")
+        self.assertEqual(result["sealed_single_mesa_count"], 0, msg="no_unknowns result should have sealed_single_mesa_count=0")
+        self.assertEqual(result["sealed_multi_cell_cluster_count"], 0, msg="no_unknowns result should have sealed_multi_cell_cluster_count=0")
+        self.assertEqual(result["frontier_adjacent_unknown_count"], 0, msg="no_unknowns result should have frontier_adjacent_unknown_count=0")
 
     def test_missing_solver_state(self):
         sr = SolveResult(n_unknown=5, state=None)
         result = classify_unresolved_clusters(np.zeros((3, 3), dtype=np.int8), sr)
         self.assertEqual(result["dominant_failure_class"], "unclassified_missing_solver_state")
+        for key in ("sealed_single_mesa_count", "sealed_multi_cell_cluster_count", "frontier_adjacent_unknown_count"):
+            self.assertIn(key, result, msg=f"Missing key {key!r} in taxonomy result with missing solver state")
+            self.assertEqual(result[key], 0, msg=f"{key} should be 0 when solver state is None")
 
     def test_sealed_single_mesa(self):
         grid = np.ones((3, 3), dtype=np.int8)

@@ -66,13 +66,14 @@ class RunIter9LaunchHookTests(unittest.TestCase):
             self.assertEqual(code, 0)
             launch.assert_called_once()
             kwargs = launch.call_args.kwargs
-            self.assertEqual(kwargs["grid_path"], out_dir.resolve() / "grid_iter9_latest.npy")
-            self.assertEqual(kwargs["metrics_path"], out_dir.resolve() / "metrics_iter9_8x5.json")
+            self.assertEqual(kwargs["grid_path"], out_dir.resolve() / "grid_iter9_latest.npy", msg="grid_path must point to the latest grid artifact in out_dir")
+            self.assertEqual(kwargs["metrics_path"], out_dir.resolve() / "metrics_iter9_8x5.json", msg="metrics_path must be named using the board label from the run result")
             self.assertEqual(
                 kwargs["config_path"],
                 (Path(run_iter9.__file__).resolve().parent / "configs/demo/iter9_visual_solver_demo.default.json").resolve(),
+                msg="config_path must be resolved relative to the run_iter9 module location",
             )
-            self.assertIsNone(kwargs["event_trace_path"])
+            self.assertIsNone(kwargs["event_trace_path"], msg="event_trace_path must be None when no event trace was written")
 
 
 if __name__ == "__main__":

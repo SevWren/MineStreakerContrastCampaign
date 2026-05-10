@@ -22,8 +22,8 @@ class BoardSurfaceTests(unittest.TestCase):
             self.skipTest("build_board_surface_model is not implemented yet")
         grid = GridBuilder(height=3, width=5).build()
         model = build_board_surface_model(grid)
-        self.assertEqual(model.width, 5)
-        self.assertEqual(model.height, 3)
+        self.assertEqual(model.width, 5, msg="model.width should equal grid width=5")
+        self.assertEqual(model.height, 3, msg="model.height should equal grid height=3")
 
     def test_board_surface_maps_mine_and_safe_cells_to_configured_colors(self):
         from demos.iter9_visual_solver.rendering.board_surface import draw_board_state
@@ -52,6 +52,9 @@ class BoardSurfaceTests(unittest.TestCase):
         )
         self.assertIn(((2, 2, 2), (0, 0, 2, 2)), surface.rect_calls)
         self.assertIn(((3, 3, 3), (2, 0, 2, 2)), surface.rect_calls)
+        self.assertNotIn(((5, 5, 5), (0, 0, 2, 2)), surface.rect_calls, msg="background color (5,5,5) must not be used for mine cell at (0,0)")
+        self.assertNotIn(((5, 5, 5), (2, 0, 2, 2)), surface.rect_calls, msg="background color (5,5,5) must not be used for safe cell at (0,1)")
+        self.assertEqual(len(surface.rect_calls), 2, msg="draw_board_state should draw exactly 2 rects for a 2-cell board")
 
     def test_board_surface_can_skip_full_surface_clear_and_use_origin(self):
         from demos.iter9_visual_solver.rendering.board_surface import draw_board_state
@@ -124,8 +127,9 @@ class BoardSurfaceTests(unittest.TestCase):
         )
         renderer.apply_batch(store.batch(0, 2))
         self.assertEqual(renderer.logical_surface.get_size(), (2, 1))
-        self.assertEqual(fake.draw.rect_calls[-2][2], (0, 0, 1, 1))
-        self.assertEqual(fake.draw.rect_calls[-1][2], (1, 0, 1, 1))
+        rect_coords = [call[2] for call in fake.draw.rect_calls]
+        self.assertIn((0, 0, 1, 1), rect_coords, msg="Expected a rect drawn at (0,0,1,1) for cell (y=0,x=0)")
+        self.assertIn((1, 0, 1, 1), rect_coords, msg="Expected a rect drawn at (1,0,1,1) for cell (y=0,x=1)")
 
     def test_cached_board_surface_reuses_logical_surface_across_scaled_draws(self):
         from demos.iter9_visual_solver.rendering.board_surface import CachedBoardSurfaceRenderer

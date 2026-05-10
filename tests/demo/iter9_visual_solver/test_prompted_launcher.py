@@ -22,6 +22,14 @@ class PromptedLauncherTests(unittest.TestCase):
         self.assertEqual(parse_speed_modifier(" 300X "), 300)
         self.assertEqual(parse_speed_modifier("200"), 200)
 
+    def test_parse_speed_modifier_rejects_invalid_inputs(self):
+        from demos.iter9_visual_solver.cli.prompted_launcher import parse_speed_modifier
+
+        for bad in ["abc", "-5x", "0x", ""]:
+            with self.subTest(value=bad):
+                with self.assertRaises((ValueError, TypeError)):
+                    parse_speed_modifier(bad)
+
     def test_build_prompted_config_scales_speed_and_sets_auto_close(self):
         from demos.iter9_visual_solver.cli.prompted_launcher import build_prompted_config_dict
 
@@ -49,8 +57,8 @@ class PromptedLauncherTests(unittest.TestCase):
             artifacts = resolve_artifact_paths(run.path)
             argv = build_demo_argv(artifacts=artifacts, config_path=config_path)
 
-        self.assertEqual(argv[:6], ["--grid", str(grid_path), "--metrics", str(metrics_path), "--config", str(config_path)])
-        self.assertEqual(argv[6:], ["--event-trace", str(trace_path)])
+        self.assertEqual(argv[:6], ["--grid", str(grid_path), "--metrics", str(metrics_path), "--config", str(config_path)], msg="First 6 argv elements must be --grid, grid_path, --metrics, metrics_path, --config, config_path")
+        self.assertEqual(argv[6:], ["--event-trace", str(trace_path)], msg="Remaining argv elements must be --event-trace followed by the trace path")
 
     def test_prompted_main_writes_temp_config_and_delegates_to_demo_cli(self):
         from demos.iter9_visual_solver.cli import prompted_launcher

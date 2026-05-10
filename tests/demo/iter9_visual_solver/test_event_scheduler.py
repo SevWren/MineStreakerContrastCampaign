@@ -77,6 +77,9 @@ class EventSchedulerTests(unittest.TestCase):
         first = scheduler.next_batch()
         second = scheduler.next_batch()
         self.assertIs(first.steps.base, store.steps)
+        self.assertIs(first.y.base, store.y, msg="batch.y must be a view into store.y (no copy)")
+        self.assertIs(first.x.base, store.x, msg="batch.x must be a view into store.x (no copy)")
+        self.assertIs(first.state_codes.base, store.state_codes, msg="batch.state_codes must be a view into store.state_codes (no copy)")
         self.assertEqual(first.x.tolist(), [0, 1])
         self.assertEqual(second.x.tolist(), [2, 3])
 

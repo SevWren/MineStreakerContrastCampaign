@@ -19,6 +19,9 @@ class GridLoaderTests(unittest.TestCase):
             path = run.write_grid_artifact(grid)
             loaded = load_grid(path)
         self.assertEqual(loaded.shape, (3, 4))
+        self.assertEqual(loaded.dtype, grid.dtype, msg="loaded grid dtype should match original dtype")
+        self.assertEqual(loaded[0, 0], 1, msg="mine at (0,0) should be 1 after load")
+        self.assertEqual(loaded[2, 3], 1, msg="mine at (2,3) should be 1 after load")
 
 
 if __name__ == "__main__":

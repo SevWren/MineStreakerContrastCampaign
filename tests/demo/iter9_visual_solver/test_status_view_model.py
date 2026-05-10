@@ -65,6 +65,7 @@ class StatusViewModelTests(unittest.TestCase):
             show_unknown_cells=False,
         )
         self.assertLessEqual(max(progress.ratio for progress in view_model.progress_bars), 1.0)
+        self.assertGreaterEqual(min(progress.ratio for progress in view_model.progress_bars), 0.0, msg="progress ratio must be >= 0.0; negative values indicate over-flagged mine count was not clamped")
 
     def test_status_view_model_does_not_import_pygame(self):
         source = Path("demos/iter9_visual_solver/rendering/status_view_model.py").read_text(encoding="utf-8")
@@ -81,7 +82,7 @@ class StatusViewModelTests(unittest.TestCase):
         )
         first = factory.build(StatusSnapshotBuilder().with_unknowns(3).build())
         second = factory.build(StatusSnapshotBuilder().with_unknowns(0).with_finish_state("complete - staying open").build())
-        self.assertIs(first.legend_items, second.legend_items)
+        self.assertIs(first.legend_items, second.legend_items, msg="legend_items must be the same object across builds (static, not recomputed)")
         self.assertEqual(first.badge.label, "RUNNING")
         self.assertEqual(second.badge.label, "SOLVED")
 

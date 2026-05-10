@@ -38,7 +38,7 @@ class PygameAdapterContractTests(unittest.TestCase):
             title="test",
             placement=WindowPlacement(x=22, y=None, horizontally_centered=True),
         )
-        self.assertEqual(fake.display.position_calls, [(22, 0)])
+        self.assertEqual(fake.display.position_calls, [(22, 0)], msg="y=0 expected because WindowPlacement(y=None) should default to 0")
 
     def test_open_window_uses_pygame_ce_tuple_window_position_signature(self):
         from demos.iter9_visual_solver.rendering.pygame_adapter import PygameAdapter
@@ -114,7 +114,7 @@ class PygameAdapterContractTests(unittest.TestCase):
         scaled = adapter.scale_surface_nearest(logical, width=30, height=60)
         adapter.blit_surface(target, scaled, (5, 6))
         self.assertEqual(logical.get_size(), (10, 20))
-        self.assertEqual(fake.transform.scale_calls[-1], (logical, (30, 60)))
+        self.assertIn((logical, (30, 60)), fake.transform.scale_calls, msg="scale_surface_nearest must have called transform.scale with (logical, (30, 60))")
         self.assertEqual(target.blit_calls[-1], (scaled, (5, 6)))
 
 

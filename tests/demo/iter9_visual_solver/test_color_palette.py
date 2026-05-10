@@ -15,6 +15,10 @@ class ColorPaletteTests(unittest.TestCase):
             self.skipTest("ColorPalette is not implemented yet")
         palette = ColorPalette.from_config(default_demo_config_dict()["visuals"])
         self.assertEqual(palette.flagged_mine_rgb, (255, 80, 40))
+        self.assertIsNotNone(palette.unseen_cell_rgb)
+        self.assertIsNotNone(palette.safe_cell_rgb)
+        self.assertIsNotNone(palette.unknown_cell_rgb)
+        self.assertIsNotNone(palette.background_rgb)
 
 
 if __name__ == "__main__":

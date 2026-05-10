@@ -34,6 +34,7 @@ class ImageGuardContractTests(unittest.TestCase):
             return_details=True,
         )
         self.assertTrue(details["ok"])
+        self.assertTrue(details["canonical_match"], msg="Default image should have canonical_match=True")
         self.assertEqual(details["validation_mode"], "default_manifest")
         expected_keys = {
             "ok",
@@ -74,9 +75,9 @@ class ImageGuardContractTests(unittest.TestCase):
                 manifest_path=str(manifest_path),
                 return_details=True,
             )
-        self.assertTrue(details["ok"])
+        self.assertTrue(details["ok"], msg="Explicit manifest with matching hashes should return ok=True")
         self.assertEqual(details["validation_mode"], "explicit_manifest")
-        self.assertTrue(details["canonical_match"])
+        self.assertTrue(details["canonical_match"], msg="Canonical image verified against its own hashes should have canonical_match=True")
 
     def test_custom_image_fails_without_manifest_or_noncanonical(self):
         details = verify_source_image(
@@ -86,7 +87,7 @@ class ImageGuardContractTests(unittest.TestCase):
             allow_noncanonical=False,
             return_details=True,
         )
-        self.assertFalse(details["ok"])
+        self.assertFalse(details["ok"], msg="Custom image without manifest or noncanonical permission should return ok=False")
         self.assertEqual(details["validation_mode"], "noncanonical_allowed")
         self.assertIsNone(details["expected"])
         codes = [w["code"] for w in details["warnings"]]
@@ -132,9 +133,9 @@ class ImageGuardContractTests(unittest.TestCase):
                 manifest_path=str(manifest_path),
                 return_details=True,
             )
-        self.assertFalse(details["ok"])
+        self.assertFalse(details["ok"], msg="Mismatched manifest should return ok=False")
         self.assertEqual(details["validation_mode"], "explicit_manifest")
-        self.assertFalse(details["canonical_match"])
+        self.assertFalse(details["canonical_match"], msg="Mismatched sha256 should give canonical_match=False")
 
     def test_default_image_and_manifest_are_repo_root_stable_outside_cwd(self):
         with tempfile.TemporaryDirectory() as td:
@@ -145,9 +146,12 @@ class ImageGuardContractTests(unittest.TestCase):
                     verbose=False,
                     return_details=True,
                 )
-        self.assertTrue(details["ok"])
+        self.assertTrue(details["ok"], msg="Default image should verify ok from outside cwd")
         self.assertEqual(details["validation_mode"], "default_manifest")
-        self.assertTrue(str(details["manifest_path"]).endswith("/assets/SOURCE_IMAGE_HASH.json"))
+        self.assertTrue(
+            str(details["manifest_path"]).endswith("/assets/SOURCE_IMAGE_HASH.json"),
+            msg=f"manifest_path should end with '/assets/SOURCE_IMAGE_HASH.json', got {details['manifest_path']!r}",
+        )
 
 
 if __name__ == "__main__":

@@ -27,8 +27,8 @@ class StatusTextTests(unittest.TestCase):
             .build()
         )
         lines = build_status_lines(snapshot)
-        self.assertIn("Playback speed: 12000 cells/sec", lines)
-        self.assertIn("Finish: running", lines)
+        self.assertIn("Playback speed: 12000 cells/sec", lines, msg="Expected a line 'Playback speed: 12000 cells/sec' in status lines")
+        self.assertIn("Finish: running", lines, msg="Expected a line 'Finish: running' in status lines when playback is in progress")
         self.assertFalse(any("<" in line or ">" in line for line in lines))
 
 

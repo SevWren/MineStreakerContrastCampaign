@@ -170,7 +170,9 @@ class ReportExplanationTests(unittest.TestCase):
         try:
             self.assertEqual(cbar.ax.get_ylabel(), "Demo label")
             tick_texts = [tick.get_text() for tick in cbar.ax.get_yticklabels()]
-            self.assertTrue(any(text.strip() for text in tick_texts))
+            non_empty = [t for t in tick_texts if t.strip()]
+            self.assertTrue(non_empty, msg=f"Expected at least one non-empty tick label, got: {tick_texts!r}")
+            self.assertTrue(any("0" in t or "1" in t or "2" in t or "3" in t for t in non_empty), msg=f"Expected numeric tick labels for [0,1,2,3], got: {non_empty!r}")
         finally:
             plt.close(fig)
 
@@ -179,14 +181,14 @@ class ReportExplanationTests(unittest.TestCase):
         try:
             hist = np.array([100.0, 50.0, 25.0], dtype=np.float64)
             _plot_explained_optimization_progress(ax, hist, metrics={"total_time_s": 75})
-            self.assertIn("lower is better", ax.get_title())
-            self.assertIn("millions of attempted mine changes", ax.get_xlabel())
-            self.assertIn("1 plotted point = 50,000 attempted changes", ax.get_xlabel())
-            self.assertEqual(ax.get_ylabel(), "Match error score (lower is better)")
+            self.assertIn("lower is better", ax.get_title(), msg="Title must contain 'lower is better'")
+            self.assertIn("millions of attempted mine changes", ax.get_xlabel(), msg="X-axis label must mention 'millions of attempted mine changes'")
+            self.assertIn("1 plotted point = 50,000 attempted changes", ax.get_xlabel(), msg="X-axis label must include point scale explanation")
+            self.assertEqual(ax.get_ylabel(), "Match error score (lower is better)", msg="Y-axis label must match expected beginner-readable label")
             legend = ax.get_legend()
-            self.assertIsNotNone(legend)
+            self.assertIsNotNone(legend, msg="Optimization progress chart must have a legend")
             legend_labels = [text.get_text() for text in legend.get_texts()]
-            self.assertIn("Match error score", legend_labels)
+            self.assertIn("Match error score", legend_labels, msg="Legend must include 'Match error score'")
 
             collected = [ax.get_title(), ax.get_xlabel(), ax.get_ylabel(), *legend_labels]
             collected.extend([text.get_text() for text in ax.texts])
@@ -222,7 +224,7 @@ class ReportExplanationTests(unittest.TestCase):
         caption_box: Bbox = caption_ax.get_position()
         metrics_box: Bbox = metrics_ax.get_position()
 
-        self.assertGreater(caption_box.y0, metrics_box.y1)
+        self.assertGreater(caption_box.y0, metrics_box.y1, msg=f"caption_ax (y0={caption_box.y0:.4f}) must be above metrics_ax (y1={metrics_box.y1:.4f}); sidebar axes are overlapping or in wrong order")
         plt.close(fig)
 
     def test_explained_optimization_progress_uses_million_unit_axis(self):
@@ -296,6 +298,7 @@ class ReportExplanationTests(unittest.TestCase):
             )
             self.assertTrue(out_path.exists())
             self.assertGreater(out_path.stat().st_size, 0)
+            self.assertEqual(out_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n", msg="Output file must be a valid PNG (PNG magic bytes mismatch)")
 
     def test_render_repair_overlay_explained_writes_non_empty_png(self):
         target = np.array([[0.0, 1.0, 2.0], [2.0, 3.0, 4.0], [4.0, 5.0, 6.0]], dtype=np.float32)
@@ -332,6 +335,7 @@ class ReportExplanationTests(unittest.TestCase):
             )
             self.assertTrue(out_path.exists())
             self.assertGreater(out_path.stat().st_size, 0)
+            self.assertEqual(out_path.read_bytes()[:8], b"\x89PNG\r\n\x1a\n", msg="Output file must be a valid PNG (PNG magic bytes mismatch)")
 
 
     def test_render_report_explained_legend_mine_count_uses_n_mines_not_subtraction(self):
