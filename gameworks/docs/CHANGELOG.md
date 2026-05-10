@@ -123,4 +123,4 @@ The following areas are noted as shallow or not yet implemented at v0.1.0:
 
 ---
 
-*Gameworks v0.1.0*
+*Gameworks v0.1.1*

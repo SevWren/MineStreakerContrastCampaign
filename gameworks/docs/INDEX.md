@@ -18,6 +18,9 @@ All documentation for this package lives here and is self-contained — independ
 | [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) | Pipeline alignment audit: design patterns, gaps, and recommended improvements |
 | [BUGS.md](BUGS.md) | All open bugs — flat register with root cause, fix spec, and test coverage gap per entry |
 | [BUG_REMEDIATION_PLAN.md](BUG_REMEDIATION_PLAN.md) | 8-phase industry-standard remediation plan — exact code, tests, and verification commands for all 30 bugs |
+| [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) | Performance remediation plan for P-01 through P-18 hot-path optimisations |
+| [TEST_GAP_ANALYSIS.md](TEST_GAP_ANALYSIS.md) | Test gap analysis: health by category, coverage table, and prioritised action plan |
+| [TEST_HARDENING_PLAN.md](TEST_HARDENING_PLAN.md) | Forensic test hardening plan — 25-file audit, 17 GWHARDEN hardening items, verification commands |
 | [gameplay_visual_improvement_ideas.md](gameplay_visual_improvement_ideas.md) | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
 
 ---
@@ -41,6 +44,9 @@ gameworks/
     ├── DESIGN_PATTERNS.md
     ├── BUGS.md
     ├── BUG_REMEDIATION_PLAN.md
+    ├── PERFORMANCE_PLAN.md
+    ├── TEST_GAP_ANALYSIS.md
+    ├── TEST_HARDENING_PLAN.md
     └── gameplay_visual_improvement_ideas.md
 ```
 
@@ -57,4 +63,4 @@ gameworks/
 
 ---
 
-*Gameworks v0.1.0 — part of the Mine-Streaker project.*
+*Gameworks v0.1.1 — part of the Mine-Streaker project.*

@@ -158,4 +158,4 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.p
 
 ---
 
-*Gameworks v0.1.0*
+*Gameworks v0.1.1*

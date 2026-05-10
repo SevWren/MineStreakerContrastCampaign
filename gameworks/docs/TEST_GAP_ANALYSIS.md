@@ -7,68 +7,37 @@
 ## Executive Summary
 
 **Current Test Status:**
-- Total test files: 15
-- Total tests: ~100+
-- Passing: 96% (68/72 renderer + all unit/integration)
-- Failing: 4 animation timing tests
+- Total test files: 18
+- Total tests: 417 (386 passed, 31 skipped, 0 failed)
+- Passing: 100% of collected (386/386)
+- Failing: 0
 - Performance test coverage: 20.6% (7/34 from PERFORMANCE_PLAN.md)
 
 **Test Health by Category:**
 - ✅ **Unit Tests (Engine/Board):** EXCELLENT — comprehensive coverage
-- ✅ **Integration Tests:** GOOD — board modes, CLI parser covered
-- ⚠️ **Renderer Tests:** GOOD — 68/72 pass, 4 timing failures
+- ✅ **Integration Tests:** EXCELLENT — board modes, CLI parser, main() covered
+- ✅ **Renderer Tests:** EXCELLENT — 100% passing (0 failures)
 - ⚠️ **Performance Tests:** PARTIAL — only implemented phases tested
-- ❌ **Main Entry Point:** MISSING — no test for main() function
 
 ---
 
-## Critical Issues (Fix Immediately)
+## Critical Issues
 
-### 1. Failing Animation Tests (4 tests)
+*No critical issues. All previously failing tests are now passing.*
+
+### ✅ 1. Animation Tests — RESOLVED (commit 3989449)
 **File:** `gameworks/tests/renderer/test_animations.py`
-**Status:** 🔴 FAILING
-**Impact:** MEDIUM — Animation bugs may exist in production
+**Status:** ✅ ALL 16 PASSING
 
-**Failures:**
-```
-- test_done_when_all_elapsed
-- test_single_position
-- test_done_after_enough_time
-- test_correct_done_property
-```
-
-**Root Cause:** Timing-sensitive tests using `time.sleep()` + `time.monotonic()` — tests expect animation completion but animations not advancing.
-
-**Action Required:**
-1. Debug animation `.done` property logic
-2. Check `_idx` advancement in AnimationCascade
-3. Verify WinAnimation phase transitions
-4. OR: Refactor tests to use fake clock instead of real sleep
+Previously failing tests (`test_done_when_all_elapsed`, `test_single_position`, `test_done_after_enough_time`, `test_correct_done_property`) were fixed in commit `3989449` (test: fix animation timing tests).
 
 ---
 
-### 2. Phase 2 Cache Invalidation Tests (4 missing)
+### ✅ 2. Phase 2 Cache Invalidation Tests — RESOLVED
 **File:** `gameworks/tests/renderer/test_renderer_init.py`
-**Status:** 🟡 MISSING
-**Impact:** MEDIUM — Cache bugs could cause visual glitches
+**Status:** ✅ 33 TESTS PASSING
 
-**Required Tests:**
-1. `test_win_size_cache_updated_on_videoresize`
-   → Validate `_win_size` updates when window resizes
-2. `test_board_rect_cache_invalidated_on_pan_change`
-   → Validate `_cached_board_rect = None` after pan
-3. `test_board_rect_cache_invalidated_on_zoom_change`
-   → Validate cache cleared after MOUSEWHEEL zoom
-4. `test_draw_smiley_uses_passed_mouse_pos`
-   → Monkeypatch `pygame.mouse.get_pos()`, verify not called
-
-**Why Important:**
-Phase 2 code is already implemented. If cache invalidation is broken, users would see:
-- Stale board positioning after pan/zoom
-- Window size mismatches after resize
-- Incorrect hover states
-
-**Estimated Effort:** 30 minutes
+The 4 required Phase 2 cache invalidation tests have been added and pass.
 
 ---
 
@@ -93,24 +62,11 @@ Existing tests (`test_counters_match_array_state_after_flood_fill`, `test_dev_so
 
 ---
 
-### 4. Main Entry Point Integration Test (1 missing)
-**File:** `gameworks/tests/integration/test_main.py` (NEW FILE)
-**Status:** ❌ MISSING
-**Impact:** LOW-MEDIUM — No coverage of main() flow
+### ✅ 4. Main Entry Point Integration Test — RESOLVED
+**File:** `gameworks/tests/integration/test_main.py`
+**Status:** ✅ 25 TESTS PASSING
 
-**Required Test:**
-```python
-def test_main_entry_point_runs_without_error():
-    """main() should initialize engine, renderer, and run game loop."""
-    # Mock pygame.display, pygame.event to avoid actual window
-    # Call main() with minimal args
-    # Verify no exceptions during initialization
-```
-
-**Why Important:**
-Currently no test validates that all components wire together correctly from the CLI entry point.
-
-**Estimated Effort:** 30 minutes
+`test_main.py` now exists with 25 integration tests covering the main() entry point and game loop wiring.
 
 ---
 
@@ -172,36 +128,40 @@ No specific tests called out in PERFORMANCE_PLAN for Phase 7. Add as needed duri
 
 ## Test Coverage by Module
 
-| Module | File | Tests | Pass | Fail | Coverage |
-|--------|------|-------|------|------|----------|
-| **Engine** | test_board.py | 54 | 54 | 0 | ✅ EXCELLENT |
-| | test_engine.py | ~15 | 15 | 0 | ✅ EXCELLENT |
-| | test_scoring.py | ~10 | 10 | 0 | ✅ EXCELLENT |
-| | test_mine_placement.py | ~8 | 8 | 0 | ✅ GOOD |
-| | test_board_loading.py | ~6 | 6 | 0 | ✅ GOOD |
-| **Renderer** | test_renderer_init.py | 29 | 29 | 0 | ✅ GOOD |
-| | test_cell_draw.py | 5 | 5 | 0 | ✅ GOOD |
-| | test_surface_cache.py | 8 | 8 | 0 | ✅ GOOD |
-| | test_event_handling.py | ~15 | 15 | 0 | ✅ GOOD |
-| | test_animations.py | 16 | 12 | 4 | ⚠️ FAILING |
-| **Integration** | test_board_modes.py | ~5 | 5 | 0 | ✅ GOOD |
-| **CLI** | test_parser.py | ~8 | 8 | 0 | ✅ GOOD |
-| | test_preflight.py | ~5 | 5 | 0 | ✅ GOOD |
-| **Architecture** | test_boundaries.py | ~3 | 3 | 0 | ✅ GOOD |
+| Module | File | Tests | Pass | Skip | Fail | Coverage |
+|--------|------|-------|------|------|------|----------|
+| **Engine** | test_board.py | 65 | 65 | 0 | 0 | ✅ EXCELLENT |
+| | test_board_edge_cases.py | 33 | 33 | 0 | 0 | ✅ EXCELLENT |
+| | test_engine.py | 52 | 52 | 0 | 0 | ✅ EXCELLENT |
+| | test_scoring.py | 28 | 28 | 0 | 0 | ✅ EXCELLENT |
+| | test_mine_placement.py | 14 | 14 | 0 | 0 | ✅ GOOD |
+| | test_board_loading.py | 23 | 12 | 11 | 0 | ✅ GOOD (skips = pipeline dep) |
+| | test_config.py | 12 | 0 | 12 | 0 | ⚠️ ALL SKIPPED |
+| **Renderer** | test_renderer_init.py | 33 | 33 | 0 | 0 | ✅ EXCELLENT |
+| | test_cell_draw.py | 5 | 5 | 0 | 0 | ✅ GOOD |
+| | test_surface_cache.py | 8 | 8 | 0 | 0 | ✅ GOOD |
+| | test_event_handling.py | 22 | 22 | 0 | 0 | ✅ GOOD |
+| | test_animations.py | 16 | 16 | 0 | 0 | ✅ EXCELLENT |
+| | test_zoom.py | 30 | 30 | 0 | 0 | ✅ EXCELLENT |
+| **Integration** | test_board_modes.py | 12 | 11 | 1 | 0 | ✅ GOOD |
+| | test_main.py | 25 | 25 | 0 | 0 | ✅ EXCELLENT |
+| **CLI** | test_parser.py | 16 | 16 | 0 | 0 | ✅ GOOD |
+| | test_preflight.py | 7 | 0 | 7 | 0 | ⚠️ ALL SKIPPED |
+| **Architecture** | test_boundaries.py | 16 | 16 | 0 | 0 | ✅ EXCELLENT |
 
-**Total:** ~187 tests, ~183 passing (97.9%)
+**Total:** 417 tests, 386 passed, 31 skipped, 0 failed (100% of collected passing)
 
 ---
 
 ## Prioritized Action Plan
 
 ### Priority 1: Critical Fixes (Required)
-1. ✅ **Fix 4 animation timing tests** — 1 hour
-2. ✅ **Add 4 Phase 2 invalidation tests** — 30 minutes
+1. ✅ **Fix 4 animation timing tests** — DONE (commit 3989449)
+2. ✅ **Add 4 Phase 2 invalidation tests** — DONE (test_renderer_init.py now has 33 tests)
 
 ### Priority 2: Recommended (High Value)
-3. ⚠️ **Add main() integration test** — 30 minutes
-4. ⚠️ **Add 5 Phase 1 granular tests** (optional) — 20 minutes
+3. ✅ **Add main() integration test** — DONE (test_main.py: 25 tests)
+4. ✅ **Add 5 Phase 1 granular tests** — DONE (covered in test_board.py, test_board_edge_cases.py)
 
 ### Priority 3: Future (When Implementing)
 5. 🔵 **Phase 4-7 tests** — 18 tests total, add when features implemented
@@ -218,10 +178,8 @@ No specific tests called out in PERFORMANCE_PLAN for Phase 7. Add as needed duri
 - **Headless testing configured** (SDL_VIDEODRIVER=dummy)
 
 ### Weaknesses ⚠️
-- **Animation timing tests fragile** — use real time.sleep()
-- **Missing cache invalidation tests** — could hide bugs
-- **No main() integration test** — entry point uncovered
-- **Performance tests incomplete** — only 20.6% of plan
+- **Performance tests incomplete** — only 20.6% of plan covered
+- **test_config.py and test_preflight.py all skipped** — likely missing optional dependency; investigate
 
 ### Opportunities 🎯
 - Use fake/mock clock for animation tests
@@ -233,15 +191,13 @@ No specific tests called out in PERFORMANCE_PLAN for Phase 7. Add as needed duri
 
 ## Conclusion
 
-**Overall Test Health: GOOD (97.9% passing)**
+**Overall Test Health: EXCELLENT (100% of collected tests passing)**
 
-The test suite provides solid coverage of core functionality (Board, Engine, scoring). The main gaps are:
-1. 4 failing animation tests (timing-related)
-2. Missing cache invalidation tests for Phase 2
-3. No main() entry point test
+The test suite provides comprehensive coverage of all core functionality. All previously identified gaps have been closed:
+- Animation timing tests: ✅ all 16 passing
+- Cache invalidation tests: ✅ added and passing
+- main() entry point: ✅ 25 integration tests
 
-**Immediate Action Required:**
-- Fix animation test failures
-- Add 4 Phase 2 invalidation tests
-
-After these fixes, the test suite will be in excellent shape for the implemented features. Additional tests should be added incrementally as Phases 4-7 are implemented.
+**Remaining gaps:**
+- `test_config.py` and `test_preflight.py` skip all tests (optional dependency missing)
+- Performance test coverage for Phases 4–7 deferred until those phases are implemented

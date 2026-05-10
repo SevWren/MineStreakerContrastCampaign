@@ -239,4 +239,4 @@ tile_size = max(MIN_TILE_SIZE, int(min(scale_w, scale_h)))
 
 ---
 
-*Gameworks v0.1.0*
+*Gameworks v0.1.1*

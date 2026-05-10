@@ -56,16 +56,23 @@ See [README.md](README.md) for all launch modes and CLI flags.
 
 ```bash
 # With a display
-pytest tests/test_gameworks_engine.py -v
+pytest gameworks/tests/ -v
 
-# Headless (CI, no display server)
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+# Headless (CI, no display server) — Linux / macOS
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v
+
+# Headless — Windows (cmd)
+set SDL_VIDEODRIVER=dummy && set SDL_AUDIODRIVER=dummy && pytest gameworks/tests/ -v
 ```
 
 ### Full Test Suite
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"
+# Linux / macOS
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q
+
+# Windows (cmd)
+set SDL_VIDEODRIVER=dummy && set SDL_AUDIODRIVER=dummy && python -m pytest gameworks/tests/ -q
 ```
 
 The engine tests do not require Pygame or a display and cover:
@@ -256,4 +263,4 @@ The file is in game-save format but has incorrect neighbour counts (likely corru
 
 ---
 
-*Gameworks v0.1.0*
+*Gameworks v0.1.1*

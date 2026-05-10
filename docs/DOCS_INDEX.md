@@ -2,6 +2,12 @@
 
 This index defines active versus archived documentation paths for this repository snapshot.
 
+## Active — Repository Governance
+
+- `AGENTS.md` — Agent instruction priority and working guidelines for all AI agents in this repo
+- `GEMINI.md` — Project context for Gemini agents: project overview, architecture, and conventions
+- `for_user_review.md` — Policy document: when and how to log changes affecting external consumers
+
 ## Active — Pipeline / Reconstruction
 
 - `docs/explained_report_artifact_contract.md`
@@ -32,13 +38,16 @@ These are the canonical sources of truth for the game — read before modifying 
 | `gameworks/docs/DEVELOPER_GUIDE.md` | Dev setup, testing, extension patterns |
 | `gameworks/docs/CHANGELOG.md` | Version history |
 | `gameworks/docs/DESIGN_PATTERNS.md` | Pipeline alignment audit; R2–R9 improvement recommendations |
-| `gameworks/docs/BUGS.md` | All open bugs — flat register with severity, root cause, fix spec per entry |
+| `gameworks/docs/BUGS.md` | All known bugs — flat register with severity, root cause, fix spec per entry |
 | `gameworks/docs/BUG_REMEDIATION_PLAN.md` | 8-phase remediation plan — exact code, tests, and verification commands for all 30 bugs |
+| `gameworks/docs/PERFORMANCE_PLAN.md` | Performance remediation plan for P-01 through P-18 hot-path optimisations |
+| `gameworks/docs/TEST_GAP_ANALYSIS.md` | Test gap analysis: health by category, coverage table, and prioritised action plan |
+| `gameworks/docs/TEST_HARDENING_PLAN.md` | Forensic test hardening plan — 25-file audit, 17 GWHARDEN hardening items |
 | `gameworks/docs/gameplay_visual_improvement_ideas.md` | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
 
 ## Active — Gameworks Tests
 
-`gameworks/tests/` is the package-local test suite (22 files, scaffolded 2026-05-10).
+`gameworks/tests/` is the package-local test suite (18 files, scaffolded 2026-05-10).
 
 | Directory | Coverage |
 |---|---|
@@ -58,6 +67,10 @@ Pending tests (skipped; activate on R2/R3/R6/R8/R9 implementation):
 Legacy root-level gameworks tests (regression guard):
 - `tests/test_gameworks_engine.py`
 - `tests/test_gameworks_renderer_headless.py`
+
+## Active — Feature Specs (Pending Implementation)
+
+- `docs/FEATURE_SAVE_RESUME_LOAD.md` — Full design spec and implementation checklist for Save/Resume/Load feature (branch: `feature/save-resume-load`). Supplementary docs required on implementation: `docs/SAVE_FORMAT_SPEC.md`, `docs/SCHEMA_MIGRATION.md`, `docs/SECURITY.md`.
 
 ## Archived
 - `docs/archive/codex_late_stage_repair_routing_plan.md`

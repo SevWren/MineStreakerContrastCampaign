@@ -74,19 +74,21 @@ Each module has one named job, stated in its module docstring or first-block com
 - `pipeline.py` — late-stage failure routing and artifact writes
 - `run_iter9.py` — entry point, I/O, orchestration only
 
-**Gameworks status:** PARTIAL
+**Gameworks status:** PRESENT
 
 The three-module split (`engine.py` / `renderer.py` / `main.py`) correctly isolates logic,
-rendering, and orchestration. However:
+rendering, and orchestration. All three modules now have explicit ownership docstrings
+at the top that state what each module owns and what it explicitly does not own.
 
+Notes (not blocking):
 - `engine.py` owns *both* board state logic *and* game session state (scoring, streak,
   timer, first-click safety). These are separate concerns and grow in complexity
   independently.
 - `main.py` owns CLI parsing, the game loop, board construction, and `.npy` saving — four
   distinct responsibilities.
 
-**Gap:** No explicit module-level ownership docstrings (one sentence stating what the
-module owns and what it explicitly does not own).
+These are acknowledged design debts tracked separately but do not affect the PRESENT status
+of the single-responsibility documentation pattern.
 
 ---
 
@@ -361,7 +363,7 @@ testing and reproducibility.
 
 **Gameworks status:** NOT APPLICABLE at current scale
 
-`gameworks/` is at v0.1.0 and has not yet iterated its algorithms. The scoring constants
+`gameworks/` is at v0.1.1 and has not yet iterated its algorithms. The scoring constants
 (`REVEAL_POINTS`, `STREAK_TIERS`) and the flood-fill implementation have not been versioned
 because they have not yet changed.
 
@@ -428,7 +430,7 @@ check, but:
 
 | Pattern | Pipeline | Gameworks | Gap Severity |
 |---|---|---|---|
-| P1 — Single-responsibility modules | Full | Partial | Low |
+| P1 — Single-responsibility modules | Full | Present | None |
 | P2 — Frozen config dataclasses | Full | Absent | Medium |
 | P3 — Rich result dataclasses | Full | Partial | Low |
 | P4 — Pure functions / no side effects | Full | Present | None |
@@ -437,7 +439,7 @@ check, but:
 | P7 — Try/except import guard | Full | Present | None |
 | P8 — Atomic file I/O | Full | Absent | Medium |
 | P9 — Versioned schema strings | Full | Absent | Medium |
-| P10 — Iteration-versioned functions | Full | N/A (v0.1.0) | Deferred |
+| P10 — Iteration-versioned functions | Full | N/A (v0.1.1) | Deferred |
 | P11 — Explicit deprecation | Full | Absent | Low (no legacy APIs yet) |
 | P12 — Integrity verification | Full | Absent | Low |
 
@@ -627,4 +629,4 @@ equivalent in a real-time game loop:
 
 ---
 
-*Gameworks v0.1.0 — Pipeline Alignment Audit*
+*Gameworks v0.1.1 — Pipeline Alignment Audit*

@@ -566,9 +566,11 @@ CLI entry point. Parses arguments, creates `GameLoop`, calls `run()`.
 | `TARGET_SCREEN_H` | `850` | Preferred window height |
 | `PANEL_W` | `240` | Side panel width in pixels |
 | `PANEL_H` | `520` | Side panel height in pixels |
+| `PAD` | `12` | General padding in pixels |
 | `HEADER_H` | `48` | Header bar height in pixels |
+| `NUM_COLS` | list of `pygame.Surface` | Pre-rendered number surfaces indexed 1–8 (index 0 is `None`) |
 | `TILE` | `32` (mutable) | Module-level current tile size; updated by `Renderer.__init__` |
 
 ---
 
-*Gameworks v0.1.0*
+*Gameworks v0.1.1*
