@@ -4,7 +4,7 @@ Canonical record of all known bugs, design gaps, and forensic findings across th
 Each entry carries a status, severity, and resolution notes.
 
 **Branch:** `frontend-game-mockup`
-**Last updated:** 2026-05-10 (session 9 — C-007/M-009 fixed; DEV solve feature added)
+**Last updated:** 2026-05-10 (session 10 — test hardening v0.1.1; GWHARDEN-001–017 resolved)
 
 ---
 
@@ -549,6 +549,102 @@ All remaining test files and demo modules audited. No new bugs found.
 
 **Session 9 fixed:** C-007, M-004, M-009. DEV "Solve Board" button added.
 
-**Still open:** H-005, M-003, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9.
+**Still open:** H-005, M-003, DP-R2, DP-R3, DP-R6, DP-R8, DP-R9, ANIM-001, PF-001.
+
+---
+
+## Session 10 — Test Hardening v0.1.1
+
+Full forensic review of all 25 `gameworks/tests/` files against `engine.py`, `renderer.py`,
+and `main.py`. 17 hardening items identified and resolved per `gameworks/docs/TEST_HARDENING_PLAN.md`.
+4 additional pre-existing bugs fixed as discovered during implementation.
+
+### GWHARDEN-001 — RESOLVED
+- `test_parser.py::TestDimensionFlags` used `--width`/`--height`; correct flags are `--board-w`/`--board-h`.
+
+### GWHARDEN-002 — RESOLVED
+- `test_parser.py` asserted `args.easy/medium/hard`; correct attribute is `args.diff` (`dest="diff"`).
+
+### GWHARDEN-003 — RESOLVED (source fix)
+- `GameEngine.from_difficulty()` silently fell back to medium on unknown input.
+- Fix: raises `ValueError` with descriptive message and valid-values list.
+
+### GWHARDEN-004 — RESOLVED (source fix)
+- Dead unreachable win-check in `Board.toggle_flag()` (lines 221–222) removed.
+- Win is purely safe-cell-count based; flag placement cannot trigger a win.
+
+### GWHARDEN-005 — RESOLVED
+- `test_wrong_flag_deducts_score`: weak `<= 500` assertion replaced with exact `== 500 - WRONG_FLAG_PENALTY` (475).
+
+### GWHARDEN-006 — RESOLVED
+- `test_fog_surf_stable_across_frames`: test never set `r.fog = True`; trivially passed on `id(None)==id(None)`. Fixed.
+
+### GWHARDEN-007 — RESOLVED
+- `test_num_surfs_initially_none_or_dict` / `test_num_surfs_none_before_first_draw`: `_num_surfs` is always a `dict` after `__init__`. Tightened to `isinstance(dict)` and renamed accordingly.
+
+### GWHARDEN-008 — RESOLVED
+- `_imports_in()` docstring falsely stated "Does NOT descend into function bodies"; `ast.walk()` descends everywhere. Corrected.
+
+### GWHARDEN-009 — RESOLVED
+- `test_chord_on_zero_count_cell_is_noop`: added `assert revealed == []`.
+
+### GWHARDEN-010 — RESOLVED
+- `test_saved_board_reloads_same_mine_count`: added exact position check `set(b2.all_mine_positions()) == set(b.all_mine_positions())`.
+
+### GWHARDEN-011 — RESOLVED
+- Added `TestDevSolveBoard` class (11 tests) covering `GameEngine.dev_solve_board()` which had zero coverage.
+
+### GWHARDEN-012 — RESOLVED
+- Added `test_game_over_true_after_win` to `TestBoardProperties`.
+
+### GWHARDEN-013 — RESOLVED
+- Added `test_safe_revealed_count_excludes_mine_hit` to `TestBoardProperties`.
+
+### GWHARDEN-014 — RESOLVED
+- Added `TestRestartModes` class with npy and image mode restart tests.
+
+### GWHARDEN-015 — RESOLVED
+- Added `test_3d_array_raises_value_error` to `TestLoadErrors`.
+
+### GWHARDEN-016 — RESOLVED
+- Added `TestArrowKeyPanning` class (8 tests) covering K_LEFT/K_RIGHT/K_UP/K_DOWN handlers.
+
+### GWHARDEN-017 — RESOLVED
+- `test_chord_fires_when_flag_count_matches`: added `assert len(revealed) > 0`.
+
+### Bonus fixes (pre-existing, discovered during hardening)
+
+**mine_flash ordering bug** — 4 tests in `test_engine.py` set `eng._first_click = False` before
+`eng.start()`, which then reset it to `True`. Fixed by moving the assignment after `start()`.
+Affected: `engine_with_mine_at` helper, `test_mine_flash_populated_on_hit`,
+`test_mine_flash_value_is_future_timestamp`, `test_restart_clears_mine_flash`.
+
+**`load_board_from_pipeline` fallback bug** — `board_h` was unbound in the `except` handler
+when the pipeline import failed before line 363. Fixed: `_h = locals().get("board_h", board_w)`.
+Affected: `test_image_mode_falls_back_to_random_on_missing_file` and new image restart test.
+
+---
+
+### [ANIM-001] `AnimationCascade.done` / `WinAnimation.done` never become True after elapsed time
+- **Status:** `OPEN`
+- **File:** `gameworks/renderer.py` (AnimationCascade and WinAnimation classes) + `gameworks/tests/renderer/test_animations.py`
+- **Failing tests:**
+  - `TestAnimationCascade::test_done_when_all_elapsed`
+  - `TestAnimationCascade::test_single_position`
+  - `TestWinAnimation::test_done_after_enough_time`
+  - `TestWinAnimation::test_correct_done_property`
+- **Detail:** Both `done` properties do not transition to `True` after sufficient `time.sleep()`. Root cause
+  is a bug in the animation timing logic in `renderer.py`. Out of scope for this hardening session.
+- **Discovered:** Session 10 pre-push baseline capture.
+
+### [PF-001] Pre-existing pyflakes warnings in 3 test files (unused imports)
+- **Status:** `OPEN`
+- **Files/Lines:**
+  - `gameworks/tests/unit/test_engine.py:23` — `place_random_mines` imported but unused
+  - `gameworks/tests/architecture/test_boundaries.py:20` — `os` imported but unused
+  - `gameworks/tests/architecture/test_boundaries.py:214` — `gameworks.engine` imported but unused (intentional side-effect import inside test)
+  - `gameworks/tests/unit/test_board_loading.py:23` — `place_random_mines` imported but unused
+  - `gameworks/tests/unit/test_board_loading.py:208` — `BoardLoadResult` imported but unused (inside skipped pending test)
+- **Detail:** All warnings existed in the pre-change baseline. None introduced by this session.
 
 *Log maintained by: Claude Sonnet 4.6 via Maton Tasks*

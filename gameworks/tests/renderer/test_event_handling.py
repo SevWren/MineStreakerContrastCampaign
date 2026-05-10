@@ -67,3 +67,58 @@ class TestHandleEventReturnTypes:
         ev = _make_event(pygame.MOUSEMOTION, pos=(100, 100), rel=(0, 0), buttons=(0, 0, 0))
         result = r.handle_event(ev)
         assert result is None
+
+
+class TestArrowKeyPanning:
+
+    def test_left_arrow_returns_none(self, renderer_easy):
+        r, _ = renderer_easy
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_LEFT, mod=0, unicode="")
+        result = r.handle_event(ev)
+        assert result is None
+
+    def test_right_arrow_returns_none(self, renderer_easy):
+        r, _ = renderer_easy
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0, unicode="")
+        result = r.handle_event(ev)
+        assert result is None
+
+    def test_up_arrow_returns_none(self, renderer_easy):
+        r, _ = renderer_easy
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_UP, mod=0, unicode="")
+        result = r.handle_event(ev)
+        assert result is None
+
+    def test_down_arrow_returns_none(self, renderer_easy):
+        r, _ = renderer_easy
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0, unicode="")
+        result = r.handle_event(ev)
+        assert result is None
+
+    def test_left_arrow_increases_pan_x(self, renderer_easy):
+        r, _ = renderer_easy
+        r._pan_x = -30
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_LEFT, mod=0, unicode="")
+        r.handle_event(ev)
+        assert r._pan_x > -30
+
+    def test_right_arrow_decreases_or_maintains_pan_x(self, renderer_easy):
+        r, _ = renderer_easy
+        r._pan_x = 0
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0, unicode="")
+        r.handle_event(ev)
+        assert r._pan_x <= 0
+
+    def test_up_arrow_increases_pan_y(self, renderer_easy):
+        r, _ = renderer_easy
+        r._pan_y = -30
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_UP, mod=0, unicode="")
+        r.handle_event(ev)
+        assert r._pan_y > -30
+
+    def test_down_arrow_decreases_or_maintains_pan_y(self, renderer_easy):
+        r, _ = renderer_easy
+        r._pan_y = 0
+        ev = _make_event(pygame.KEYDOWN, key=pygame.K_DOWN, mod=0, unicode="")
+        r.handle_event(ev)
+        assert r._pan_y <= 0

@@ -170,6 +170,15 @@ class TestLoadErrors:
         with pytest.raises((FileNotFoundError, OSError, ValueError)):
             load_board_from_npy("/tmp/does_not_exist_gameworks_test.npy")
 
+    def test_3d_array_raises_value_error(self):
+        grid = np.zeros((3, 5, 5), dtype=np.int8)
+        path = write_npy(grid)
+        try:
+            with pytest.raises(ValueError):
+                load_board_from_npy(path)
+        finally:
+            os.unlink(path)
+
 
 # ---------------------------------------------------------------------------
 # BoardLoadResult (R3 — PENDING)

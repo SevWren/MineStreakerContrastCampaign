@@ -24,10 +24,10 @@ pygame = pytest.importorskip("pygame", reason="pygame not installed")
 
 class TestNumSurfsCache:
 
-    def test_num_surfs_none_before_first_draw(self, renderer_easy):
-        """Number digit cache must be None until first draw populates it."""
+    def test_num_surfs_is_dict_after_init(self, renderer_easy):
+        """Number digit cache is built unconditionally in __init__."""
         r, _ = renderer_easy
-        assert r._num_surfs is None or isinstance(r._num_surfs, dict)
+        assert isinstance(r._num_surfs, dict)
 
     def test_num_surfs_populated_after_draw(self, renderer_easy):
         r, eng = renderer_easy
@@ -72,6 +72,7 @@ class TestFogSurfCache:
 
     def test_fog_surf_stable_across_frames(self, renderer_easy):
         r, _ = renderer_easy
+        r.fog = True
         r.draw(mouse_pos=(0, 0), game_state="playing", elapsed=0.0, cascade_done=True)
         surf1 = id(r._fog_surf)
         r.draw(mouse_pos=(0, 0), game_state="playing", elapsed=0.0, cascade_done=True)

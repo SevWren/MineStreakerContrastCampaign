@@ -126,6 +126,7 @@ class TestSaveLoadRoundTrip:
         try:
             b2 = load_board_from_npy(f.name)
             assert b2.total_mines == b.total_mines
+            assert set(b2.all_mine_positions()) == set(b.all_mine_positions())
         finally:
             os.unlink(f.name)
 

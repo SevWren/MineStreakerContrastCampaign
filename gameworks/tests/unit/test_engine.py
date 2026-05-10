@@ -20,7 +20,13 @@ import time
 
 import pytest
 
-from gameworks.engine import Board, GameEngine, MoveResult, place_random_mines
+from gameworks.engine import (
+    Board,
+    GameEngine,
+    MoveResult,
+    WRONG_FLAG_PENALTY,
+    place_random_mines,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +44,8 @@ def engine_with_mine_at(x: int, y: int, w: int = 9, h: int = 9) -> GameEngine:
     mines = {(x, y)}
     eng = GameEngine(mode="random", width=w, height=h, mines=1, seed=0)
     eng.board = Board(w, h, mines)
-    eng._first_click = False
     eng.start()
+    eng._first_click = False  # must be set after start() to avoid reset
     return eng
 
 
@@ -196,7 +202,7 @@ class TestScoring:
             for x in range(9):
                 if not eng.board._mine[y, x]:
                     eng.right_click(x, y)
-                    assert eng.score <= 500
+                    assert eng.score == 500 - WRONG_FLAG_PENALTY
                     return
         pytest.skip("No safe cell found")
 
@@ -249,8 +255,8 @@ class TestMineFlash:
         mines = {(2, 2)}
         eng = GameEngine(mode="random", width=9, height=9, mines=1, seed=0)
         eng.board = Board(9, 9, mines)
-        eng._first_click = False
         eng.start()
+        eng._first_click = False  # must be set after start() to avoid reset
         eng.left_click(2, 2)
         assert (2, 2) in eng.mine_flash
 
@@ -258,8 +264,8 @@ class TestMineFlash:
         mines = {(2, 2)}
         eng = GameEngine(mode="random", width=9, height=9, mines=1, seed=0)
         eng.board = Board(9, 9, mines)
-        eng._first_click = False
         eng.start()
+        eng._first_click = False  # must be set after start() to avoid reset
         eng.left_click(2, 2)
         expiry = eng.mine_flash[(2, 2)]
         assert expiry > time.monotonic()
@@ -304,8 +310,8 @@ class TestRestart:
         mines = {(2, 2)}
         eng = GameEngine(mode="random", width=9, height=9, mines=1, seed=0)
         eng.board = Board(9, 9, mines)
-        eng._first_click = False
         eng.start()
+        eng._first_click = False  # must be set after start() to avoid reset
         eng.left_click(2, 2)
         assert len(eng.mine_flash) > 0
         eng.restart()
@@ -339,3 +345,110 @@ class TestFromDifficulty:
     def test_invalid_difficulty_raises(self):
         with pytest.raises((KeyError, ValueError)):
             GameEngine.from_difficulty("impossible")
+
+
+# ---------------------------------------------------------------------------
+# dev_solve_board()
+# ---------------------------------------------------------------------------
+
+class TestDevSolveBoard:
+
+    def _make_solvable_engine(self) -> GameEngine:
+        """Return a started engine with one mine that has NOT been triggered."""
+        mines = {(0, 0)}
+        eng = GameEngine(mode="random", width=5, height=5, mines=1, seed=0)
+        eng.board = Board(5, 5, mines)
+        eng._first_click = False
+        eng.start()
+        return eng
+
+    def test_dev_solve_returns_move_result(self):
+        eng = self._make_solvable_engine()
+        result = eng.dev_solve_board()
+        assert isinstance(result, MoveResult)
+
+    def test_dev_solve_success_true_while_playing(self):
+        eng = self._make_solvable_engine()
+        result = eng.dev_solve_board()
+        assert result.success is True
+
+    def test_dev_solve_state_is_won(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        assert eng.state == "won"
+
+    def test_dev_solve_all_safe_cells_revealed(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        assert eng.board.safe_revealed_count == eng.board.total_safe
+
+    def test_dev_solve_all_mines_flagged(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        assert eng.board.correct_flags == eng.board.total_mines
+
+    def test_dev_solve_no_wrong_flags(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        assert eng.board.wrong_flag_positions() == []
+
+    def test_dev_solve_no_question_marks(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        assert eng.board.questioned_count == 0
+
+    def test_dev_solve_score_delta_is_zero(self):
+        eng = self._make_solvable_engine()
+        result = eng.dev_solve_board()
+        assert result.score_delta == 0
+
+    def test_dev_solve_timer_stopped(self):
+        import time
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()
+        t0 = eng.elapsed
+        time.sleep(0.05)
+        assert eng.elapsed == t0
+
+    def test_dev_solve_already_won_returns_success_false(self):
+        eng = self._make_solvable_engine()
+        eng.dev_solve_board()          # first call wins
+        result = eng.dev_solve_board() # second call — already terminal
+        assert result.success is False
+
+    def test_dev_solve_clears_question_marks_set_before_call(self):
+        eng = self._make_solvable_engine()
+        eng.board.toggle_flag(2, 2)    # → flag
+        eng.board.toggle_flag(2, 2)    # → question
+        assert eng.board.questioned_count == 1
+        eng.dev_solve_board()
+        assert eng.board.questioned_count == 0
+
+
+# ---------------------------------------------------------------------------
+# restart() — npy and image mode variants (GWHARDEN-014)
+# ---------------------------------------------------------------------------
+
+class TestRestartModes:
+
+    def test_restart_npy_mode_preserves_mine_count(self, tmp_path):
+        import numpy as np
+        grid = np.zeros((5, 5), dtype=np.int8)
+        grid[0, 0] = 1
+        grid[4, 4] = 1
+        npy_file = str(tmp_path / "board.npy")
+        np.save(npy_file, grid)
+
+        eng = GameEngine(mode="npy", npy_path=npy_file, seed=1)
+        eng.start()
+        mines_before = eng.board.total_mines
+        eng.restart()
+        assert eng.board.total_mines == mines_before
+
+    def test_restart_image_mode_produces_playable_board(self):
+        eng = GameEngine(mode="image", image_path="/nonexistent/img.png",
+                         width=9, height=9, seed=1)
+        eng.start()
+        eng.restart()
+        assert eng.state == "playing"
+        assert eng.board.total_mines >= 1

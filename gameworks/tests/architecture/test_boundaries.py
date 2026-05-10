@@ -40,9 +40,9 @@ def _source(filename: str) -> str:
 
 def _imports_in(source: str) -> List[str]:
     """
-    Return a flat list of all top-level module names imported in the source.
+    Return a flat list of all module names imported anywhere in the source.
     Handles: import X, from X import Y, from X.Y import Z.
-    Does NOT descend into function bodies (catches top-level and class-level imports).
+    Uses ast.walk() which descends into all scopes including function bodies.
     """
     tree = ast.parse(source)
     names = []

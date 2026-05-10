@@ -288,6 +288,7 @@ class TestChord:
         b.reveal(8, 8)   # far corner, should be 0-count and flood-filled
         hit, revealed = b.chord(8, 8)
         assert not hit
+        assert revealed == []
 
     def test_chord_fires_when_flag_count_matches(self):
         mines = {(0, 0)}
@@ -296,6 +297,7 @@ class TestChord:
         b.toggle_flag(0, 0)     # flag the mine
         hit, revealed = b.chord(1, 1)
         assert not hit
+        assert len(revealed) > 0
 
     def test_chord_noop_when_flag_count_does_not_match(self):
         mines = {(0, 0), (2, 0)}
@@ -369,10 +371,28 @@ class TestBoardProperties:
         b = board()
         assert not b.game_over
 
+    def test_game_over_true_after_win(self):
+        """game_over must return True once the board reaches 'won' state."""
+        mines = {(0, 0)}
+        b = Board(2, 2, mines)
+        b.reveal(1, 0)
+        b.reveal(0, 1)
+        b.reveal(1, 1)
+        assert b._state == "won"
+        assert b.game_over
+
     def test_is_lost_initially_false(self):
         """is_lost must always be False — there is no lose state."""
         b = board()
         assert not b.is_lost
+
+    def test_safe_revealed_count_excludes_mine_hit(self):
+        """Clicking a mine cell increments revealed_count but NOT safe_revealed_count."""
+        mines = {(0, 0)}
+        b = Board(5, 5, mines)
+        safe_before = b.safe_revealed_count
+        b.reveal(0, 0)   # mine hit — should NOT increment safe_revealed_count
+        assert b.safe_revealed_count == safe_before
 
     def test_questioned_count_tracks_cycle(self):
         b = board()

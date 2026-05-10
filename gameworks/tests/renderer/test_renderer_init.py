@@ -107,9 +107,10 @@ class TestSurfaceCacheInit:
         r, _ = renderer_easy
         assert r._fog_surf is None or isinstance(r._fog_surf, pygame.Surface)
 
-    def test_num_surfs_initially_none_or_dict(self, renderer_easy):
+    def test_num_surfs_is_dict_after_init(self, renderer_easy):
+        """_num_surfs is populated unconditionally in __init__ via _rebuild_num_surfs()."""
         r, _ = renderer_easy
-        assert r._num_surfs is None or isinstance(r._num_surfs, dict)
+        assert isinstance(r._num_surfs, dict)
 
     def test_thumb_surf_none_without_image(self, renderer_easy):
         """No image_path → thumbnail surface must be None."""

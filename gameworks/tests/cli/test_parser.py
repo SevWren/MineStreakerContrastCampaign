@@ -54,15 +54,15 @@ class TestDifficultyFlags:
 
     def test_easy_flag_exists(self):
         args = parse("--random", "--easy")
-        assert args.easy is True
+        assert args.diff == "easy"
 
     def test_medium_flag_exists(self):
         args = parse("--random", "--medium")
-        assert args.medium is True
+        assert args.diff == "medium"
 
     def test_hard_flag_exists(self):
         args = parse("--random", "--hard")
-        assert args.hard is True
+        assert args.diff == "hard"
 
 
 # ---------------------------------------------------------------------------
@@ -72,12 +72,12 @@ class TestDifficultyFlags:
 class TestDimensionFlags:
 
     def test_width_flag(self):
-        args = parse("--random", "--width", "20")
-        assert args.width == 20
+        args = parse("--random", "--board-w", "20")
+        assert args.board_w == 20
 
     def test_height_flag(self):
-        args = parse("--random", "--height", "15")
-        assert args.height == 15
+        args = parse("--random", "--board-h", "15")
+        assert args.board_h == 15
 
     def test_mines_flag(self):
         args = parse("--random", "--mines", "30")
@@ -107,11 +107,9 @@ class TestDefaults:
         args = parse("--random")
         assert isinstance(args.seed, int)
 
-    def test_easy_medium_hard_default_false(self):
+    def test_easy_medium_hard_default_none(self):
         args = parse("--random")
-        assert args.easy is False
-        assert args.medium is False
-        assert args.hard is False
+        assert args.diff is None
 
 
 # ---------------------------------------------------------------------------

@@ -217,10 +217,6 @@ class Board:
 
         # hidden → flag
         self._flagged[y, x] = True
-
-        if self.revealed_count == self.total_safe:
-            self._state = "won"
-
         return "flag"
 
     def snapshot(self, x: int, y: int) -> CellState:
@@ -413,9 +409,10 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
     except Exception as exc:
         print(f"[WARN] MineStreaker pipeline failed ({exc}); falling back to random.")
         traceback.print_exc()
-        c = max(1, board_w * board_h // 8)
-        mp = place_random_mines(board_w, board_h, c, seed=seed)
-        return Board(board_w, board_h, mp)
+        _h = locals().get("board_h", board_w)
+        c = max(1, board_w * _h // 8)
+        mp = place_random_mines(board_w, _h, c, seed=seed)
+        return Board(board_w, _h, mp)
     finally:
         _sys.path = _backup
 
@@ -521,7 +518,12 @@ class GameEngine:
 
     @classmethod
     def from_difficulty(cls, diff: str, seed: int = 42) -> "GameEngine":
-        w, h, m = cls.DIFFICULTIES.get(diff, cls.DIFFICULTIES["medium"])
+        if diff not in cls.DIFFICULTIES:
+            raise ValueError(
+                f"Unknown difficulty {diff!r}. "
+                f"Valid values: {list(cls.DIFFICULTIES)}"
+            )
+        w, h, m = cls.DIFFICULTIES[diff]
         return cls(mode="random", width=w, height=h, mines=m, seed=seed)
 
     # ── Player Actions ─────────────────────────────────────────────────
