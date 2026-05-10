@@ -201,6 +201,7 @@ class GameLoop:
                     self._state = self.RESULT
                     self._result_time = time.time()
                     self._result_shown = False
+                    self._renderer.start_win_animation()
                 elif self._engine.state == "lost":
                     self._state = self.RESULT
                     self._result_time = time.time()
@@ -221,10 +222,15 @@ class GameLoop:
 
             # Draw result overlays
             if self._state == self.RESULT and not self._result_shown:
-                if gs == "won":
+                # During win animation, let draw_victory handle it (it shows modal only after anim completes)
+                if gs == "won" and self._renderer.win_anim and not self._renderer.win_anim.done:
+                    pass  # animation still running — draw_victory skips modal
+                elif gs == "won":
                     self._renderer.draw_victory(elapsed)
-                else:
+                    self._result_shown = True
+                elif gs == "lost":
                     self._renderer.draw_defeat()
+                    self._result_shown = True
 
             self._renderer._clock.tick(FPS)
 

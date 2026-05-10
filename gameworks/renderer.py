@@ -937,10 +937,11 @@ class Renderer:
 
     # ── Victory overlay ───────────────────────────────────────────────
 
+    def start_win_animation(self):
+        """Called once when the game transitions to 'won'."""
+        self.win_anim = WinAnimation(self.board)
+
     def draw_victory(self, elapsed):
-        # During win animation, show modal on top of animation
-        if self.win_anim is None:
-            self.win_anim = WinAnimation(self.board)
         self._draw_modal("YOU WIN!", f"Time: {int(elapsed)}s  |  Flags: {self.board.flags_placed}")
 
     def draw_defeat(self):
