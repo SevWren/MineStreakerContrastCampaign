@@ -1,535 +1,736 @@
-# Documentation Review & Refresh Checklist
+# DOC_REVIEW_REFRESH — Agentic Skill
 
-**Type**: Reusable agentic runbook — execute on every feature merge, sprint end, or on-demand
-**Scope**: All documentation in this repository
-**Agent instructions**: Each step contains explicit commands to run, files to read, comparisons to make, and edits to perform. No step is complete until its verification command produces a clean result.
+**Skill ID**: `doc-review-refresh`
+**Version**: 1.0.0
+**Trigger**: Run this skill on every feature merge, sprint end, constant or API rename, or on explicit user request.
+**Agent**: Any LLM agent with shell access and file read/write capability in this repository.
+**Output**: All stale documentation is corrected and committed. The agent emits a structured `RUNLOG` at the end.
 
 ---
 
-## How to Use This Checklist
+## Role
 
-Run this checklist in order. Each phase is independently executable. Mark each item `[x]` as you complete it. Reset all items to `[ ]` before the next run. Never skip a phase — later phases depend on Phase 0 establishing ground truth.
+You are the **Documentation Review & Refresh Agent** for the `MineStreakerContrastCampaign` repository.
+Your sole responsibility in this execution is to make every documentation file in `gameworks/docs/` and `docs/` accurately reflect the current state of the codebase. You do not write new features, modify runtime code, or comment on code quality. You read code, compare it against docs, and update docs to match.
 
-**Trigger conditions** (any one is sufficient to run this checklist):
-- A feature branch is merged into `frontend-game-mockup`
-- A bug is fixed and committed
-- A constant, function signature, or class is renamed or removed
-- A new file is added to `gameworks/`
-- A new test file is added or test counts change
-- `gameworks/__init__.py` version is bumped
-- Scheduled: once per sprint regardless of changes
+---
+
+## Execution Contract
+
+- **Never edit runtime code** (`.py` files). You may only read `.py` files to establish ground truth.
+- **Never skip a phase**. Each phase depends on Phase 0's ground truth. If Phase 0 fails, stop and report the error.
+- **Never assume a doc is current**. Every doc must be verified against a live shell command before you trust its content.
+- **Record every change you make** in the `RUNLOG` section at the end of this skill execution.
+- **Commit only documentation files** (`*.md`, `.github/*.md`). Never stage `.py`, `.npy`, `.npz`, or any binary.
+- If a required doc is missing, create it using the spec in Phase 13. Do not skip ahead.
 
 ---
 
 ## Phase 0 — Establish Ground Truth
 
-*Purpose: before touching any doc, capture the current state of the code so every doc comparison is against reality, not memory.*
+*Purpose: before touching any doc, capture a precise snapshot of the live codebase. Every subsequent phase verifies against these captured values, not memory or assumptions.*
 
-- [ ] **Read `gameworks/__init__.py`** — record the current `__version__` string. Every doc that contains a version string must match this value exactly.
-  ```bash
-  grep "__version__" gameworks/__init__.py
-  ```
+### 0-A. Version
 
-- [ ] **Count all passing tests** — record the exact number. Any doc that cites a test count must be updated to this number.
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | tail -3
-  ```
+```bash
+grep "__version__" gameworks/__init__.py
+```
 
-- [ ] **List all public symbols in `engine.py`** — every class, function, constant, and dataclass at module level. Any doc that lists the public API must be reconciled against this list.
-  ```bash
-  grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/engine.py
-  ```
+Capture the exact string (e.g., `"0.1.1"`). Call this `$GT_VERSION`. Every doc that references a version must match this exactly.
 
-- [ ] **List all public symbols in `renderer.py`**
-  ```bash
-  grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/renderer.py
-  ```
+### 0-B. Test Health
 
-- [ ] **List all public symbols in `main.py`**
-  ```bash
-  grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/main.py
-  ```
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | tail -5
+```
 
-- [ ] **List all test files and their test counts**
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ --collect-only -q 2>&1 | grep "::"  | sed 's/::.*/::/g' | sort | uniq -c | sort -rn | head -30
-  ```
+Capture: total tests collected, total passed, total failed. Call these `$GT_TOTAL`, `$GT_PASSED`, `$GT_FAILED`.
 
-- [ ] **List all currently failing tests** — these must match the known pre-existing failure list in `TEST_GAP_ANALYSIS.md`. Any new failures are regressions to fix before proceeding.
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | grep FAILED
-  ```
+List every failing test name:
 
-- [ ] **List all action strings returned by `handle_event()`** — any doc that lists the action string contract must match this list.
-  ```bash
-  grep -n "return \"" gameworks/renderer.py | grep -v "#"
-  ```
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | grep "FAILED"
+```
 
-- [ ] **List all CLI flags** — any doc that describes CLI usage must match.
-  ```bash
-  grep -n "add_argument" gameworks/main.py
-  ```
+Call this list `$GT_FAILURES`. If any failure is not in the known pre-existing list (see Phase 8), stop. Regressions block this skill run.
 
-- [ ] **List all colour constants** (`C` dict) — any doc describing the colour palette must match.
-  ```bash
-  grep -n "^\s\+[a-z_]\+\s*=(" gameworks/renderer.py | head -40
-  ```
+### 0-C. Public API Surface
 
-- [ ] **List all files in `gameworks/docs/`**
-  ```bash
-  ls gameworks/docs/
-  ```
+Capture all public symbols (classes, top-level functions, module-level constants) from each module. These are your API ground-truth lists.
 
-- [ ] **List all files in `docs/`**
-  ```bash
-  find docs/ -name "*.md" | sort
-  ```
+```bash
+grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/engine.py
+grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/renderer.py
+grep -n "^class \|^def \|^[A-Z_]\{3,\} " gameworks/main.py
+```
+
+### 0-D. Action Strings
+
+```bash
+grep -n 'return "' gameworks/renderer.py | grep -v "#"
+```
+
+Capture every string literal returned by `handle_event()`. Call this `$GT_ACTIONS`.
+
+### 0-E. CLI Flags
+
+```bash
+grep -n "add_argument" gameworks/main.py
+```
+
+Capture every flag name and its `help` text. Call this `$GT_FLAGS`.
+
+### 0-F. Colour Constants
+
+```bash
+grep -n "tile_\|flag_\|mine_\|panel_\|header_\|btn_\|text_\|bg_" gameworks/renderer.py | grep "=(" | head -40
+```
+
+Capture all colour constant names and their RGB tuples. Call this `$GT_COLOURS`.
+
+### 0-G. Fixture Names
+
+```bash
+grep -n "^def renderer_" gameworks/tests/renderer/conftest.py
+```
+
+Capture every fixture function name and its docstring. Call this `$GT_FIXTURES`.
+
+### 0-H. Documentation File Inventory
+
+```bash
+find gameworks/docs/ docs/ -name "*.md" | sort
+```
+
+Capture the full list. Any file not on this list when you start does not yet exist. Any file on this list but missing from an index is an orphan to fix in Phase 10.
+
+### 0-I. Save/Resume Feature Merge Status
+
+```bash
+grep -n "def save_game_state\|def load_game_state\|def preflight_check" gameworks/engine.py gameworks/main.py 2>/dev/null
+```
+
+If any match is found, set `$SAVE_FEATURE_MERGED=true`. If no match, set `$SAVE_FEATURE_MERGED=false`. Phases 2, 3, 5, 6, 9, and 13 use this flag to apply conditional steps.
 
 ---
 
 ## Phase 1 — Version Consistency
 
-*Every document that contains a version string must match `__version__` from Phase 0.*
+*Rule: every `$GT_VERSION` mention across all docs must be identical.*
 
-- [ ] **`gameworks/docs/CHANGELOG.md`** — confirm the most recent release header matches `__version__`. If the version was bumped since the last CHANGELOG entry, add a new entry now.
-  ```bash
-  head -10 gameworks/docs/CHANGELOG.md
-  ```
+### 1-A. Discover all version references
 
-- [ ] **`gameworks/docs/API_REFERENCE.md`** — find the `__version__` block and confirm it matches.
-  ```bash
-  grep "__version__" gameworks/docs/API_REFERENCE.md
-  ```
+```bash
+grep -rn "v0\.\|__version__\|version.*0\." gameworks/docs/ docs/ --include="*.md" | grep -v "#\|schema\|python\|pygame\|0\.0\." | grep "[0-9]\.[0-9]"
+```
 
-- [ ] **`gameworks/docs/BUGS.md`** — find the `**Package version:**` header line and confirm it matches.
-  ```bash
-  grep "Package version" gameworks/docs/BUGS.md
-  ```
+For each match:
+- If the version string equals `$GT_VERSION` — no action needed.
+- If the version string is different — open that file and update the stale reference to `$GT_VERSION`. Record the change in your `RUNLOG`.
 
-- [ ] **`gameworks/docs/INDEX.md`** — find any version reference in the footer line (`*Gameworks v…*`) and confirm it matches.
-  ```bash
-  grep "v0\." gameworks/docs/INDEX.md
-  ```
+### 1-B. CHANGELOG header check
 
-- [ ] **`docs/DOCS_INDEX.md`** — confirm no stale version references exist.
-  ```bash
-  grep "v0\." docs/DOCS_INDEX.md
-  ```
+```bash
+head -10 gameworks/docs/CHANGELOG.md
+```
+
+The most recent `## [X.Y.Z]` header must match `$GT_VERSION`. If `__version__` was bumped but no CHANGELOG entry exists yet, create a new entry now with `### Added`, `### Changed`, and `### Fixed` subsections. Leave placeholders if you do not have enough context to fill them — a placeholder entry is better than a missing one.
 
 ---
 
 ## Phase 2 — API Reference Accuracy
 
-*`gameworks/docs/API_REFERENCE.md` is the single source of truth for the public API. It must reflect the current code exactly.*
+*`gameworks/docs/API_REFERENCE.md` is the single source of truth for the public contract. Every class, method, parameter, action string, and CLI flag in the doc must match `$GT_*` from Phase 0.*
 
-- [ ] **Cross-reference every `engine.py` public class against the API doc**
-  Read `gameworks/docs/API_REFERENCE.md` sections for `CellState`, `Board`, `MoveResult`, `GameEngine`. For each: confirm every public method, property, and parameter listed matches the current source. Add any missing entries. Remove any entries for deleted symbols.
-  ```bash
-  grep -n "^class \|^    def \|^    @property" gameworks/engine.py | grep -v "_"
-  ```
+### 2-A. Symbol reconciliation
 
-- [ ] **Confirm all new dataclasses are documented** — run the ground-truth symbol list from Phase 0 against the API Reference table of contents.
-  ```bash
-  grep "^@dataclass\|^class " gameworks/engine.py
-  ```
+For each public symbol in `$GT_API_ENGINE`, `$GT_API_RENDERER`, `$GT_API_MAIN`:
+- Read the corresponding section in `API_REFERENCE.md`.
+- If the symbol is in the code but missing from the doc — add a stub entry.
+- If the symbol is in the doc but no longer in the code — remove the stale entry. Record in `RUNLOG`.
+- If a method's signature has changed — update the signature in the doc.
 
-- [ ] **Confirm `save_game_state`, `load_game_state`, `SaveResult`, `LoadResult`, `Board.from_arrays`, `SAVE_SCHEMA_VERSION`, `preflight_check` are present** — these are required by `FEATURE_SAVE_RESUME_LOAD.md` Phase 4 but not yet implemented. If the feature branch has been merged, add them now. If not, add a `(pending feature/save-resume-load)` stub.
-  ```bash
-  grep -n "save_game_state\|load_game_state\|SaveResult\|LoadResult\|from_arrays\|SAVE_SCHEMA\|preflight_check" gameworks/docs/API_REFERENCE.md
-  ```
+```bash
+grep -n "^class \|^    def \|^    @property" gameworks/engine.py | grep -v "_"
+```
 
-- [ ] **Confirm `_draw_cell` signature note is current** — v0.1.1 changed the signature from accepting a `CellState` to accepting raw numpy fields. The API doc has a note on this. Confirm it still accurately describes the current signature.
-  ```bash
-  grep -n "_draw_cell" gameworks/renderer.py | head -5
-  grep -n "_draw_cell" gameworks/docs/API_REFERENCE.md | head -5
-  ```
+### 2-B. Action string contract
 
-- [ ] **Confirm all action strings listed in the API doc match the ground-truth list from Phase 0.** Any string present in the doc but absent from the code is a phantom. Any string in the code but absent from the doc is a gap.
+Compare `$GT_ACTIONS` against the action string table in `API_REFERENCE.md`.
+- Strings present in the code but absent from the table — add them.
+- Strings present in the table but absent from the code — remove them (phantoms).
 
-- [ ] **Confirm all CLI flags listed in the API doc match the ground-truth list from Phase 0.**
+### 2-C. CLI flag contract
 
-- [ ] **Confirm `handle_event()` return type contract is accurate** — the doc must state that `None` is returned for internal-state-only events.
-  ```bash
-  grep -n "handle_event\|return None\|return \"" gameworks/renderer.py | head -20
-  ```
+Compare `$GT_FLAGS` against the CLI section in `API_REFERENCE.md`. Apply the same add/remove rule.
+
+### 2-D. Save feature stubs (conditional)
+
+```bash
+grep -n "save_game_state\|load_game_state\|SaveResult\|LoadResult\|from_arrays\|SAVE_SCHEMA_VERSION\|preflight_check" gameworks/docs/API_REFERENCE.md
+```
+
+- If `$SAVE_FEATURE_MERGED=false` and none of these stubs exist — add `(pending: feature/save-resume-load)` stub entries for all six symbols.
+- If `$SAVE_FEATURE_MERGED=true` — replace any stub entries with the real signatures captured from Phase 0-C.
 
 ---
 
 ## Phase 3 — ARCHITECTURE.md Accuracy
 
-*`gameworks/docs/ARCHITECTURE.md` must reflect the current module structure, state machine, and data flows.*
+### 3-A. Module dependency diagram
 
-- [ ] **Verify the ASCII data flow diagram** — read the diagram in ARCHITECTURE.md, then read the actual imports and class relationships. Confirm every arrow in the diagram reflects a real dependency or call in the code.
-  ```bash
-  grep -n "^from\|^import" gameworks/engine.py gameworks/renderer.py gameworks/main.py
-  ```
+```bash
+grep -n "^from\|^import" gameworks/engine.py gameworks/renderer.py gameworks/main.py
+```
 
-- [ ] **Confirm module responsibility lists are current** — the "Module Responsibilities" section lists what each file owns. Confirm no responsibility has moved to a different file since the last update.
+Read the ASCII data-flow diagram in `gameworks/docs/ARCHITECTURE.md`. For every arrow in the diagram, confirm a corresponding import or function call exists in the code. Remove arrows that have no code backing. Add arrows for new dependencies.
 
-- [ ] **Confirm the `GameLoop` state machine diagram is current** — states are `MENU → PLAYING → RESULT → MENU`. If any new state or transition has been added, update the diagram.
-  ```bash
-  grep -n "MENU\|PLAYING\|RESULT\|_state" gameworks/main.py | head -20
-  ```
+### 3-B. State machine
 
-- [ ] **Add save/load data flow if `feature/save-resume-load` has been merged** — check for `save_game_state` in `engine.py`. If present, add the data flow: `GameLoop._save_state() → engine.save_game_state() → .mscsave` and `--resume → preflight_check() → engine.load_game_state() → GameLoop._start_game(resumed=True)`.
-  ```bash
-  grep -n "save_game_state" gameworks/engine.py
-  ```
+```bash
+grep -n "MENU\|PLAYING\|RESULT\|_state\s*=" gameworks/main.py | head -20
+```
 
-- [ ] **Confirm the "Key design choices" callouts are still accurate** — specifically: (a) mine hits are penalties not game-over, (b) renderer returns action strings, (c) `GameLoop` is the dispatcher.
+States must be `MENU → PLAYING → RESULT → MENU`. If any new state has been added or removed, update the diagram.
+
+### 3-C. Save/load data flow (conditional)
+
+If `$SAVE_FEATURE_MERGED=true`, verify this data-flow path exists in the diagram:
+
+```
+GameLoop._save_state() → engine.save_game_state() → .mscsave
+--resume → preflight_check() → engine.load_game_state() → GameLoop._start_game(resumed=True)
+```
+
+If it does not exist, add it.
 
 ---
 
-## Phase 4 — CHANGELOG.md Currency
+## Phase 4 — CHANGELOG Currency
 
-*`gameworks/docs/CHANGELOG.md` must have an entry for every commit that changed behaviour, API, or constants since the last entry.*
+### 4-A. Discover commits not yet logged
 
-- [ ] **Get all commits since the last CHANGELOG entry date**
-  ```bash
-  git log --oneline --since="$(grep '^\## \[' gameworks/docs/CHANGELOG.md | head -1 | grep -oP '\d{4}-\d{2}-\d{2}')" -- gameworks/
-  ```
+```bash
+git log --oneline --since="$(grep '^\## \[' gameworks/docs/CHANGELOG.md | head -1 | grep -oP '\d{4}-\d{2}-\d{2}')" -- gameworks/
+```
 
-- [ ] **For each commit, determine if it requires a CHANGELOG entry** — entries are required for: new features, API changes, constant value changes, bug fixes, performance improvements, and test suite changes. Entries are NOT required for: pure doc edits, whitespace, comment-only changes.
+For each commit in this list, determine whether it warrants a CHANGELOG entry:
+- **Yes** — new feature, API change, constant value change, bug fix, performance change, test suite change.
+- **No** — pure doc edit, whitespace, comment-only.
 
-- [ ] **Confirm colour palette changes are logged** — commits `84160f9` changed `tile_reveal` and `flag_red`. Verify these appear in the CHANGELOG under the current version.
-  ```bash
-  grep -n "tile_reveal\|flag_red\|colour\|color.*palette\|cell.*background\|flag.*white" gameworks/docs/CHANGELOG.md
-  ```
+For each "yes" commit not already in the CHANGELOG, add an entry under the current version. Use Keep a Changelog subsection headers (`### Added`, `### Changed`, `### Fixed`, `### Removed`).
 
-- [ ] **Confirm dynamic zoom-out floor feature is logged** — commit `9ada935` added the dynamic `min_fit_tile` floor. Verify this appears in the CHANGELOG.
-  ```bash
-  grep -n "zoom\|min_fit_tile\|dynamic.*floor\|viewport.*fit" gameworks/docs/CHANGELOG.md
-  ```
+### 4-B. Spot-check known palette change
 
-- [ ] **Confirm the CHANGELOG entry format matches Keep a Changelog** — every entry must have `### Added`, `### Changed`, `### Fixed`, or `### Removed` subsections. No freeform paragraphs without a subsection header.
+```bash
+grep -n "tile_reveal\|flag_red\|colour.*palette\|cell.*background\|flag.*white\|pale\|near-black" gameworks/docs/CHANGELOG.md
+```
+
+Commit `84160f9` changed `tile_reveal` to `(12,12,16)` and `flag_red` to `(235,210,210)`. If these changes are not in the CHANGELOG, add them now.
+
+### 4-C. Spot-check known zoom-floor change
+
+```bash
+grep -n "zoom\|min_fit_tile\|dynamic.*floor\|viewport.*fit" gameworks/docs/CHANGELOG.md
+```
+
+If the dynamic `min_fit_tile` floor is not logged, add it.
 
 ---
 
 ## Phase 5 — BUGS.md Currency
 
-*`gameworks/docs/BUGS.md` is the canonical open bug register. It must accurately reflect which bugs are open, closed, and won't-fix.*
+### 5-A. Discover resolved bugs
 
-- [ ] **Check FA-001 through FA-005 and H-005 status** — commits `437f2d5` (remote) resolved FA-003, FA-004, and H-005. Verify their status in BUGS.md. If still marked OPEN but fixed, update to `RESOLVED — <commit-sha>`.
-  ```bash
-  grep -n "FA-003\|FA-004\|H-005" gameworks/docs/BUGS.md | head -10
-  git log --oneline | grep -i "FA-003\|FA-004\|H-005\|videoresize\|panel.*intercept\|save.*button" | head -5
-  ```
+For each bug in the quick-reference table of `gameworks/docs/BUGS.md`, run:
 
-- [ ] **Check FA-001 and FA-002 status** — victory modal and timer. Confirm whether these were resolved in any recent commit.
-  ```bash
-  git log --oneline | grep -i "victory\|modal\|FA-001\|FA-002\|elapsed\|timer" | head -5
-  grep -n "FA-001\|FA-002" gameworks/docs/BUGS.md | head -6
-  ```
+```bash
+git log --oneline | grep -i "<bug-id>"
+```
 
-- [ ] **Update `**Last updated:**` date and `**Total open:**` count** — count open bugs (not RESOLVED, not WONT-FIX) from the quick-reference table and update the header.
-  ```bash
-  grep -c "| OPEN" gameworks/docs/BUGS.md
-  ```
+If a commit message references the bug ID and the bug is still marked `OPEN`, update its status to `RESOLVED — <commit-sha>`.
 
-- [ ] **Confirm DP-R6 (`preflight_check` missing) status** — `FEATURE_SAVE_RESUME_LOAD.md` Step 13 creates `preflight_check()`. If the feature has been merged, mark DP-R6 as resolved.
-  ```bash
-  grep -n "def preflight_check" gameworks/main.py
-  grep -n "DP-R6" gameworks/docs/BUGS.md | head -3
-  ```
+### 5-B. Mandatory spot-checks
+
+```bash
+grep -n "FA-003\|FA-004\|H-005" gameworks/docs/BUGS.md | head -10
+git log --oneline | grep -i "videoresize\|panel.*intercept\|save.*button\|FA-003\|FA-004\|H-005" | head -5
+```
+
+Remote commit `437f2d5` resolved FA-003, FA-004, and H-005. Verify all three are marked `RESOLVED`.
+
+### 5-C. Header counts
+
+```bash
+grep -c "| OPEN" gameworks/docs/BUGS.md
+```
+
+Update `**Total open:**` and `**Last updated:**` in the BUGS.md header to match.
+
+### 5-D. preflight_check gap (conditional)
+
+If `$SAVE_FEATURE_MERGED=true`:
+
+```bash
+grep -n "DP-R6" gameworks/docs/BUGS.md | head -3
+grep -n "def preflight_check" gameworks/main.py
+```
+
+If `preflight_check` exists in code and DP-R6 is still `OPEN`, mark it `RESOLVED`.
 
 ---
 
 ## Phase 6 — GAME_DESIGN.md Currency
 
-*`gameworks/docs/GAME_DESIGN.md` documents rules, scoring constants, board modes, and win conditions.*
+### 6-A. Scoring constant reconciliation
 
-- [ ] **Verify all scoring constants match `engine.py`** — read `REVEAL_POINTS`, `CORRECT_FLAG_BONUS`, `WRONG_FLAG_PENALTY`, `MINE_HIT_PENALTY`, `STREAK_TIERS` from the source and confirm each value in the doc matches exactly.
-  ```bash
-  grep -n "REVEAL_POINTS\|CORRECT_FLAG\|WRONG_FLAG\|MINE_HIT\|STREAK_TIERS" gameworks/engine.py
-  grep -n "REVEAL_POINTS\|CORRECT_FLAG\|WRONG_FLAG\|MINE_HIT\|STREAK_TIERS" gameworks/docs/GAME_DESIGN.md
-  ```
+```bash
+grep -n "REVEAL_POINTS\|CORRECT_FLAG_BONUS\|WRONG_FLAG_PENALTY\|MINE_HIT_PENALTY\|STREAK_TIERS" gameworks/engine.py
+grep -n "REVEAL_POINTS\|CORRECT_FLAG_BONUS\|WRONG_FLAG_PENALTY\|MINE_HIT_PENALTY\|STREAK_TIERS" gameworks/docs/GAME_DESIGN.md
+```
 
-- [ ] **Verify win/loss condition table is current** — there is no lose state; mine hits are penalties. Confirm the doc reflects this.
+For each constant: if the value in the doc differs from the value in the code, update the doc. The code is ground truth.
 
-- [ ] **Verify board modes list is complete** — modes are `random`, `npy`, `image`. Confirm all three are documented with their CLI flags.
-  ```bash
-  grep -n "mode.*=\|\"random\"\|\"npy\"\|\"image\"" gameworks/engine.py | grep "GameEngine\|mode" | head -10
-  ```
+### 6-B. Board modes
 
-- [ ] **Add Save & Resume section if `feature/save-resume-load` has been merged** — check for `save_game_state` in code; if present, document what the player saves, what is not saved, and how to resume.
-  ```bash
-  grep -n "save_game_state" gameworks/engine.py
-  ```
+```bash
+grep -n '"random"\|"npy"\|"image"' gameworks/engine.py | head -10
+```
 
----
+Confirm `random`, `npy`, and `image` modes are all documented with their CLI flags. If a new mode exists in the code but is undocumented, add it.
 
-## Phase 7 — DEVELOPER_GUIDE.md Currency
+### 6-C. Save & Resume section (conditional)
 
-*`gameworks/docs/DEVELOPER_GUIDE.md` must reflect the current development setup, test commands, and extension patterns.*
-
-- [ ] **Verify the test run command is current and produces the expected output**
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -v 2>&1 | tail -5
-  ```
-  Confirm the command shown in the guide matches what was just run.
-
-- [ ] **Verify the known-failing test list** — the guide (and `TEST_GAP_ANALYSIS.md`) lists 4 animation timing failures. Confirm the count and test names still match.
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/renderer/test_animations.py -v 2>&1 | grep FAILED
-  ```
-
-- [ ] **Verify `renderer_large` fixture documentation** — `conftest.py` now has `renderer_large` (300×370) and `renderer_panel_large` (40×30). Any guide text that describes `renderer_large` as a 40×30 fixture must be updated.
-  ```bash
-  grep -n "renderer_large\|renderer_panel_large" gameworks/tests/renderer/conftest.py
-  grep -n "renderer_large\|40.*30\|300.*370" gameworks/docs/DEVELOPER_GUIDE.md
-  ```
-
-- [ ] **Verify the Windows test command** — the guide must include the Windows-equivalent test command using `set SDL_VIDEODRIVER=dummy`.
-
-- [ ] **Verify Python version requirements** — confirm the listed supported Python range still applies.
-  ```bash
-  python --version
-  ```
+If `$SAVE_FEATURE_MERGED=true` and `GAME_DESIGN.md` has no "Save & Resume" section, add one covering: what the player can save, what is not saved (e.g., undo history), and how to resume from the CLI.
 
 ---
 
-## Phase 8 — TEST_GAP_ANALYSIS.md Currency
+## Phase 7 — DEVELOPER_GUIDE Currency
 
-*`gameworks/docs/TEST_GAP_ANALYSIS.md` documents test health, coverage gaps, and known failures.*
+### 7-A. Test command accuracy
 
-- [ ] **Update total test count** — replace the stale count with the value captured in Phase 0.
+Confirm the test command shown in the guide produces green output when run:
 
-- [ ] **Update passing/failing breakdown** — recalculate from Phase 0 results.
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -v 2>&1 | tail -5
+```
 
-- [ ] **Confirm known-failing animation tests are still the only failures** — if any new failures exist, they must be added to the gap analysis, not silently absorbed.
+If the guide shows a different command, update it.
 
-- [ ] **Confirm the "Missing test files" section matches reality** — the doc lists tests pending for R2, R3, R6, R8, R9. Confirm each is still pending (not yet implemented) or mark as completed.
-  ```bash
-  ls gameworks/tests/unit/ gameworks/tests/cli/ gameworks/tests/integration/
-  ```
+### 7-B. Known-failure list
 
-- [ ] **Add new test files to the analysis** — `test_zoom.py` and `test_save_resume.py` (if merged) must appear in the test health breakdown.
-  ```bash
-  ls gameworks/tests/renderer/
-  ```
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/renderer/test_animations.py -v 2>&1 | grep "FAILED\|PASSED\|ERROR"
+```
 
----
+Compare the output against the known-failure list in the guide. Update any stale test names.
 
-## Phase 9 — DESIGN_PATTERNS.md Currency
+### 7-C. Fixture documentation
 
-*`gameworks/docs/DESIGN_PATTERNS.md` audits 12 patterns (P1–P12) against the codebase. Pattern gaps must be updated when code closes them.*
+Compare `$GT_FIXTURES` against any fixture descriptions in the guide.
 
-- [ ] **Check P8 — Atomic File I/O** — currently listed as a gap. If `save_game_state` with `os.replace` has been merged, mark P8 as **PRESENT** and update the alignment table.
-  ```bash
-  grep -n "os.replace\|atomic" gameworks/engine.py
-  grep -n "P8\|Atomic" gameworks/docs/DESIGN_PATTERNS.md | head -5
-  ```
+```bash
+grep -n "renderer_large\|renderer_panel_large\|renderer_easy" gameworks/docs/DEVELOPER_GUIDE.md
+```
 
-- [ ] **Check P9 — Versioned Schema Strings** — currently listed as a gap. If `SAVE_SCHEMA_VERSION` has been merged, mark P9 as **PRESENT**.
-  ```bash
-  grep -n "SAVE_SCHEMA_VERSION\|SCHEMA_VERSION" gameworks/engine.py
-  grep -n "P9\|Versioned Schema" gameworks/docs/DESIGN_PATTERNS.md | head -5
-  ```
+`renderer_large` is now a 300×370 board. `renderer_panel_large` is the 40×30 board (floor=7). Any guide text that attributes 40×30 to `renderer_large` must be corrected.
 
-- [ ] **Check P6 — Warmup-and-Verify (preflight)** — currently a gap. If `preflight_check()` has been merged, mark P6 as **PRESENT**.
-  ```bash
-  grep -n "def preflight_check" gameworks/main.py
-  grep -n "P6\|preflight\|Warmup" gameworks/docs/DESIGN_PATTERNS.md | head -5
-  ```
+### 7-D. Windows test command
 
-- [ ] **Update the alignment summary table** — every row must reflect current status (PRESENT / PARTIAL / GAP). Do not leave stale GAP entries for patterns that are now implemented.
+Confirm the guide contains the Windows-equivalent command:
+
+```cmd
+set SDL_VIDEODRIVER=dummy && set SDL_AUDIODRIVER=dummy && python -m pytest gameworks/tests/ -v
+```
+
+If absent, add it.
 
 ---
 
-## Phase 10 — DOCS_INDEX.md and gameworks/docs/INDEX.md Currency
+## Phase 8 — TEST_GAP_ANALYSIS Currency
 
-*Both index files must enumerate all active documents. No document exists without an index entry; no index entry points to a non-existent file.*
+### 8-A. Recount
 
-- [ ] **`docs/DOCS_INDEX.md` — verify every listed file exists**
-  ```bash
-  while IFS= read -r line; do
-    file=$(echo "$line" | grep -oP '`[^`]+\.md`' | tr -d '`')
-    [ -n "$file" ] && [ ! -f "$file" ] && echo "MISSING: $file"
-  done < docs/DOCS_INDEX.md
-  ```
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ --collect-only -q 2>&1 | tail -3
+```
 
-- [ ] **`docs/DOCS_INDEX.md` — add missing entries** — these are required but not yet listed:
-  - `docs/FEATURE_SAVE_RESUME_LOAD.md`
-  - `docs/DOC_REVIEW_REFRESH_CHECKLIST.md` (this file)
-  - `docs/SAVE_FORMAT_SPEC.md` (when created)
-  - `docs/SCHEMA_MIGRATION.md` (when created)
-  - `docs/SECURITY.md` (when created)
+Update `gameworks/docs/TEST_GAP_ANALYSIS.md` with `$GT_TOTAL`, `$GT_PASSED`, `$GT_FAILED` from Phase 0-B.
 
-- [ ] **`gameworks/docs/INDEX.md` — verify every listed file exists**
-  ```bash
-  while IFS= read -r line; do
-    file=$(echo "$line" | grep -oP '\[.*\]\(\K[^)]+')
-    [ -n "$file" ] && [ ! -f "gameworks/docs/$file" ] && echo "MISSING: gameworks/docs/$file"
-  done < gameworks/docs/INDEX.md
-  ```
+### 8-B. Failure list
 
-- [ ] **`gameworks/docs/INDEX.md` — add missing entries** — the following files exist in `gameworks/docs/` but are not in the index table:
-  - `PERFORMANCE_PLAN.md`
-  - `TEST_GAP_ANALYSIS.md`
-  - `TEST_HARDENING_PLAN.md`
-  Confirm presence and add rows to the index table.
-  ```bash
-  ls gameworks/docs/ | grep -v -f <(grep -oP '\(.*\.md\)' gameworks/docs/INDEX.md | tr -d '()')
-  ```
+Update the known-failing test list in the doc. Use the exact test node IDs from `$GT_FAILURES`. Do not paraphrase test names.
 
-- [ ] **`docs/DOCS_INDEX.md` Gameworks Tests section** — the section states "22 files, scaffolded 2026-05-10". Recount and update.
-  ```bash
-  find gameworks/tests/ -name "test_*.py" | wc -l
-  ```
+### 8-C. Missing test files
+
+```bash
+ls gameworks/tests/unit/ gameworks/tests/cli/ gameworks/tests/integration/ 2>/dev/null
+```
+
+For each test gap still listed as "pending" in the doc, confirm the file does not yet exist. If it does exist, mark the gap as closed and note the file name.
+
+### 8-D. New test files
+
+```bash
+ls gameworks/tests/renderer/
+```
+
+For each test file in `gameworks/tests/renderer/` that is not yet in the analysis, add a row to the test health breakdown table.
+
+---
+
+## Phase 9 — DESIGN_PATTERNS Currency
+
+### 9-A. P8 — Atomic File I/O
+
+```bash
+grep -n "os.replace\|os.rename\|atomic" gameworks/engine.py
+grep -n "P8\|Atomic" gameworks/docs/DESIGN_PATTERNS.md | head -5
+```
+
+If `$SAVE_FEATURE_MERGED=true` and `os.replace` exists in `engine.py`, update P8 status from `GAP` to `PRESENT` in the alignment table.
+
+### 9-B. P9 — Versioned Schema Strings
+
+```bash
+grep -n "SAVE_SCHEMA_VERSION\|SCHEMA_VERSION" gameworks/engine.py
+grep -n "P9\|Versioned Schema" gameworks/docs/DESIGN_PATTERNS.md | head -5
+```
+
+If `$SAVE_FEATURE_MERGED=true` and `SAVE_SCHEMA_VERSION` exists, update P9 to `PRESENT`.
+
+### 9-C. P6 — Warmup-and-Verify
+
+```bash
+grep -n "def preflight_check" gameworks/main.py
+grep -n "P6\|preflight\|Warmup" gameworks/docs/DESIGN_PATTERNS.md | head -5
+```
+
+If `$SAVE_FEATURE_MERGED=true` and `preflight_check` exists, update P6 to `PRESENT`.
+
+### 9-D. Alignment table
+
+Recount `PRESENT`, `PARTIAL`, and `GAP` totals in the alignment summary table. Update the counts row.
+
+---
+
+## Phase 10 — Index Currency
+
+*Rule: every `.md` file that exists must have an entry in an index. Every index entry must point to a file that exists.*
+
+### 10-A. gameworks/docs/INDEX.md — existence check
+
+```bash
+while IFS= read -r f; do
+  [ ! -f "gameworks/docs/$f" ] && echo "BROKEN LINK in INDEX.md: $f"
+done < <(grep -oP '\(\.\/\K[^)]+' gameworks/docs/INDEX.md 2>/dev/null)
+```
+
+Remove or fix any broken links.
+
+### 10-B. gameworks/docs/INDEX.md — missing entries
+
+```bash
+ls gameworks/docs/*.md | xargs -I{} basename {}
+```
+
+For each file in `gameworks/docs/` that has no row in `INDEX.md`, add a row with the file name, a one-line description, and the current date.
+
+### 10-C. docs/DOCS_INDEX.md — existence check
+
+```bash
+grep -oP '`[^`]+\.md`' docs/DOCS_INDEX.md | tr -d '`' | while read f; do
+  [ ! -f "$f" ] && echo "BROKEN LINK in DOCS_INDEX.md: $f"
+done
+```
+
+Remove or fix any broken links.
+
+### 10-D. docs/DOCS_INDEX.md — required entries
+
+These files must appear in `DOCS_INDEX.md`. If any are missing, add them:
+
+| File | Section |
+|---|---|
+| `docs/FEATURE_SAVE_RESUME_LOAD.md` | Feature Specifications |
+| `docs/DOC_REVIEW_REFRESH_CHECKLIST.md` | Tooling & Process |
+| `docs/SAVE_FORMAT_SPEC.md` | Feature Specifications (add `(pending)` note if file not yet created) |
+| `docs/SCHEMA_MIGRATION.md` | Feature Specifications (add `(pending)` note if file not yet created) |
+| `docs/SECURITY.md` | Governance |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Tooling & Process |
+
+### 10-E. Test file count
+
+```bash
+find gameworks/tests/ -name "test_*.py" | wc -l
+```
+
+Update the Gameworks Tests section count in `DOCS_INDEX.md` to match.
 
 ---
 
 ## Phase 11 — Root-Level Document Triage
 
-*Root-level `.md` files that are not in any index are orphans. Every root-level file must be classified: active, archive, or delete.*
+*Every root-level `.md` file must be classified as active, archived, or deleted. Orphaned files that are neither referenced nor indexed are documentation debt.*
 
-- [ ] **Triage each root-level `.md` file** — open each and determine its current status:
+### 11-A. Triage decision tree
 
-  | File | Action |
-  |---|---|
-  | `README.md` | Active — verify it matches current launch instructions |
-  | `AGENTS.md` | Active — verify agent instructions are current |
-  | `GEMINI.md` | Review — confirm whether this is still applicable or can be archived |
-  | `HARDENING_SUMMARY.md` | Review — confirm whether superseded by `gameworks/docs/TEST_HARDENING_PLAN.md`; if so, archive or add a redirect note |
-  | `PULL_REQUEST_DESCRIPTION.md` | Archive candidate — single-use PR description; move to `docs/archive/` or delete |
-  | `for_user_review.md` | Review — determine if content is still actionable or can be deleted |
-  | `full_enterprise_grade_repository_audit_and_remediation_analysis_prompt.md` | Duplicate — also exists at `docs/`; confirm which is canonical and delete the other |
+For each root-level `.md` file discovered in Phase 0-H, apply this logic:
 
-- [ ] **`README.md` — verify the Quick Start commands work** — run the exact commands shown in README and confirm they produce no errors.
-  ```bash
-  head -60 README.md
-  ```
+1. **Is it referenced in `DOCS_INDEX.md`?** If yes — Active. Verify it opens without error and its content is still meaningful.
+2. **Is it a single-use artifact?** (e.g., a PR description, a one-time analysis) — Archive candidate: move to `docs/archive/` and add a redirect note, or delete with `RUNLOG` justification.
+3. **Does it duplicate content already in `gameworks/docs/`?** — Identify which copy is canonical, add a `> See canonical: <path>` notice to the non-canonical copy, and record in `RUNLOG`.
+
+```bash
+ls *.md 2>/dev/null
+```
+
+Apply specific rules to known root-level files:
+
+| File | Rule |
+|---|---|
+| `README.md` | Active. Verify Quick Start commands run without error. |
+| `AGENTS.md` | Active. Verify agent instructions are not contradicted by any code change since last update. |
+| `GEMINI.md` | Review. If content is superseded by `AGENTS.md`, add a redirect header and note in `RUNLOG`. |
+| `HARDENING_SUMMARY.md` | Review. If superseded by `gameworks/docs/TEST_HARDENING_PLAN.md`, archive it. |
+| `PULL_REQUEST_DESCRIPTION.md` | Archive candidate. If it describes a merged PR, move to `docs/archive/`. |
+| `for_user_review.md` | Review. If content is actionable, index it. If stale, delete it with justification. |
+| `full_enterprise_grade_repository_audit_and_remediation_analysis_prompt.md` | If an identical copy exists in `docs/`, delete the root copy and add an index entry pointing to `docs/`. |
 
 ---
 
 ## Phase 12 — Cross-Document Consistency
 
-*Facts stated in multiple documents must be identical. Contradictions between docs are bugs.*
+*A fact stated in multiple documents must be identical everywhere. Contradictions are bugs.*
 
-- [ ] **Version string consistency** — search every doc for version references and confirm all match `__version__`:
-  ```bash
-  grep -rn "v0\.\|__version__\|version.*0\." gameworks/docs/ docs/ --include="*.md" | grep -v "#\|schema\|python\|pygame" | grep "[0-9]\.[0-9]"
-  ```
+### 12-A. Stale-content sweep — run unconditionally
 
-- [ ] **Test count consistency** — search every doc that mentions a test count and confirm all match Phase 0:
-  ```bash
-  grep -rn "114\|passing\|tests pass\|test count\|total test" gameworks/docs/ docs/ --include="*.md"
-  ```
+```bash
+# Version strings that may not match $GT_VERSION
+grep -rn "0\.1\.0\b" gameworks/docs/ docs/ --include="*.md"
 
-- [ ] **`renderer_large` fixture name consistency** — confirm no doc still describes `renderer_large` as the 40×30 fixture (it is now 300×370; the 40×30 fixture is `renderer_panel_large`):
-  ```bash
-  grep -rn "renderer_large.*40\|40.*renderer_large\|renderer_large.*9×9\|renderer_large.*floor.*7" gameworks/docs/ docs/ --include="*.md"
-  ```
+# Stale test counts
+grep -rn "\b[0-9]\{2,3\} test\|[0-9]\{2,3\} passing\|[0-9]\{2,3\} passed" gameworks/docs/ docs/ --include="*.md"
 
-- [ ] **Scoring constant consistency** — any doc that lists scoring values must match `engine.py`:
-  ```bash
-  grep -rn "250\|50\|25\|STREAK\|multiplier\|streak" gameworks/docs/ --include="*.md" | grep -v "#\|example\|step"
-  ```
+# Old 40x30 renderer_large fixture attribution
+grep -rn "renderer_large.*40\|40x30.*renderer_large\|renderer_large.*9x9\|renderer_large.*floor.*7" gameworks/docs/ docs/ --include="*.md"
 
-- [ ] **Known-failing test names consistency** — any doc that names the 4 animation failures must use the exact current test names:
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/renderer/test_animations.py -v 2>&1 | grep FAILED
-  grep -rn "test_done_when_all_elapsed\|test_single_position\|test_done_after_enough_time\|test_correct_done_property" gameworks/docs/ --include="*.md"
-  ```
+# Phantom _resume_game reference (replaced by _start_game(resumed=bool))
+grep -rn "def _resume_game\|GameLoop\._resume_game\|_resume_game()" gameworks/docs/ docs/ --include="*.md"
+
+# Phantom action strings — verify each against $GT_ACTIONS before leaving in docs
+grep -rn '"restart"\|"quit"\|"save_state"\|"dev:solve"' gameworks/docs/ --include="*.md"
+
+# Broken archive references
+grep -rn "docs/archive/" docs/ gameworks/docs/ --include="*.md"
+
+# Stale colour RGB values superseded by style(renderer) commit 84160f9
+grep -rn "220, 50, 50\|35, 35, 45" gameworks/docs/ docs/ --include="*.md"
+```
+
+For each match: open the file, determine if the reference is stale, and update or remove it. Record every change in `RUNLOG`.
+
+### 12-B. Scoring constant consistency
+
+```bash
+grep -rn "REVEAL_POINTS\|CORRECT_FLAG\|WRONG_FLAG\|MINE_HIT\|STREAK" gameworks/docs/ --include="*.md" | grep -v "#\|example\|step\|pattern"
+```
+
+Compare against Phase 0-C ground truth. Correct any stale values.
+
+### 12-C. Known-failure name consistency
+
+```bash
+grep -rn "test_done_when_all_elapsed\|test_single_position\|test_done_after_enough_time\|test_correct_done_property" gameworks/docs/ --include="*.md"
+```
+
+All references must use the exact current test node IDs from `$GT_FAILURES`.
 
 ---
 
-## Phase 13 — Supplementary Documents Required by FEATURE_SAVE_RESUME_LOAD.md
+## Phase 13 — Supplementary Documents
 
-*Phase 4 of `FEATURE_SAVE_RESUME_LOAD.md` requires three documents to be created. This phase tracks their existence and completeness.*
+*`FEATURE_SAVE_RESUME_LOAD.md` Phase 4 requires these files. If any are missing, create them now using the specs below.*
 
-- [ ] **`docs/SAVE_FORMAT_SPEC.md`** — check if it exists. If not, create it. Must contain: array keys, dtypes, shapes, JSON meta field list with types and valid values, schema version history table, byte-order note, manual inspection command.
-  ```bash
-  ls docs/SAVE_FORMAT_SPEC.md 2>/dev/null || echo "MISSING"
-  ```
+### 13-A. docs/SAVE_FORMAT_SPEC.md
 
-- [ ] **`docs/SCHEMA_MIGRATION.md`** — check if it exists. If not, create it. Must contain: trigger conditions for schema bumps, migration function template, backwards-read policy.
-  ```bash
-  ls docs/SCHEMA_MIGRATION.md 2>/dev/null || echo "MISSING"
-  ```
+```bash
+ls docs/SAVE_FORMAT_SPEC.md 2>/dev/null || echo "MISSING"
+```
 
-- [ ] **`docs/SECURITY.md`** — check if it exists. If not, create it. Must contain: `allow_pickle=True` risk, accepted-risk declaration, guidance to only load `.mscsave` files from trusted local sources.
-  ```bash
-  ls docs/SECURITY.md 2>/dev/null || echo "MISSING"
-  ```
+If `MISSING`, create the file. It must contain:
+- Array key/dtype/shape table for all arrays written to `.mscsave`
+- JSON meta fields with types, valid values, and default values
+- `SAVE_SCHEMA_VERSION` history table (columns: version, date, change reason)
+- Byte-order and endianness note
+- Manual inspection command: `python -c "import numpy as np; d=np.load('file.mscsave', allow_pickle=True); print(list(d.keys()))"`
+- Human-readable example of a valid meta JSON blob
 
-- [ ] **`.github/PULL_REQUEST_TEMPLATE.md`** — check if it exists. If not, create it. Must contain PR checklist: tests green, no TODO in code, Ambiguity Register reviewed, `DOCS_INDEX.md` updated, version bumped.
-  ```bash
-  ls .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || echo "MISSING"
-  ```
+### 13-B. docs/SCHEMA_MIGRATION.md
+
+```bash
+ls docs/SCHEMA_MIGRATION.md 2>/dev/null || echo "MISSING"
+```
+
+If `MISSING`, create the file. It must contain:
+- Trigger conditions table for when a schema version bump is required
+- Migration function template (Python stub)
+- Backwards-read policy: which old versions can be loaded by the current reader
+- Test requirements for each migration path
+
+### 13-C. docs/SECURITY.md
+
+```bash
+ls docs/SECURITY.md 2>/dev/null || echo "MISSING"
+```
+
+If `MISSING`, create the file. It must contain:
+- `allow_pickle=True` risk disclosure and accepted-risk declaration
+- Guidance: only load `.mscsave` files from trusted local file paths
+- Threat model: what an attacker can achieve with a malicious `.mscsave` file
+- Mitigations: schema version check before `allow_pickle`, file extension validation, path traversal prevention
+
+### 13-D. .github/PULL_REQUEST_TEMPLATE.md
+
+```bash
+ls .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || echo "MISSING"
+```
+
+If `MISSING`, create `.github/` directory if needed and create the template. It must contain:
+- `## Summary` section
+- `## Test plan` checklist: `[ ] All tests green`, `[ ] No new TODO in code`, `[ ] Ambiguity Register reviewed`, `[ ] DOCS_INDEX.md updated`, `[ ] CHANGELOG.md updated`, `[ ] Version bumped if API changed`
+- `## Branch` field
+- `## Related backlog items` field
 
 ---
 
 ## Phase 14 — LLM Audit Documents
 
-*`docs/llm-audits/` contains timestamped audit snapshots. These are historical records — they must not be edited. However the index and summaries must stay current.*
+*These are historical records and must not be retroactively edited. Only update the index and summary files.*
 
-- [ ] **`docs/llm-audits/index/audit-index.md`** — confirm the most recent audit entry is listed.
-  ```bash
-  cat docs/llm-audits/index/audit-index.md
-  ```
-
-- [ ] **`docs/llm-audits/summaries/open-findings.md`** — confirm any finding that has been resolved in code is marked resolved here.
-  ```bash
-  cat docs/llm-audits/summaries/open-findings.md | head -40
-  ```
-
-- [ ] **`docs/llm-audits/summaries/risk-trends.md`** — confirm the trend entry for the current sprint/session is present.
-
----
-
-## Phase 15 — Final Verification
-
-- [ ] **Run the full test suite one final time** — confirm no regressions were introduced by any doc-related edits (e.g., a conftest.py reference fixed in a doc was also fixed in the actual file).
-  ```bash
-  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | tail -3
-  ```
-
-- [ ] **Confirm no broken internal doc links** — search for relative markdown links and verify each target file exists.
-  ```bash
-  grep -rn "\[.*\](\([^h][^t][^t][^p]\)" gameworks/docs/ docs/ --include="*.md" | grep -oP '\(\K[^)]+' | while read f; do
-    [ ! -f "$(dirname $f)/$f" ] && echo "BROKEN LINK: $f"
-  done
-  ```
-
-- [ ] **Confirm `back_log.md` is current** — any item completed in this sprint must be removed or marked done.
-  ```bash
-  cat docs/back_log.md
-  ```
-
-- [ ] **Stage and commit all documentation updates**
-  ```bash
-  git add gameworks/docs/ docs/
-  git status   # review — confirm only .md files are staged
-  git commit -m "docs: refresh documentation for <version/feature name>"
-  git push origin frontend-game-mockup
-  ```
-
----
-
-## Stale-Content Patterns to Always Search For
-
-Run these searches on every pass regardless of what changed. Each match is a candidate stale reference.
+### 14-A. Audit index
 
 ```bash
-# Version strings that may not match __version__
+cat docs/llm-audits/index/audit-index.md 2>/dev/null | tail -10
+```
+
+Confirm the most recent audit session has an entry. If the current doc-refresh run is the most recent session, add an entry with today's date and a one-line summary of what was corrected.
+
+### 14-B. Open findings
+
+```bash
+cat docs/llm-audits/summaries/open-findings.md 2>/dev/null | head -40
+```
+
+For each open finding, check whether a commit has resolved it. If resolved, mark it `RESOLVED — <commit-sha>` with today's date.
+
+---
+
+## Phase 15 — Final Verification and Commit
+
+### 15-A. Test suite — confirm no regressions
+
+```bash
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest gameworks/tests/ -q 2>&1 | tail -5
+```
+
+The total must equal `$GT_TOTAL`. The failure list must equal `$GT_FAILURES`. If either differs, stop. Investigate before committing.
+
+### 15-B. Broken link check
+
+```bash
+grep -rn "\[.*\](\." gameworks/docs/ docs/ --include="*.md" | grep -oP '\(\K[^)]+' | while read -r link; do
+  base=$(echo "$link" | sed 's|^\./||')
+  [ ! -f "$base" ] && [ ! -f "gameworks/docs/$base" ] && [ ! -f "docs/$base" ] && echo "POSSIBLE BROKEN LINK: $link"
+done
+```
+
+Fix every broken relative link before committing.
+
+### 15-C. Stage only documentation
+
+```bash
+git add gameworks/docs/ docs/ .github/
+git status
+```
+
+Review `git status` output. If any `.py`, `.npy`, `.npz`, or binary file is staged, unstage it:
+
+```bash
+git restore --staged <file>
+```
+
+### 15-D. Commit
+
+```bash
+git commit -m "docs: refresh documentation — <one-line description of the most significant change made>
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+### 15-E. Push
+
+```bash
+git push origin frontend-game-mockup
+```
+
+---
+
+## RUNLOG Template
+
+At the end of every execution, emit a structured log in this exact format. Do not omit this section even if no changes were made — a no-op run is still a valid run.
+
+```
+## RUNLOG — doc-review-refresh — <ISO-8601 date>
+
+### Ground Truth Captured
+- Version: <$GT_VERSION>
+- Tests: <$GT_TOTAL> total, <$GT_PASSED> passed, <$GT_FAILED> failed
+- Known failures: <list test node IDs or "none">
+- Save feature merged: <true | false>
+
+### Changes Made
+| Phase | File | Change description |
+|---|---|---|
+| <phase ID> | <file path> | <what was changed and why> |
+
+### Files Created
+| File | Required by |
+|---|---|
+| <path> | <phase and spec reference> |
+
+### Items Requiring Human Review
+- <any finding you could not resolve automatically, with a description of the issue and the file location>
+
+### No-op phases
+- <list of phases where everything was already accurate and no edits were needed>
+```
+
+---
+
+## Quick Pre-Check — Run Before Phase 0
+
+These seven commands are fast staleness signals. If all return zero matches, a full skill run is unlikely to find anything. If any return matches, proceed with the full run.
+
+```bash
+# 1. Version drift
 grep -rn "0\.1\.0\b" gameworks/docs/ docs/ --include="*.md"
 
-# Test counts that may be stale
+# 2. Stale test counts
 grep -rn "\b[0-9]\{2,3\} test\|[0-9]\{2,3\} passing\|[0-9]\{2,3\} passed" gameworks/docs/ docs/ --include="*.md"
 
-# Old fixture name for 40x30 board
+# 3. Wrong fixture attribution
 grep -rn "renderer_large.*40\|40x30.*renderer_large" gameworks/docs/ docs/ --include="*.md"
 
-# Resolved bugs still marked OPEN
-grep -n "| OPEN" gameworks/docs/BUGS.md | head -20
+# 4. Phantom function name
+grep -rn "_resume_game" gameworks/docs/ docs/ --include="*.md"
 
-# References to functions that no longer exist
-grep -rn "def _resume_game\|GameLoop._resume_game" gameworks/docs/ docs/ --include="*.md"
+# 5. Open bugs that may be resolved
+grep -n "| OPEN" gameworks/docs/BUGS.md
 
-# Phantom action strings (strings in docs not returned by renderer)
-grep -rn '"restart"\|"quit"\|"save"\|"save_state"\|"dev:solve"' gameworks/docs/ --include="*.md"
+# 6. Phantom action strings
+grep -rn '"restart"\|"dev:solve"' gameworks/docs/ --include="*.md"
 
-# Docs that reference files in docs/archive/ that may not exist
-grep -rn "docs/archive/" docs/ gameworks/docs/ --include="*.md"
+# 7. Stale colour RGB values
+grep -rn "220, 50, 50\|35, 35, 45" gameworks/docs/ docs/ --include="*.md"
 ```
