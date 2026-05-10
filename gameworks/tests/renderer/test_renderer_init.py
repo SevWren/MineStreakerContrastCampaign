@@ -182,3 +182,91 @@ class TestPhase2Caches:
         # renderer.py should never reference 'engine.elapsed' or 'self.engine.elapsed'
         assert "engine.elapsed" not in source
         assert "self.engine.elapsed" not in source
+
+    def test_win_size_cache_updated_on_videoresize(self, renderer_easy):
+        """_win_size cache must be updated when VIDEORESIZE event is handled."""
+        r, _ = renderer_easy
+        from unittest.mock import Mock
+        import pygame
+
+        # Simulate VIDEORESIZE event
+        old_size = r._win_size
+        new_size = (1024, 768)
+        event = Mock()
+        event.type = pygame.VIDEORESIZE
+        event.size = new_size
+
+        # Monkeypatch set_mode to return a mock window
+        mock_win = Mock()
+        mock_win.get_size.return_value = new_size
+        original_set_mode = pygame.display.set_mode
+        pygame.display.set_mode = Mock(return_value=mock_win)
+
+        try:
+            r.handle_event(event)
+            # Cache should be updated
+            assert r._win_size == new_size
+            assert r._win_size != old_size
+        finally:
+            pygame.display.set_mode = original_set_mode
+
+    def test_board_rect_cache_invalidated_on_pan_change(self, renderer_easy):
+        """_cached_board_rect must be invalidated when pan changes."""
+        r, _ = renderer_easy
+        from unittest.mock import Mock
+        import pygame
+
+        # Populate cache
+        _ = r._board_rect()
+        assert r._cached_board_rect is not None
+
+        # Simulate arrow key pan (LEFT arrow)
+        event = Mock()
+        event.type = pygame.KEYDOWN
+        event.key = pygame.K_LEFT
+
+        r.handle_event(event)
+        # Cache should be invalidated
+        assert r._cached_board_rect is None
+
+    def test_board_rect_cache_invalidated_on_zoom_change(self, renderer_easy):
+        """_cached_board_rect must be invalidated after MOUSEWHEEL zoom."""
+        r, _ = renderer_easy
+        from unittest.mock import Mock, patch
+        import pygame
+
+        # Populate cache
+        _ = r._board_rect()
+        assert r._cached_board_rect is not None
+
+        # Simulate MOUSEWHEEL zoom OUT (renderer starts at BASE_TILE=32, zoom in would be no-op)
+        event = Mock()
+        event.type = pygame.MOUSEWHEEL
+        event.y = -1  # scroll down = zoom out
+
+        # Monkeypatch pygame.mouse.get_pos to avoid undefined behavior
+        with patch('pygame.mouse.get_pos', return_value=(100, 100)):
+            r.handle_event(event)
+
+        # Cache should be invalidated (indirectly via _on_resize or _clamp_pan)
+        # After zoom, cache is cleared
+        assert r._cached_board_rect is None
+
+    def test_draw_smiley_uses_passed_mouse_pos(self, renderer_easy):
+        """
+        _draw_smiley must use the passed mouse_pos parameter,
+        not call pygame.mouse.get_pos() internally.
+        """
+        r, _ = renderer_easy
+        from unittest.mock import patch
+
+        # Monkeypatch pygame.mouse.get_pos to raise if called
+        def forbidden_get_pos():
+            raise AssertionError("_draw_smiley called pygame.mouse.get_pos() instead of using passed mouse_pos")
+
+        with patch('pygame.mouse.get_pos', side_effect=forbidden_get_pos):
+            # Call _draw_smiley with explicit mouse_pos
+            # If it tries to call get_pos(), the test will fail
+            r._draw_smiley(100, 100, 50, 40, "playing", mouse_pos=(200, 200))
+
+        # Test passes if no assertion raised

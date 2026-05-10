@@ -54,6 +54,8 @@ class TestAnimationCascade:
         from gameworks.renderer import AnimationCascade
         anim = AnimationCascade([(i, 0) for i in range(5)], speed=0.005)
         time.sleep(0.1)
+        # Call .current() to advance _idx, then check .done
+        _ = anim.current()
         assert anim.done
 
     def test_current_does_not_exceed_total(self):
@@ -74,8 +76,10 @@ class TestAnimationCascade:
         from gameworks.renderer import AnimationCascade
         anim = AnimationCascade([(3, 7)], speed=0.001)
         time.sleep(0.05)
+        # Call .current() to advance _idx
+        current = anim.current()
         assert anim.done
-        assert (3, 7) in anim.current()
+        assert (3, 7) in current
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +116,8 @@ class TestWinAnimation:
         from gameworks.renderer import WinAnimation
         anim = WinAnimation(self._board_with_flags(), speed=0.001)
         time.sleep(0.5)
+        # Call .current() to advance _phase, then check .done
+        _ = anim.current()
         assert anim.done
 
     def test_finished_after_positive(self):
@@ -125,6 +131,8 @@ class TestWinAnimation:
         from gameworks.renderer import WinAnimation
         anim = WinAnimation(self._board_with_flags(), speed=0.001)
         time.sleep(0.5)
+        # Call .current() to advance _phase, then check .correct_done
+        _ = anim.current()
         assert anim.correct_done
 
     def test_no_flags_board_is_immediately_done(self):

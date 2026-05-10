@@ -660,6 +660,9 @@ class Renderer:
           2B: panel_right=True branch was entirely absent — buttons drifted as tile changed
           2C: sy double-count in _draw_panel fixed separately (use btn.bottom directly)
         """
+        # Invalidate board rect cache — tile size changed, so cached rect is stale
+        self._cached_board_rect = None
+
         ts   = self._tile
         bh   = self._btn_new.height
         gap  = self._btn_gap
