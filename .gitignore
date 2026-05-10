@@ -1,6 +1,6 @@
 # Repository outputs
 # results/
-/results/*
+#/results/*
 
 claude_conv_output/
 docs/result_reports/
