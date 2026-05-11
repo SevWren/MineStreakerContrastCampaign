@@ -8,12 +8,9 @@ and ties the engine to the renderer.
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pygame
 
 try:
@@ -104,11 +101,9 @@ class GameLoop:
             eng = _eng.GameEngine.from_difficulty(a.diff, seed=a.seed)
             return eng
 
-        global TILE
         if a.tile:
             import gameworks.renderer as _r
             _r.TILE = a.tile
-            TILE = a.tile
 
         eng = GameEngine(
             mode=mode, width=a.board_w, height=a.board_h,
@@ -234,8 +229,7 @@ class GameLoop:
         # Mine hit is a score penalty — game continues, do NOT transition to RESULT
 
     def _do_right_click(self, x, y):
-        state = self._engine.right_click(x, y)
-        return state
+        self._engine.right_click(x, y)
 
     def _do_chord(self, x, y):
         result = self._engine.middle_click(x, y)
@@ -255,22 +249,22 @@ class GameLoop:
         # board._state is now "won"; game loop picks it up on the next iteration
 
     def _save_npy(self):
-        """Save current board's grid to an npy file."""
-        eng = self._engine
-        if not eng:
+        """Construct save path and delegate to engine."""
+        if not self._engine:
             return
-        grid = np.zeros((eng.board.height, eng.board.width), dtype=np.int8)
-        for y in range(eng.board.height):
-            for x in range(eng.board.width):
-                cell = eng.board.snapshot(x, y)
-                if cell.is_mine:
-                    grid[y, x] = -1
-                else:
-                    grid[y, x] = cell.neighbour_mines
+
+        # Path construction (CLI/UI concern - stays in main.py)
+        out_dir = Path(__file__).parent.parent / "results"
+        out_dir.mkdir(exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        fname = f"board_{ts}_{eng.board.width}x{eng.board.height}.npy"
-        np.save(fname, grid)
-        print(f"[SAVE] Board saved to {fname}")
+        path = out_dir / f"board_{ts}_{self._engine.board.width}x{self._engine.board.height}.npy"
+
+        # Delegate to engine (serialization + I/O)
+        try:
+            self._engine._save_npy_to(str(path))
+            print(f"[SAVE] Board saved to {path}")
+        except (PermissionError, OSError) as e:
+            print(f"[SAVE FAILED] {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -279,11 +273,6 @@ class GameLoop:
 
 def main():
     args = build_parser().parse_args()
-
-    # Allow overriding TILE globally
-    global TILE
-    if args.tile:
-        TILE = args.tile
 
     loop = GameLoop(args)
     loop.run()

@@ -189,7 +189,7 @@ class WinAnimation:
 
         # Shuffle within each group for organic feel
         import random
-        rng = random.Random(42)
+        rng = random.Random()
         rng.shuffle(self._correct)
         rng.shuffle(self._wrong)
         self._all_positions = self._correct + self._wrong
@@ -482,7 +482,7 @@ class Renderer:
                 self._cached_board_rect = None
             elif ev.key == K_RIGHT:
                 bw = self.board.width * self._tile
-                max_pan = max(0, bw - (self._win.get_width() - self.BOARD_OX))
+                max_pan = max(0, bw - (self._win_size[0] - self.BOARD_OX))
                 self._pan_x = max(self._pan_x - self._tile * 3, -max_pan)
                 self._cached_board_rect = None
             elif ev.key == K_UP:
@@ -490,7 +490,7 @@ class Renderer:
                 self._cached_board_rect = None
             elif ev.key == K_DOWN:
                 bh = self.board.height * self._tile
-                max_pan = max(0, bh - (self._win.get_height() - self.BOARD_OY))
+                max_pan = max(0, bh - (self._win_size[1] - self.BOARD_OY))
                 self._pan_y = max(self._pan_y - self._tile * 3, -max_pan)
                 self._cached_board_rect = None
             return None

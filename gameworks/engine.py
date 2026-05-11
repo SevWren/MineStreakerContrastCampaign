@@ -15,6 +15,7 @@ Coordinates are (col, row) == (x, y) throughout.
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from typing import List, Optional, Set, Tuple
@@ -688,6 +689,45 @@ class GameEngine:
         self.stop_timer()
 
         return MoveResult(success=True, state="won", score_delta=0, streak=self.streak)
+
+    def _save_npy_to(self, path: str) -> None:
+        """
+        Atomically save the current board state to .npy file at given path.
+
+        Format: int8 array, -1=mine, 0-8=neighbor count.
+        Uses atomic write pattern (tmp file + os.replace) to prevent corruption.
+
+        Parameters
+        ----------
+        path : str
+            Full path including filename (e.g., "results/board_20260511_120000_9x9.npy")
+
+        Raises
+        ------
+        PermissionError
+            If write access is denied
+        OSError
+            If disk is full or I/O error occurs
+
+        Notes
+        -----
+        This method can be called at any time after GameEngine initialization.
+        It does not require the game to be started or in any particular state.
+        """
+        # Extract grid data from board
+        grid = np.zeros((self.board.height, self.board.width), dtype=np.int8)
+        for y in range(self.board.height):
+            for x in range(self.board.width):
+                cell = self.board.snapshot(x, y)
+                grid[y, x] = -1 if cell.is_mine else cell.neighbour_mines
+
+        # Atomic write pattern: write to temp file, then replace
+        # CRITICAL: Temp path must end with .npy or numpy will add it
+        path_obj = Path(path)
+        tmp = path_obj.parent / (path_obj.stem + ".tmp.npy")
+
+        np.save(tmp, grid)      # Creates exactly tmp (numpy sees .npy suffix)
+        os.replace(tmp, path_obj)  # Atomic replace
 
     def restart(self, width=None, height=None, mines=None):
         self._first_click = True

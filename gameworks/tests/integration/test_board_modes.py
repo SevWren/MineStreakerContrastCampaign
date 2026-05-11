@@ -130,7 +130,6 @@ class TestSaveLoadRoundTrip:
         finally:
             os.unlink(f.name)
 
-    @pytest.mark.skip(reason="Pending R8 — atomic save not yet implemented")
     def test_atomic_save_uses_tmp_then_replace(self, tmp_dir):
         """
         GameLoop._save_npy must write to a .tmp file first and call os.replace.

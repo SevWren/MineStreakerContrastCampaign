@@ -20,7 +20,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from gameworks.engine import Board, load_board_from_npy, place_random_mines
+from gameworks.engine import Board, load_board_from_npy
 
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,8 @@ Canonical flat list of every known open bug in the `gameworks/` package.
 Each entry is self-contained: no cross-reference to ISSUE-LOG.md required.
 
 **Package version:** 0.1.1
-**Last updated:** 2026-05-11 (FA-022 added — hot-loop tuple allocation GC pressure)
-**Total open:** 20 (0 critical · 0 high · 8 medium · 12 low)
+**Last updated:** 2026-05-11 (FA-010, FA-015, FA-016, FA-017, FA-019, DP-R8, PF-001 resolved)
+**Total open:** 13 (0 critical · 0 high · 8 medium · 5 low)
 
 Bugs with `FIX AVAILABLE` have a proposed correction in the detail section below.
 Bugs marked `WONT-FIX` are acknowledged design decisions.
@@ -31,22 +31,22 @@ The canonical narrative history is in `docs/ISSUE-LOG.md`.
 | [DP-R2](#dp-r2) | MEDIUM | engine | engine.py | OPEN | No `GameConfig` frozen dataclass — 7 flat args, not serializable |
 | [FA-021](#fa-021) | MEDIUM | renderer | renderer.py:352–358 | OPEN | `_image_surf` upscaled to board pixel dimensions at init — all zoom-step `smoothscale` calls use a bloated source, blocking the main thread 100–500 ms per scroll notch |
 | [FA-022](#fa-022) | LOW | renderer | renderer.py:_draw_board | OPEN | 333k+ tuple allocations/frame at max zoom-out — `(x, y) in anim_set` and `pressed == (x, y)` allocate a new tuple per cell per frame, triggering repeated gen-0 GC |
-| [FA-010](#fa-010) | LOW | main | main.py:_save_npy | OPEN | `_save_npy()` writes to cwd, not `results/` |
+| [FA-010](#fa-010) | LOW | main | main.py:_save_npy | RESOLVED | `_save_npy()` writes to cwd, not `results/` |
 | [FA-011](#fa-011) | LOW | engine | engine.py:112 | RESOLVED — 2dd6ea0 | `Board._count_adj()` is dead code |
 | [FA-012](#fa-012) | LOW | engine | engine.py:158 | RESOLVED — 2dd6ea0 | `Board.correct_flags` uses `np.sum()` scan — inconsistent with Phase 1 |
 | [FA-013](#fa-013) | LOW | engine | engine.py:705 | RESOLVED — 2dd6ea0 | `if __name__ == "_test_engine":` is unreachable |
 | [FA-014](#fa-014) | LOW | main | main.py:70 | OPEN | `MENU` state defined but no RESULT→MENU arc exists |
-| [FA-015](#fa-015) | LOW | main | main.py:164 | OPEN | `_do_right_click()` return value always discarded |
-| [FA-016](#fa-016) | LOW | renderer | renderer.py:WinAnim | OPEN | `WinAnimation` fixed seed 42 — identical animation every game |
-| [FA-017](#fa-017) | LOW | main | main.py:~107 | OPEN | `main.TILE` is a dead write — separate from `renderer.TILE` |
+| [FA-015](#fa-015) | LOW | main | main.py:164 | RESOLVED | `_do_right_click()` return value always discarded |
+| [FA-016](#fa-016) | LOW | renderer | renderer.py:WinAnim | RESOLVED | `WinAnimation` fixed seed 42 — identical animation every game |
+| [FA-017](#fa-017) | LOW | main | main.py:~107 | RESOLVED | `main.TILE` is a dead write — separate from `renderer.TILE` |
 | [FA-018](#fa-018) | LOW | engine | engine.py:~555 | RESOLVED — 2dd6ea0 | First-click regen can silently reduce mine count on tiny boards |
-| [FA-019](#fa-019) | LOW | renderer | renderer.py:K_arrows | OPEN | Arrow-key pan calls `_win.get_width()` not `_win_size` (sub-issue of FA-006) |
+| [FA-019](#fa-019) | LOW | renderer | renderer.py:K_arrows | RESOLVED | Arrow-key pan calls `_win.get_width()` not `_win_size` (sub-issue of FA-006) |
 | [FA-020](#fa-020) | LOW | engine | engine.py:right_click | RESOLVED — 2dd6ea0 | `right_click()` never increments `streak` — flags can't build multiplier |
 | [DP-R3](#dp-r3) | LOW | engine | engine.py | OPEN | Board loaders return naked `Board` — no `BoardLoadResult` |
 | [DP-R6](#dp-r6) | LOW | main | main.py | OPEN | No `preflight_check()` — errors surface mid-game-loop |
-| [DP-R8](#dp-r8) | LOW | main | main.py:_save_npy | OPEN | `_save_npy()` is not atomic — no `os.replace` pattern |
+| [DP-R8](#dp-r8) | LOW | main | main.py:_save_npy | RESOLVED | `_save_npy()` is not atomic — no `os.replace` pattern |
 | [DP-R9](#dp-r9) | LOW | engine | engine.py | OPEN | No `GAME_SAVE_SCHEMA_VERSION` — format detection by value heuristic |
-| [PF-001](#pf-001) | LOW | tests | 3 test files | OPEN | Pre-existing pyflakes warnings — unused imports |
+| [PF-001](#pf-001) | LOW | tests | 3 test files | RESOLVED | Pre-existing pyflakes warnings — unused imports |
 | [T-002](#t-002) | LOW | tests | test_gameworks_engine.py | RESOLVED — tests now pass | Pre-existing failure: `test_snapshot_fields` |
 | [T-003](#t-003) | LOW | tests | test_gameworks_renderer_headless.py | RESOLVED — tests now pass | Pre-existing failure: `test_dev_solve_click_returns_action_not_none` |
 

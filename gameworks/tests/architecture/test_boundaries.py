@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import ast
 import importlib.util
-import os
 from pathlib import Path
 from typing import List
 

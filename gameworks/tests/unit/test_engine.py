@@ -27,7 +27,6 @@ from gameworks.engine import (
     MINE_HIT_PENALTY,
     REVEAL_POINTS,
     WRONG_FLAG_PENALTY,
-    place_random_mines,
 )
 
 
