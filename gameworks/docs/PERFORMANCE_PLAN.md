@@ -1,4 +1,4 @@
-# Performance Remediation Plan — P-01 through P-18
+# Performance Remediation Plan — P-01 through P-25
 ## Mine-Streaker `gameworks/` — Industry-Standard Approach
 
 Forensic analysis date: 2026-05-10
@@ -17,6 +17,7 @@ Board reference: 300×370 (111,000 cells) at 30 FPS target.
 ---
 
 ## Phase 1 — Engine Dirty-Int Counters
+**Status: IMPLEMENTED**
 **Fixes: P-06, P-07, P-08, P-23**
 **File: `gameworks/engine.py`**
 **Tests: `gameworks/tests/unit/test_board.py`**
@@ -75,7 +76,7 @@ self._n_revealed += 1
 self._n_safe_revealed += 1
 ```
 
-Win condition (line 195) — replace array scan with counter:
+Win condition (line ~195) — replace array scan with counter:
 
 ```python
 # Before:
@@ -136,7 +137,8 @@ leaving those cells revealed (`_revealed[y, x] = True`) but not safe. Setting
 Using `_revealed.sum()` is safe here — dev_solve is already in a bulk-numpy context;
 the single O(n) recount is a one-time cost on user action, not per-frame.
 
-### Tests to add in `gameworks/tests/unit/test_board.py`
+### Tests — `gameworks/tests/unit/test_board.py`
+*(Phase 1 is IMPLEMENTED; these tests should exist. If any are missing, add them.)*
 
 ```
 test_flags_placed_counter_increments_on_flag
@@ -155,6 +157,7 @@ This catches any future mutation that forgets to update the counter.
 ---
 
 ## Phase 2 — Frame-Local Value Hoisting
+**Status: IMPLEMENTED** *(partially — 5 sites remain; tracked in FA-006)*
 **Fixes: P-15, P-17, P-18, P-21**
 **Files: `gameworks/renderer.py`, `gameworks/main.py`**
 **Tests: `gameworks/tests/renderer/test_renderer_init.py`**
@@ -178,15 +181,18 @@ self._win_size = ev.size   # <- add this line
 ```
 
 All call sites — replace `self._win.get_size()` with `self._win_size`:
-- `renderer.py:400`  `_center_board`
-- `renderer.py:520`  MOUSEMOTION handler
-- `renderer.py:629`  `_clamp_pan`
-- `renderer.py:685`  `_draw_overlay`
-- `renderer.py:806`  `_draw_board`
-- `renderer.py:948`  `_draw_loss_overlay`
-- `renderer.py:988`  `_draw_image_ghost`
-- `renderer.py:1158` `_draw_modal`
-- `renderer.py:1179` `_draw_help`
+- `_center_board()` — reads `get_size()` to compute centering origin
+- MOUSEMOTION handler — reads `get_size()` to compute pan clamp bounds
+- `_clamp_pan()` — reads `get_size()` to clamp `_pan_x` / `_pan_y`
+- `_draw_overlay()` — reads `get_size()` for full-window surface sizing
+- `_draw_board()` — reads `get_size()` for visible-tile viewport culling
+- `_draw_loss_overlay()` — reads `get_size()` for full-window surface sizing
+- `_draw_image_ghost()` — reads `get_size()` for board-pixel blit region
+- `_draw_modal()` — reads `get_size()` for modal overlay sizing
+- `_draw_help()` — reads `get_size()` for help overlay sizing
+
+**Note:** Line numbers in renderer.py are not pinned here because the file changes
+with each phase commit. Search by method name, not line number, when implementing.
 
 ### 2B — Cache `_board_rect()` (P-17)
 
@@ -223,7 +229,7 @@ Invalidation — add `self._cached_board_rect = None` after every mutation of
 
 ### 2C — Eliminate redundant `get_pos()` in `_draw_smiley` (P-15)
 
-`renderer.py:749` — `_draw_smiley` calls `pygame.mouse.get_pos()` ignoring the
+`_draw_smiley` — calls `pygame.mouse.get_pos()` ignoring the
 `mouse_pos` already passed to `draw()`.
 
 `_draw_smiley` signature change:
@@ -238,7 +244,9 @@ def _draw_smiley(self, x, y, w, h, state, mouse_pos):
 def _draw_header(self, elapsed, game_state, mouse_pos):
 ```
 
-`_draw_smiley` body (line 749): replace `pygame.mouse.get_pos()` with `mouse_pos`.
+`_draw_smiley` body — replace the `pygame.mouse.get_pos()` call with `mouse_pos`.
+Search for the single `get_pos()` call inside `_draw_smiley`; it is the only one
+in that method.
 
 `draw()` call site — pass `mouse_pos` through:
 
@@ -246,8 +254,9 @@ def _draw_header(self, elapsed, game_state, mouse_pos):
 self._draw_header(elapsed, game_state, mouse_pos)
 ```
 
-For the MOUSEWHEEL `get_pos()` at line 558, store `self._last_mouse_pos` and update
-at the top of each `draw()` call:
+For the `MOUSEWHEEL` handler's `get_pos()` call (inside `handle_event`, in the
+`ev.type == pygame.MOUSEBUTTONDOWN` / `MOUSEWHEEL` branch), store
+`self._last_mouse_pos` and update at the top of each `draw()` call:
 
 ```python
 # In __init__:
@@ -256,17 +265,19 @@ self._last_mouse_pos: Tuple[int, int] = (0, 0)
 # In draw() first line:
 self._last_mouse_pos = mouse_pos
 
-# In MOUSEWHEEL handler (line 558):
+# In handle_event() MOUSEWHEEL branch:
 mx, my = self._last_mouse_pos   # was: pygame.mouse.get_pos()
 ```
 
 ### 2D — Single `elapsed` call per loop iteration (P-18)
 
-`main.py:186` already caches `elapsed` correctly and passes it to `draw()`.
-Verify no code path inside renderer calls `engine.elapsed` directly (which would
-re-invoke `time.time()`). Add an architecture test to enforce this.
+`GameLoop.run()` already caches `elapsed` at the top of each loop iteration and
+passes it to `draw()`. Verify no code path inside renderer calls `engine.elapsed`
+directly (which would re-invoke `time.time()`). Add an architecture test to enforce
+this.
 
-### Tests to add
+### Tests — `gameworks/tests/renderer/test_renderer_init.py`
+*(Phase 2 is IMPLEMENTED; these tests should exist. If any are missing, add them.)*
 
 ```
 test_win_size_cache_updated_on_videoresize
@@ -279,6 +290,7 @@ test_renderer_does_not_call_engine_elapsed      <- inspect renderer source, asse
 ---
 
 ## Phase 3 — Cell Loop Refactor
+**Status: IMPLEMENTED**
 **Fixes: P-01, P-02, P-03, P-20**
 **File: `gameworks/renderer.py`**
 **Tests: `gameworks/tests/renderer/test_surface_cache.py`, new `test_cell_draw.py`**
@@ -289,7 +301,8 @@ coercions, and a `time.monotonic()` system call.
 
 ### 3A — Hoist `time.monotonic()` out of the cell loop (P-01)
 
-In `_draw_board`, before the `for y in range(ty0, ty1):` loop at line 822:
+In `_draw_board`, immediately before the outer `for y in range(ty0, ty1):` loop
+(the viewport-culled cell iteration loop, not the board-rect setup above it):
 
 ```python
 now = time.monotonic()   # hoist here, pass to _draw_cell
@@ -362,10 +375,19 @@ num_surf = self._num_surfs.get(neighbour_mines)
 num_surf = self._num_surfs.get(int(neighbour_mines))
 ```
 
+**Note:** The `(x, y) in anim_set` and `(x, y) in win_anim_set` lookups in the
+cell loop above are an intermediate state. Phase 10 supersedes them with numpy
+bool array indexing (`anim_arr[y, x]`, `win_arr[y, x]`), eliminating the per-cell
+tuple allocations entirely. Implement Phase 3 as written here; Phase 10 will
+replace those two lines.
+
 ### 3C — Remove dead `_num_tile != ts` guard (P-20)
 
-`renderer.py:882` — this check can never be true mid-frame (surfs are rebuilt
-immediately after zoom before any draw call):
+Search inside both `_draw_board` and `_draw_cell` — there is a guard that checks
+`self._num_tile != ts` and calls `self._rebuild_num_surfs()` if true.
+Delete it from whichever method it appears in (it will be in one or the other,
+not both). This check can never be true mid-frame (surfs are rebuilt immediately
+after zoom before any draw call):
 
 ```python
 # DELETE these two lines:
@@ -383,7 +405,8 @@ assert self._num_tile == ts, (
 )
 ```
 
-### Tests to add in `gameworks/tests/renderer/test_cell_draw.py`
+### Tests — `gameworks/tests/renderer/test_cell_draw.py`
+*(Phase 3 is IMPLEMENTED; these tests should exist. If any are missing, add them.)*
 
 ```
 test_draw_completes_without_cellstate_construction   <- monkeypatch CellState
@@ -395,6 +418,7 @@ test_draw_board_correct_cell_count_drawn             <- verify viewport culling
 ---
 
 ## Phase 4 — Surface Allocation Caches
+**Status: PENDING**
 **Fixes: P-04, P-05, P-09, P-10**
 **File: `gameworks/renderer.py`**
 **Tests: `gameworks/tests/renderer/test_surface_cache.py`**
@@ -514,17 +538,26 @@ if self._panel_overlay_surf is None or self._panel_overlay_surf_size != sz:
 self._win.blit(self._panel_overlay_surf, (px - self.PAD, oy))
 ```
 
-Invalidation triggers — the overlay size `(_bd_w, _bd_h)` depends on **both** window
-size and tile size:
+Invalidation triggers — the overlay size `(_bd_w, _bd_h)` depends on **window size
+only**, not on tile size:
 
+- `_bd_w = PANEL_W + PAD*2` — both `PANEL_W` and `PAD` are module-level constants;
+  tile size has no effect on panel width.
+- `_bd_h = win_h - BOARD_OY` — `win_h` is the window height; `BOARD_OY` is a
+  constant header offset. Tile size has no effect on panel height.
+
+Therefore: **one invalidation site only:**
 - Window resize: add `self._panel_overlay_surf = None` in the VIDEORESIZE handler.
-- Zoom: add `self._panel_overlay_surf = None` at the start of `_rebuild_num_surfs()`
-  (called after every MOUSEWHEEL zoom event). The board pixel dimensions change with
-  tile size, so the cached overlay would be the wrong size after a zoom.
 
-Note: `_modal_overlay_surf` and `_help_overlay_surf` (Phase 4C) use `_win_size`
-only — their size does not change with tile size — so resize-only invalidation is
-correct for those two.
+**Do NOT add zoom invalidation** (`_rebuild_num_surfs()` call site). Adding it would
+force a Surface realloc on every zoom notch for an overlay whose size has not changed —
+the opposite of the intent. This is a common mistake because the board pixel rect does
+change on zoom, but the *panel* overlay occupies a fixed column next to the board, not
+the board itself.
+
+Note: `_modal_overlay_surf` and `_help_overlay_surf` (Phase 4C) are also window-size
+only — consistent with the same analysis. Resize-only invalidation is correct for all
+three panel/modal/help overlays.
 
 ### 4C — Modal and help full-screen overlays (P-10)
 
@@ -537,7 +570,9 @@ self._help_overlay_surf: Optional[pygame.Surface] = None
 self._help_overlay_surf_size: Tuple[int, int] = (0, 0)
 ```
 
-`_draw_modal` — replace lines 1158-1160:
+`_draw_modal` — replace the block that allocates a full-window SRCALPHA Surface and
+fills it at the top of the method body (the `pygame.Surface(..., pygame.SRCALPHA)`
+/ `.fill((0, 0, 0, 160))` / `.blit(...)` sequence):
 
 ```python
 sz = self._win_size
@@ -562,7 +597,9 @@ test_win_anim_fx_blit_no_copy                       <- monkeypatch Surface.copy,
 test_panel_overlay_surf_stable_across_frames
 test_panel_overlay_surf_rebuilt_on_resize
 test_modal_overlay_surf_stable_across_frames
+test_modal_overlay_surf_rebuilt_on_resize
 test_help_overlay_surf_stable_across_frames
+test_help_overlay_surf_rebuilt_on_resize
 ```
 
 The first three tests use `id()` comparison on `_ghost_cell_buf` to verify the same
@@ -572,6 +609,7 @@ the existing `test_fog_surf_stable_across_frames`.
 ---
 
 ## Phase 5 — Text/Font Surface Cache
+**Status: PENDING**
 **Fixes: P-11, P-12, P-22**
 **File: `gameworks/renderer.py`**
 **Tests: `gameworks/tests/renderer/test_surface_cache.py`**
@@ -626,24 +664,29 @@ stale `id(font)` references remain.
 
 ### Apply `_tx()` everywhere `font.render()` is called in the draw path
 
-`_draw_header` (P-12) — replace all 4 render calls:
+`_draw_header` (P-12) — replace all 4 `font.render()` calls inside the method body.
+Search for `font.render(` inside `_draw_header`; there are exactly 4 calls covering
+the mine count, score, elapsed time, and streak/multiplier strings:
 
 ```python
-# line 711:
 mt = self._tx(f"M:{mines:>03d}", self._font_big, mcol)
-
-# line 733:
 sc = self._tx(f"SCORE:{score:>6d}", self._font_small, score_col)
-
-# line 735:
 tt = self._tx(f"T:{secs:>03d}", self._font_small, C["text_light"])
-
-# line 742:
 sl = self._tx(f"STREAK x{streak}  {mult:.1f}x", self._font_small, streak_col)
 ```
 
-`_draw_panel` (P-11) — replace all render calls at lines 1033, 1053, 1059, 1067,
-1090-1093, 1108, 1112-1114.
+**Note:** Line numbers are intentionally omitted — the method will shift with each
+prior-phase commit. Search by method name and string content.
+
+`_draw_panel` (P-11) — replace all `font.render()` calls in the method body.
+Search for every `font.render(` inside `_draw_panel` and apply `_tx()`.
+Affected strings include: safe count, mine count, score, label strings, and
+stat line values. Do not use line numbers — the method spans a large block and
+will shift with each phase commit; search by method scope instead.
+
+**Note:** Line numbers are intentionally omitted here. Use
+`grep -n "font.render" gameworks/renderer.py` to locate all remaining
+call sites at implementation time.
 
 ### Tips pre-render (P-22)
 
@@ -672,6 +715,13 @@ def _rebuild_tip_surfs(self):
     ]
 ```
 
+**Why `font.render()` directly and not `_tx()` here:** `_rebuild_tip_surfs()` is
+called only at init and on zoom (inside `_rebuild_num_surfs()`), never per-frame.
+The rendered surfaces are stored in `_tip_surfs` and blitted directly in the draw
+loop — the per-frame path already avoids `font.render()`. Using `_tx()` here would
+add an unnecessary dict write to `_text_cache` for strings that will never be
+requested through the cache path. Do not change this call to `_tx()`.
+
 Call `_rebuild_tip_surfs()` inside `_rebuild_num_surfs()` so tips are refreshed
 when fonts change on zoom.
 
@@ -698,6 +748,7 @@ test_header_font_render_not_called_on_stable_frame   <- monkeypatch font.render,
 ---
 
 ## Phase 6 — Button Surface Pre-Rendering
+**Status: PENDING**
 **Fixes: P-13**
 **File: `gameworks/renderer.py`**
 **Tests: `gameworks/tests/renderer/test_surface_cache.py`**
@@ -750,6 +801,14 @@ def _rebuild_btn_surfs(self):
             self._btn_surfs[(label, base_col, hover)] = s
 ```
 
+**Why `font.render()` directly and not `_tx()` here:** `_rebuild_btn_surfs()` is
+called only at init and on resize/zoom (inside `_rebuild_num_surfs()` and
+`_on_resize()`), never per-frame. The rendered surfaces are stored in `_btn_surfs`
+and blitted directly in the draw loop — the per-frame path already avoids
+`font.render()`. Using `_tx()` here would add unnecessary dict writes to
+`_text_cache` for label strings that will never be requested through the cache
+path. Do not change these calls to `_tx()`.
+
 `_draw_panel` button loop — `base_col` must be carried alongside each button.
 Change the buttons list from 2-tuples to 3-tuples so `base_col` is in scope:
 
@@ -801,8 +860,10 @@ test_draw_panel_does_not_call_pill_per_frame   <- monkeypatch pill(), assert 0 c
 ---
 
 ## Phase 7 — Mine Spike Cache + Animation Set Cache
+**Status: PENDING**
 **Fixes: P-14, P-16**
 **File: `gameworks/renderer.py`**
+**Tests: `gameworks/tests/renderer/test_surface_cache.py`**
 
 ### 7A — Mine spike offsets (P-14)
 
@@ -848,6 +909,48 @@ Both use `max(2, ts // 3)` — keep them in sync.
 
 `set(self.cascade.current())` is rebuilt every frame during animation, even when
 `cascade._idx` has not advanced.
+
+**Pre-condition — verify and if necessary add `WinAnimation._idx` before writing any code:**
+
+The `AnimationCascade` tests explicitly reference `cascade._idx`. The `WinAnimation`
+tests reference `anim._phase`, `anim._correct`, `anim._wrong` — but not `anim._idx`.
+
+**Step 1 — Grep for the actual cursor attribute name:**
+
+```
+awk '/class WinAnimation/,/^class [A-Z]/' gameworks/renderer.py | grep -n "_idx\|_step\|_cursor"
+```
+
+This extracts the `WinAnimation` class body and searches within it for cursor-like
+attributes. The pipe structure matters: `awk` first isolates the class, then `grep`
+searches only those lines. The previous form (`grep … | grep -A2 "class WinAnimation"`)
+was incorrect — the first grep emits attribute lines, none of which contain the string
+"class WinAnimation", so the second grep always returns empty output.
+
+**Step 2 — Branch on the result:**
+
+- **If `_idx` is found**: substitute it directly in the key expression and in
+  `_win_anim_last_key = (-1, -1)`. Proceed to implement Phase 7B.
+
+- **If the cursor is named something else** (e.g. `_step`, `_cursor`): substitute
+  that name everywhere `_idx` appears in the code below, and update
+  `_win_anim_last_key` to match.
+
+- **If no cursor attribute exists at all**: `WinAnimation` increments progress via
+  a local variable inside `current()` only. In this case:
+  1. Add `self._idx: int = 0` to `WinAnimation.__init__`.
+  2. Increment `self._idx` at the same point where the local counter currently
+     advances (typically inside the `if time.monotonic() >= self._next_tick:` block
+     in `current()`).
+  3. Then implement Phase 7B using `self._idx`.
+  **This step must be its own atomic commit before the Phase 7B commit.**
+
+Using a wrong or absent attribute silently reads `None`, producing key
+`(_phase, None)` which is stable every frame — the cache would appear to work in
+testing but skip all invalidation, freezing the animation set at the first-frame
+snapshot for the entire animation run.
+
+#### Fix
 
 `__init__` — add:
 
@@ -903,24 +1006,42 @@ single-phase and `_idx` is monotonically increasing — no reset ever occurs.
 The set is rebuilt only when `_idx` advances — typically once per `ANIM_TICK`
 interval (35ms), not once per frame (33ms).
 
-**Pre-condition — verify `WinAnimation._idx` exists before implementing:**
-The `AnimationCascade` tests explicitly reference `cascade._idx`. The `WinAnimation`
-tests reference `anim._phase`, `anim._correct`, `anim._wrong` — but not `anim._idx`.
-Before writing any Phase 7B code, grep the `WinAnimation` class body:
+### Tests to add in `gameworks/tests/renderer/test_surface_cache.py`
 
 ```
-grep -n "_idx\|_step\|_cursor\|_pos" gameworks/renderer.py | grep -A2 "class WinAnimation"
+test_mine_spike_offsets_populated_at_init
+    # Assert len(renderer._mine_spike_offsets) == 8 after __init__
+
+test_mine_spike_offsets_rebuilt_on_zoom
+    # Change self._tile, call _rebuild_num_surfs(), assert offsets recomputed
+    # (verify r = max(2, new_tile // 3) is reflected in first offset value)
+
+test_mine_spike_offsets_contain_8_tuples_of_ints
+    # Assert all elements are 2-tuples of Python int (not float from trig)
+
+test_anim_set_cache_stable_between_idx_ticks
+    # Advance cascade to _idx=N; call _draw_board twice without advancing _idx
+    # Assert id(renderer._anim_set_cache) is stable (same object both calls)
+
+test_anim_set_cache_rebuilt_on_idx_advance
+    # Assert id(renderer._anim_set_cache) changes when cascade._idx increments
+
+test_win_anim_set_cache_stable_within_phase
+    # Same as anim_set test but for win_anim: stable key → same cache object
+
+test_win_anim_set_cache_invalidated_on_phase_change
+    # Simulate phase boundary (_phase increments, _idx resets to 0)
+    # Assert cache is rebuilt despite _idx returning to 0
 ```
 
-If the cursor attribute is named something other than `_idx`, substitute it in both
-the key expression and the `_win_anim_last_key` init value. Using a wrong attribute
-name will silently read `None`, making the key `(_phase, None)` which equals itself
-every frame — the cache would appear to work in testing but rebuild on every phase
-transition instead of every tick.
+The `test_win_anim_set_cache_invalidated_on_phase_change` test is the regression
+guard for the `(_phase, _idx)` vs `_idx`-only key decision: it must **fail** if the
+key is changed to use `_idx` alone, and **pass** with the correct `(_phase, _idx)` key.
 
 ---
 
 ## Phase 8 — Frame Timing Precision
+**Status: PENDING**
 **Fixes: P-19**
 **File: `gameworks/main.py`**
 
@@ -931,22 +1052,345 @@ has ~15ms granularity. For a 30 FPS target (33.3ms/frame), frames can arrive at 
 or 45ms — producing the jitter experienced as "sluggishness" or "mouse feels heavy"
 even when the CPU is otherwise idle.
 
+On Linux and macOS, the kernel uses `clock_nanosleep` with sub-millisecond precision.
+`clock.tick()` already achieves accurate frame pacing on these platforms. Switching
+to `tick_busy_loop()` unconditionally on Linux/macOS wastes CPU in a spin with zero
+perceptible benefit.
+
 ### Fix
 
-`main.py:219`:
+Locate the `self._renderer._clock.tick(FPS)` call in `main.py` (inside `GameLoop.run()`).
+Replace with a platform-conditional:
 
 ```python
-# BEFORE:
-self._renderer._clock.tick(FPS)
+import sys   # add at top of main.py if not already present
 
-# AFTER:
-self._renderer._clock.tick_busy_loop(FPS)
+# In GameLoop.run(), replace the tick call:
+if sys.platform == "win32":
+    self._renderer._clock.tick_busy_loop(FPS)
+else:
+    self._renderer._clock.tick(FPS)
 ```
 
 `tick_busy_loop()` uses a coarse sleep to get close to the target, then spin-waits the
-last few milliseconds. This achieves sub-millisecond frame delivery accuracy at the
-cost of slightly higher CPU idle usage (the spin). For an interactive game where mouse
-responsiveness matters, this is the correct trade-off.
+last few milliseconds. On Windows this eliminates 5–15ms frame jitter at the cost of
+slightly higher CPU idle usage. On Linux/macOS, the standard `tick()` is already
+accurate and the busy-loop spin buys nothing.
+
+**Scope:** This fix benefits Windows users only. Do not apply unconditionally.
+
+---
+
+## Phase 9 — Image Source Surface Cap
+**Status: PENDING**
+**Fixes: P-24 (FA-021)**
+**File: `gameworks/renderer.py`**
+**Tests: `gameworks/tests/renderer/test_renderer_init.py`**
+
+### Problem
+
+`Renderer.__init__` upscales `_image_surf` to fit the full board pixel area at the
+initial tile size:
+
+```python
+scale = min((w_cols * self._tile) / max(img.get_width(), 1),
+            (h_rows * self._tile) / max(img.get_height(), 1))
+tw = max(1, int(img.get_width() * scale))
+th = max(1, int(img.get_height() * scale))
+self._image_surf = pygame.transform.smoothscale(img, (tw, th))
+```
+
+For a 200×200 image on a 300×370 board (initial tile=10), `scale = 15` and
+`_image_surf` is stored at 3000×3000 (9 M pixels, ~36 MB). Every subsequent zoom-level
+change triggers:
+
+```python
+# _draw_image_ghost — fires once per zoom step in the next frame
+self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+```
+
+`pygame.transform.smoothscale` time is dominated by source pixel count. Downscaling a
+9 M-pixel source to the minimum-zoom board size (e.g., 300×370 = 111 k pixels) reads
+all 9 M source pixels per call. Zooming from tile=10 to tile=1 requires ~5 scroll
+steps → 5 blocking `smoothscale` calls in successive frames → 500 ms–2.5 s of main
+thread blocking during the zoom-out sequence.
+
+The invariant broken by the current code: `_image_surf` is stored at a size that
+grows with the initial tile value, not with the natural image resolution. A smaller
+input image produces a *larger* `_image_surf` (upscaled further to fill the board),
+making zoom-out strictly slower for users who supply small source images.
+
+### Solution
+
+Store `_image_surf` at the natural image dimensions. Only downscale if the input
+image exceeds the board pixel area at maximum zoom (`board.width * BASE_TILE ×
+board.height * BASE_TILE`), which caps memory use for very high-resolution inputs.
+Never upscale.
+
+#### `Renderer.__init__` — replace the image-scaling block in `__init__`
+
+Search for the block that computes `scale`, `tw`, `th` and calls
+`pygame.transform.smoothscale(img, (tw, th))` to assign `self._image_surf`.
+It is the only `smoothscale` call in `__init__`.
+
+```python
+# BEFORE (upscales to board pixel dimensions at initial tile):
+scale = min((w_cols * self._tile) / max(img.get_width(), 1),
+            (h_rows * self._tile) / max(img.get_height(), 1))
+tw = max(1, int(img.get_width() * scale))
+th = max(1, int(img.get_height() * scale))
+self._image_surf = pygame.transform.smoothscale(img, (tw, th))
+
+# AFTER (never upscale; downscale only if input exceeds max-zoom board pixel area):
+max_w = w_cols * BASE_TILE
+max_h = h_rows * BASE_TILE
+if img.get_width() > max_w or img.get_height() > max_h:
+    cap_scale = min(max_w / max(img.get_width(), 1),
+                    max_h / max(img.get_height(), 1))
+    cw = max(1, int(img.get_width() * cap_scale))
+    ch = max(1, int(img.get_height() * cap_scale))
+    self._image_surf = pygame.transform.smoothscale(img, (cw, ch))
+else:
+    self._image_surf = img  # keep at natural resolution
+```
+
+Why `BASE_TILE` (not `self._tile`): `BASE_TILE = 32` is the hard maximum tile size.
+The cap ensures `_image_surf` never exceeds the pixel area needed at maximum zoom.
+At all other zoom levels, scaling from the natural image size is equivalent or better
+quality and always faster because the source pixel count is lower.
+
+Why not `self._tile`: using the *initial* tile as the cap (the original behaviour)
+ties surface size to a runtime variable. On a large board where `auto_tile = 10`,
+`_image_surf` grows to `board.width * 10` wide — 10× the `BASE_TILE = 1` minimum
+but still many times the natural image width. The bug is repeatable for any board
+where `auto_tile > 1` and the source image is smaller than the board pixel area.
+
+#### Impact on `_draw_image_ghost` — no change required
+
+The `_ghost_surf` rebuild condition (`self._ghost_surf.get_size() != (bw, bh)`) and
+the subsequent `smoothscale(_image_surf, (bw, bh))` call are unchanged. With a
+small `_image_surf` (natural resolution), each zoom-step `smoothscale` now reads
+`img_w × img_h` source pixels instead of `board_w * initial_tile × board_h *
+initial_tile`. For the 200×200 example: 40 000 vs 9 000 000 source pixels — a 225×
+reduction.
+
+**Zoom-out direction:** `smoothscale` time is dominated by source pixel count when
+downscaling (reads all source pixels, writes fewer dest pixels). For a 512×512 source
+scaled to (300, 370): ~262 k source pixels at ~2 ns/px ≈ < 1 ms. The blocking spikes
+during zoom-out are eliminated.
+
+**Zoom-in direction:** `smoothscale` time when upscaling is dominated by destination
+pixel count (must compute all dest pixels). At tile=32 (max zoom): `smoothscale(512×512,
+(9600, 11840))` writes 113 M destination pixels ≈ 200–250 ms. This is an existing
+limitation of the SDL smoothscale algorithm and is not introduced by this fix — the
+current code avoids this cost by storing `_image_surf` at the inflated size, paying
+the cost once at init instead of at zoom-in time. Phase 9 trades that init cost for a
+per-zoom-in cost at max tile. The zoom-in case is significantly less common in gameplay
+than zoom-out; if it proves problematic, pre-rendering `_ghost_surf` eagerly at init
+for the max-zoom level (one `smoothscale` at startup, never repeated during play) is a
+follow-on optimisation outside this phase's scope.
+
+#### Impact on `_build_thumb` — no change required
+
+`_build_thumb` calls `pygame.transform.smoothscale(self._image_surf, (thumb_w,
+thumb_h))` once at init. With a smaller `_image_surf`, this call becomes faster.
+The visual result is identical — `_image_surf` was never used at its inflated size
+directly; it was always further scaled by `_build_thumb` and `_ghost_surf`.
+
+#### Memory delta
+
+"Before" sizes reflect the current code's `_image_surf = smoothscale(img, (board_w *
+initial_tile, board_h * initial_tile))`.  For a 300×370 board at initial tile=10 the
+board pixel area is 3000×3700; the current code always produces an `_image_surf` of
+roughly that size regardless of the natural image dimensions.
+
+| Scenario | Before (current) | After (fix) | Direction |
+|---|---|---|---|
+| 200×200 image, 300×370 board, tile=10 | ≈ 3000×3000 × 4 B ≈ 36 MB | 200×200 × 4 B = 160 KB | ✓ 225× smaller |
+| 512×512 image, 300×370 board, tile=10 | ≈ 3000×3000 × 4 B ≈ 36 MB | 512×512 × 4 B ≈ 1 MB | ✓ 36× smaller |
+| 2048×2048 image, 300×370 board, tile=10 | ≈ 2998×2998 × 4 B ≈ 36 MB | 2048×2048 × 4 B ≈ 16 MB | ✓ 2.2× smaller |
+| 4096×4096 image, 300×370 board, tile=10 | ≈ 2998×2998 × 4 B ≈ 36 MB | 4096×4096 × 4 B ≈ 67 MB | ⚠ slight regression |
+
+The regression in row 4 is expected and acceptable: for a 4096×4096 image on a 300×370
+board, `max_w = 9600 > 4096`, so the cap does not trigger and `_image_surf = img` is
+stored at its natural 67 MB.  The current code accidentally downscales such images to
+fit the board pixel area at the initial tile (≈36 MB) — a lossy pre-process that
+reduces quality for zoom-in.  The fix avoids that lossy pre-step at the cost of
+slightly higher memory for very large inputs.  For images larger than the board's
+max-zoom pixel area (`board.width * BASE_TILE × board.height * BASE_TILE`), the cap
+triggers and the fix produces a smaller surface than the current code.  If memory
+pressure for very large input images is a concern, a secondary cap at an absolute pixel
+budget (e.g., 2048² = 4 MP) may be added as a follow-on.
+
+**Pre-condition:** `BASE_TILE` must be importable at the `Renderer.__init__` call site.
+It is already defined as a module-level constant (`BASE_TILE = 32`) in `renderer.py`,
+so no import changes are required.
+
+### Tests to add in `gameworks/tests/renderer/test_renderer_init.py`
+
+```
+test_image_surf_not_upscaled_beyond_natural_size
+    # Assert _image_surf.get_width() <= natural_img_w
+    # Assert _image_surf.get_height() <= natural_img_h
+    # Inject a 16×16 PNG; verify _image_surf dimensions are (16, 16)
+
+test_image_surf_clamped_for_oversized_input
+    # Inject a synthetic surface larger than BASE_TILE * board_w
+    # Assert _image_surf.get_width() <= board_w * BASE_TILE
+
+test_ghost_surf_rebuild_time_bounded_after_fix
+    # Patch pygame.transform.smoothscale to record call args
+    # Inject a 32×32 image, trigger a tile change, assert smoothscale
+    # was called with a source no larger than 32×32 (not board pixel dims)
+
+test_image_surf_unchanged_for_natural_size_input
+    # Inject a 64×64 image on a 16×16 board (BASE_TILE=32 → max_w=512, max_h=512)
+    # Assert _image_surf.get_size() == (64, 64)
+    # — verifies the else branch is taken and dimensions are preserved.
+    # NOTE: do NOT assert object identity (renderer._image_surf is img).
+    # img is a local inside a try/except in __init__; the test harness has no
+    # reference to it, and convert_alpha() may or may not return the same object.
+    # Dimension equality is the correct and portable assertion here.
+```
+
+The regression guard is `test_image_surf_not_upscaled_beyond_natural_size`. It must
+**fail** on the current codebase (source image = 16×16, `_image_surf` = 3000×3000 on
+a 300-wide board at tile=10) and **pass** after the fix.
+
+---
+
+## Phase 10 — Hot-Loop Tuple Allocation Reduction
+**Status: PENDING**
+**Fixes: P-25 (FA-022)**
+**File: `gameworks/renderer.py`**
+**Tests: `gameworks/tests/renderer/test_cell_draw.py`**
+
+### Problem
+
+The cell draw loop currently creates Python tuple objects on every cell iteration:
+
+```python
+ip = _revealed[y, x] and (x, y) in anim_set          # tuple allocated per cell
+in_win_anim = (x, y) in win_anim_set                  # tuple allocated per cell
+...pressed == (x, y)                                   # tuple allocated per cell
+```
+
+At tile=1 (maximum zoom-out), the visible area is the full 300×370 = 111,000 cells.
+Three tuple allocations per cell = **333,000 tuples per frame** at 30 FPS =
+10 million tuple allocations per second. CPython's allocator is fast but not free:
+at 2–5 ns per small object allocation, this accounts for ~0.67–1.67 ms/frame of
+pure allocation overhead — measurable but not dominant at tile=1 where the draw
+loop itself is the bottleneck.
+
+The allocator overhead is the dominant cost. CPython's cyclic GC tracks tuples
+only when they contain other tracked objects (e.g., dicts, lists, class instances).
+A `(int, int)` tuple contains only immutable scalars and is either never tracked or
+rapidly untracked via `_PyObject_GC_UNTRACK` shortly after creation. GC collection
+pauses from these tuples specifically are minimal and not the right justification for
+this fix.
+
+The correct framing: each allocation invokes `pymalloc` or the small-object
+free-list, increments and then decrements refcounts, and writes a pointer that
+the allocator must zero on free. At 333k/frame these per-object costs accumulate
+to ~0.67–1.67ms of pure allocator overhead — measurable and additive with the
+draw-loop cost at tile=1.
+
+### Solution
+
+#### 10A — Replace set membership with flat arrays
+
+Convert `anim_set` and `win_anim_set` from `set` of tuples to 2D numpy `bool` arrays.
+Membership becomes an array index (O(1), zero allocation) instead of a hash lookup
+on a heap-allocated tuple key.
+
+`_draw_board` — replace set construction (this is the intermediate step; 10B below
+eliminates the per-frame `np.zeros` allocation):
+
+```python
+# CASCADE:
+anim_arr = np.zeros((board_h, board_w), dtype=bool)
+if self.cascade and not self.cascade.done:
+    for (cx, cy) in self.cascade.current():
+        anim_arr[cy, cx] = True
+
+# WIN ANIM:
+win_arr = np.zeros((board_h, board_w), dtype=bool)
+if self.win_anim and not self.win_anim.done:
+    for (cx, cy) in self.win_anim.current():
+        win_arr[cy, cx] = True
+```
+
+Cell loop — replace set lookups and tuple comparisons:
+
+```python
+ip         = _revealed[y, x] and anim_arr[y, x]   # no tuple
+in_win_anim = win_arr[y, x]                         # no tuple
+is_pressed = (pressed is not None
+              and pressed[0] == x and pressed[1] == y)  # no (x,y) tuple vs tuple
+```
+
+Where `pressed` is stored as a 2-tuple `(px, py)` already (from the MOUSEBUTTONDOWN
+event), but the comparison is restructured to avoid allocating a new `(x, y)` on the
+right-hand side. Alternatively, maintain `_pressed_x` and `_pressed_y` as separate
+`int` attributes on the renderer to eliminate the tuple entirely.
+
+#### 10B — Pre-allocate reusable bool arrays in `__init__`
+
+Rather than allocating two `(board_h × board_w)` bool arrays every frame, allocate
+once at init (and on board size change) and zero them in-place with `fill(False)`:
+
+```python
+# __init__ — after engine / board is set:
+h, w = self.board.height, self.board.width
+self._anim_arr     = np.zeros((h, w), dtype=bool)
+self._win_anim_arr = np.zeros((h, w), dtype=bool)
+```
+
+`_draw_board` — per-frame:
+
+```python
+self._anim_arr.fill(False)
+if self.cascade and not self.cascade.done:
+    for (cx, cy) in self.cascade.current():
+        self._anim_arr[cy, cx] = True
+
+self._win_anim_arr.fill(False)
+if self.win_anim and not self.win_anim.done:
+    for (cx, cy) in self.win_anim.current():
+        self._win_anim_arr[cy, cx] = True
+```
+
+Memory cost: one array = 300 × 370 × 1 byte = 111,000 bytes ≈ **108 KB** (numpy
+stores bool as 1 byte/element). Two arrays = 222,000 bytes ≈ **216 KB** total —
+negligible.
+
+**Interaction with Phase 7B:** Phase 7B's set-caching approach becomes unnecessary
+if Phase 10A is implemented (the set is replaced with an array). Implement Phase 10
+before or instead of Phase 7B. If Phase 7B is already committed, Phase 10 supersedes
+it for the win_anim path; the `_anim_set_cache` for cascade can likewise be removed.
+
+### Tests to add in `gameworks/tests/renderer/test_cell_draw.py`
+
+```
+test_anim_arr_preallocated_at_init
+    # Assert renderer._anim_arr.shape == (board_h, board_w)
+    # Assert renderer._win_anim_arr.shape == (board_h, board_w)
+
+test_anim_arr_zero_when_no_cascade
+    # Assert _anim_arr.sum() == 0 when cascade is None
+
+test_anim_arr_set_for_cascade_cells
+    # Set a cascade with known cells, call one draw frame
+    # Assert _anim_arr[cy, cx] == True for each cascade cell
+
+test_cell_loop_zero_tuple_allocations
+    # Monkeypatch tuple.__new__ or use tracemalloc to count tuple allocations
+    # during _draw_board; assert count < N for a reasonable bound
+    # (Pragmatic: assert delta_objects from tracemalloc < 1000 for 10x10 board)
+
+test_pressed_comparison_no_tuple
+    # Assert _draw_cell is called with is_pressed bool, not compared via (x,y) tuple
+```
 
 ---
 
@@ -958,13 +1402,21 @@ Phase 2  ---> independent, no phase dependencies
 Phase 3  ---> independent (cell loop refactor: monotonic hoist, CellState removal,
               dead guard removal — none of these depend on Phase 2 additions)
 Phase 4  ---> depends on Phase 2 (4C uses self._win_size added in Phase 2A;
-              4B must also be invalidated in _rebuild_num_surfs added by Phase 2 work)
+              4B must only be invalidated on resize — no zoom invalidation needed)
 Phase 5  ---> independent (but uses font objects; run after fonts are stable)
-Phase 6  ---> depends on Phase 5 (_rebuild_btn_surfs calls font.render -> use _tx())
+Phase 6  ---> depends on Phase 5 (both phases add calls to _rebuild_num_surfs();
+              commit Phase 5 first to avoid merge conflicts in that method)
 Phase 7A ---> depends on Phase 3 (_mine_spike_offsets used in _draw_mine, which
               Phase 3 refactors — implement after Phase 3 stabilises _draw_mine)
-Phase 7B ---> independent
-Phase 8  ---> independent, commit last
+Phase 7B ---> superseded by Phase 10 if Phase 10 is implemented; otherwise independent
+Phase 8  ---> independent (suggested last among Phases 1–8; Phases 9 and 10 are
+              also independent and may be committed in any order relative to Phase 8)
+Phase 9  ---> independent; only touches __init__ image-load block; no interaction
+              with any other phase. Implement first if zoom-out freeze is the
+              priority — it is a self-contained 10-line change.
+Phase 10 ---> depends on Phase 3 (requires the refactored cell loop from 3B to
+              replace set lookups with array indexing cleanly); supersedes Phase 7B
+              for the animation set caching problem.
 ```
 
 Each phase is one commit. Never combine phases in a single commit.
@@ -985,6 +1437,13 @@ Per AGENTS.md, before each push:
    a checkout without the fix (Method A, Step 7 of AGENTS.md)
 6. For Phase 3: verify `test_draw_does_not_call_monotonic_in_cell_loop` FAILS before
    the hoist (Method A, Step 7 of AGENTS.md)
+7. For Phase 9: verify `test_image_surf_not_upscaled_beyond_natural_size` FAILS on
+   a checkout without the fix (inject a 16×16 image on a 300×370 board at tile=10;
+   assert `_image_surf.get_width() <= 16` — this must fail before the fix since the
+   current code stores it at ≈ 3000 wide) (Method A, Step 7 of AGENTS.md)
+8. For Phase 10: verify `test_cell_loop_zero_tuple_allocations` FAILS on the
+   pre-fix code (tracemalloc shows >333k tuple allocations on a full-board draw
+   at tile=1) and PASSES after the numpy-array replacement (Method A, Step 7 of AGENTS.md)
 
 ---
 
@@ -999,7 +1458,83 @@ Per AGENTS.md, before each push:
 | 5     | P-11/12/22    | ~20 font.render() calls -> ~2/frame| String-keyed text cache         |
 | 6     | P-13          | 40 draw calls/frame -> 5 blits     | Pre-baked button surfaces       |
 | 7     | P-14/16       | 8 trig calls x N mines/frame -> 0  | Cached offsets + anim set cache |
-| 8     | P-19          | 5-15ms jitter per frame eliminated | tick_busy_loop()                |
+| 8     | P-19          | 5-15ms jitter eliminated (Windows) | tick_busy_loop() on win32 only  |
+| 9     | P-24 (FA-021) | 100–500 ms blocking spike per zoom step eliminated | Store _image_surf at natural size, not board pixel dims |
+| 10    | P-25 (FA-022) | 333k+ tuple allocs/frame -> 0 at max zoom-out | numpy bool arrays replace set-of-tuples |
 
 Phases 3, 4, and 5 are the three highest-impact changes. Implement them in that
 priority order if resource-constrained.
+
+---
+
+## Acceptance Criteria
+
+Each phase must meet **all** of the following targets on the reference board
+(300×370, 111,000 cells) before its commit is considered done.
+
+**Benchmark infrastructure prerequisite:** Performance measurements use
+`pytest-benchmark`. Install it before running any `--benchmark-*` flags:
+
+```
+pip install pytest-benchmark
+```
+
+Verify installation: `pytest --co -q gameworks/tests/ | grep benchmark` should
+list at least one benchmark. If `pytest-benchmark` is absent, `--benchmark-only`
+silently collects zero tests — measurements will appear to pass vacuously.
+
+Measure with `SDL_VIDEODRIVER=dummy` headless benchmarks (`pytest --benchmark-only`)
+unless otherwise noted.
+
+### Per-Phase Gate Tests
+
+| Phase | Pass Condition |
+|-------|----------------|
+| 1     | `test_counters_match_array_state_after_flood_fill` PASSES; `board.flags_placed` never calls `np.sum` (verified by monkeypatching) |
+| 2     | `test_win_size_cache_updated_on_videoresize` and `test_board_rect_cache_invalidated_on_zoom_change` PASS |
+| 3     | `test_draw_does_not_call_monotonic_in_cell_loop` PASSES; `test_draw_completes_without_cellstate_construction` PASSES |
+| 4     | `test_ghost_cell_buf_not_reallocated_across_frames` and `test_panel_overlay_surf_stable_across_frames` PASS |
+| 5     | `test_tx_returns_same_object_for_identical_inputs` PASSES; `test_header_font_render_not_called_on_stable_frame` PASSES with 0 render calls on frame 2+ |
+| 6     | `test_draw_panel_does_not_call_pill_per_frame` PASSES with 0 pill() calls |
+| 7     | `test_win_anim_set_cache_invalidated_on_phase_change` PASSES |
+| 8     | `sys.platform == "win32"` gate is present; no unconditional `tick_busy_loop` calls |
+| 9     | `test_image_surf_not_upscaled_beyond_natural_size` FAILS on pre-fix checkout and PASSES after fix |
+| 10    | `test_anim_arr_preallocated_at_init` PASSES; tracemalloc delta < 1,000 tuple objects per 10×10 board draw frame |
+
+### System-Level FPS Targets
+
+Measured with `--random --board-w 300 --board-h 370` at the given tile size,
+averaged over 100 frames after warmup, on a mid-tier laptop CPU (Intel i5-class,
+4 cores, no GPU acceleration):
+
+| Zoom level | Tile size | Target (post all phases) | Baseline (current) |
+|------------|-----------|--------------------------|---------------------|
+| Max out    | 1 px      | ≥ 28 FPS                 | 3–5 FPS             |
+| Mid        | 8 px      | ≥ 30 FPS                 | 20–25 FPS           |
+| Default    | 10 px     | 30 FPS (locked)          | 30 FPS              |
+| Max in     | 32 px     | 30 FPS (locked)          | 30 FPS              |
+
+### Zoom-Step Latency Target
+
+With Phase 9 applied, a single zoom step (one MOUSEWHEEL tick) must not block the
+main thread for more than **16 ms** (one frame budget at 60 FPS) for any image
+≤ 2048×2048 pixels on the reference board. Measured by patching
+`pygame.transform.smoothscale` with a `time.perf_counter()` wrapper in the headless
+test suite.
+
+### Memory Budget
+
+After all phases are applied, peak RSS during a full gameplay session (random board,
+300×370, image mode with a 512×512 input, zoom from tile=32 to tile=1 and back)
+must not exceed **300 MB**. Measured with `tracemalloc` or `/usr/bin/time -v`.
+
+### Non-Regression Gate
+
+The full test suite must pass before and after every phase commit:
+
+```
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v --tb=short
+```
+
+Zero new failures permitted. Any pre-existing skipped tests must remain skipped (not
+newly failing).

@@ -4,8 +4,8 @@ Canonical flat list of every known open bug in the `gameworks/` package.
 Each entry is self-contained: no cross-reference to ISSUE-LOG.md required.
 
 **Package version:** 0.1.1
-**Last updated:** 2026-05-10 (doc-review-refresh — 12 bugs resolved)
-**Total open:** 18 (0 critical · 0 high · 7 medium · 11 low)
+**Last updated:** 2026-05-11 (FA-022 added — hot-loop tuple allocation GC pressure)
+**Total open:** 20 (0 critical · 0 high · 8 medium · 12 low)
 
 Bugs with `FIX AVAILABLE` have a proposed correction in the detail section below.
 Bugs marked `WONT-FIX` are acknowledged design decisions.
@@ -29,6 +29,8 @@ The canonical narrative history is in `docs/ISSUE-LOG.md`.
 | [FA-009](#fa-009) | MEDIUM | renderer | renderer.py:1046 | OPEN | `.copy()` per visible flag per frame in `_draw_image_ghost()` |
 | [M-003](#m-003) | MEDIUM | renderer | renderer.py | OPEN | Two panel buttons do identical things — no "Retry same board" option |
 | [DP-R2](#dp-r2) | MEDIUM | engine | engine.py | OPEN | No `GameConfig` frozen dataclass — 7 flat args, not serializable |
+| [FA-021](#fa-021) | MEDIUM | renderer | renderer.py:352–358 | OPEN | `_image_surf` upscaled to board pixel dimensions at init — all zoom-step `smoothscale` calls use a bloated source, blocking the main thread 100–500 ms per scroll notch |
+| [FA-022](#fa-022) | LOW | renderer | renderer.py:_draw_board | OPEN | 333k+ tuple allocations/frame at max zoom-out — `(x, y) in anim_set` and `pressed == (x, y)` allocate a new tuple per cell per frame, triggering repeated gen-0 GC |
 | [FA-010](#fa-010) | LOW | main | main.py:_save_npy | OPEN | `_save_npy()` writes to cwd, not `results/` |
 | [FA-011](#fa-011) | LOW | engine | engine.py:112 | RESOLVED — 2dd6ea0 | `Board._count_adj()` is dead code |
 | [FA-012](#fa-012) | LOW | engine | engine.py:158 | RESOLVED — 2dd6ea0 | `Board.correct_flags` uses `np.sum()` scan — inconsistent with Phase 1 |
@@ -334,6 +336,63 @@ class GameConfig:
 
 ---
 
+### FA-022
+
+**Severity:** LOW
+**Component:** `renderer.py`
+**File/Line:** `renderer.py` — `_draw_board()` cell loop
+
+**Summary:** The cell draw loop creates three Python `(x, y)` tuples per cell per
+frame: `(x, y) in anim_set`, `(x, y) in win_anim_set`, and `pressed == (x, y)`.
+At tile=1 (max zoom-out), all 111,000 cells are visible — resulting in 333,000+
+tuple allocations per frame. At 30 FPS this is ≥10 million heap allocations per
+second. CPython's gen-0 GC threshold (700 objects by default) fires hundreds of
+times per second, adding unpredictable micro-pauses throughout the draw path.
+
+**Root cause:**
+
+```python
+# renderer.py — _draw_board cell loop body
+ip         = _revealed[y, x] and (x, y) in anim_set      # alloc
+in_win_anim = (x, y) in win_anim_set                      # alloc
+...pressed == (x, y)                                       # alloc
+```
+
+Python's `(x, y)` syntax constructs a new `tuple` object on every evaluation.
+There is no sharing or caching — each iteration allocates and immediately discards.
+The GC tracks every allocation, and gen-0 collection runs every ~700 allocations
+by default, so at 333k allocs/frame it fires ~476 times per frame.
+
+**Relationship to other bugs:** Compounds with FA-021 (zoom-out smoothscale freeze)
+at max zoom-out. After Phase 9 eliminates the smoothscale blocking, this becomes the
+next measurable latency contributor at tile=1.
+
+**Fix:** Replace set-of-tuples membership testing with numpy bool array indexing.
+Full solution in PERFORMANCE_PLAN.md Phase 10. Summary:
+
+```python
+# Pre-alloc in __init__:
+self._anim_arr     = np.zeros((board_h, board_w), dtype=bool)
+self._win_anim_arr = np.zeros((board_h, board_w), dtype=bool)
+
+# Per-frame — zero and fill (no tuple per cell):
+self._anim_arr.fill(False)
+for (cx, cy) in self.cascade.current():
+    self._anim_arr[cy, cx] = True
+
+# Cell loop — array index, no tuple:
+ip          = _revealed[y, x] and self._anim_arr[y, x]
+in_win_anim = self._win_anim_arr[y, x]
+
+# pressed comparison — use separate ints, not tuple comparison:
+is_pressed = (self._pressed_x == x and self._pressed_y == y)
+```
+
+**Test gap:** No test measures tuple allocation count inside the cell loop. No
+tracemalloc or `gc.get_count()` assertion exists for the draw path.
+
+---
+
 ### FA-010
 
 **Severity:** LOW
@@ -592,6 +651,67 @@ os.replace(tmp, path)
 **Detail:** `test_dev_solve_click_returns_action_not_none` tests that clicking the "Solve Board" DEV TOOLS button returns a non-None action string. This test likely fails because `Renderer._show_dev` defaults to `False` (the DEV panel is hidden by default), making the button unclickable and the handler unreachable.
 
 **Fix:** Either set `r._show_dev = True` before the click event in the test fixture, or update the test to assert `None` is returned when the panel is hidden.
+
+---
+
+### FA-021
+
+**Severity:** MEDIUM
+**Component:** `renderer.py`
+**File/Line:** `renderer.py:352–358` (`Renderer.__init__`), `renderer.py:1063–1064` (`_draw_image_ghost`)
+
+**Summary:** `_image_surf` is upscaled to full board pixel dimensions at init. Every zoom-level change triggers `pygame.transform.smoothscale(_image_surf, (bw, bh))` with this inflated surface as the source, blocking the main thread 100–500 ms per scroll notch. Zooming from tile=10 to tile=1 requires ~5 steps, producing ~0.5–2.5 s of cumulative blocking during the zoom-out. This is the primary cause of the unresponsive freeze described when zooming all the way out.
+
+**Root cause:**
+
+```python
+# renderer.py:352–358 — __init__
+scale = min((w_cols * self._tile) / max(img.get_width(), 1),
+            (h_rows * self._tile) / max(img.get_height(), 1))
+tw = max(1, int(img.get_width() * scale))
+th = max(1, int(img.get_height() * scale))
+self._image_surf = pygame.transform.smoothscale(img, (tw, th))
+```
+
+`scale` equals `(board.width * initial_tile) / img_w`. For a 200×200 input image on a 300×370 board at initial tile=10, `scale = 15` and `_image_surf` becomes 3000×3000 (9 M pixels, 36 MB). The intent was to pre-scale the image to fit the board, but it has the side-effect of making the source surface for every subsequent `_ghost_surf` rebuild needlessly large.
+
+Every frame after a tile-size change, `_draw_image_ghost` fires:
+
+```python
+# renderer.py:1063–1064
+if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
+    self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+```
+
+`smoothscale` time is dominated by source pixel count. Downscaling a 9 M-pixel surface to (300, 370) reads all 9 M pixels per call. Each scroll notch during zoom-out causes one such call in the next frame.
+
+**Relationship to other bugs:** Compounds with the O(W×H) Python draw loop (PERFORMANCE_PLAN.md Phase 3) at min zoom. FA-009's per-flag `.copy()` allocations (Phase 4A) and the uncached panel overlay Surface (Phase 4B) add GC pressure on top. FA-021 is the root cause of the discrete blocking spikes; the draw loop causes the sustained low-FPS unresponsiveness that follows.
+
+**Fix:** Do not upscale `_image_surf` beyond the natural image dimensions. Only downscale if the input image exceeds a practical cap (`board.width * BASE_TILE × board.height * BASE_TILE` pixels on its longest axis), which prevents very large source images from being wasteful during zoom-in. Replace the existing init block with:
+
+```python
+# renderer.py:352–358 — Renderer.__init__
+img = pygame.image.load(image_path).convert_alpha()
+# Cap: downscale only if image exceeds board pixel dimensions at max zoom.
+# Never upscale — upscaling inflates _image_surf and makes every subsequent
+# smoothscale (called once per zoom level) proportionally slower.
+max_w = w_cols * BASE_TILE
+max_h = h_rows * BASE_TILE
+if img.get_width() > max_w or img.get_height() > max_h:
+    cap_scale = min(max_w / max(img.get_width(), 1),
+                    max_h / max(img.get_height(), 1))
+    cw = max(1, int(img.get_width() * cap_scale))
+    ch = max(1, int(img.get_height() * cap_scale))
+    self._image_surf = pygame.transform.smoothscale(img, (cw, ch))
+else:
+    self._image_surf = img  # keep at natural resolution
+```
+
+Why `BASE_TILE` (not `self._tile`): `BASE_TILE` is the hard maximum tile size (32 px). The cap ensures `_image_surf` is never larger than needed at maximum zoom, which is the only case where an upscale of `_ghost_surf` would matter for quality. At any other zoom level, downscaling from the natural image size produces equivalent or better quality at a fraction of the cost.
+
+**Impact of fix:** `smoothscale(_image_surf, (bw, bh))` now scales from the natural image size (e.g., 512×512) rather than from the inflated board pixel dimensions. For a 200×200 natural image, each zoom-step `smoothscale` shrinks from 40 000 source pixels instead of 9 000 000 — a 225× reduction in source data touched. The multi-second blocking freezes during zoom-out are eliminated; each zoom step completes in < 5 ms.
+
+**Test gap:** No test asserts that `renderer._image_surf.get_width()` is ≤ the natural image width after `Renderer.__init__` completes. The existing `test_renderer_init.py` tests verify surface existence but not dimensions.
 
 ---
 
