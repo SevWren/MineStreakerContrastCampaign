@@ -27,3 +27,4 @@ pygame>=2.3
 
 # Development / testing
 pytest>=7.0
+pyflakes>=3.0
