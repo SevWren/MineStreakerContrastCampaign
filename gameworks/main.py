@@ -111,7 +111,56 @@ class GameLoop:
         )
         return eng
 
-    # ── Start a fresh game ────────────────────────────────────────────
+    # ── Menu screen ───────────────────────────────────────────────────
+
+    def _show_menu_screen(self):
+        """FA-014: Minimal MENU state — blocks until any key / click is pressed.
+
+        Implements the documented MENU→PLAYING arc.  Uses pygame directly so
+        there is no dependency on a Renderer that hasn't been built yet.
+        """
+        pygame.init()
+        # If no renderer yet, open a minimal window just for the splash.
+        if not self._renderer:
+            win = pygame.display.set_mode((640, 200), pygame.RESIZABLE)
+            pygame.display.set_caption("Mine-Streaker")
+        else:
+            win = self._renderer._win
+        font_big   = pygame.font.SysFont("consolas", 36, bold=True)
+        font_small = pygame.font.SysFont("consolas", 18)
+        clock = pygame.time.Clock()
+        waiting = True
+        while waiting:
+            for ev in pygame.event.get():
+                if ev.type in (pygame.QUIT,):
+                    pygame.quit()
+                    raise SystemExit
+                if ev.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                    waiting = False
+            win.fill((18, 18, 24))
+            w, h = win.get_size()
+            t1 = font_big.render("MINE-STREAKER", True, (55, 195, 195))
+            t2 = font_small.render("Press any key to start", True, (120, 120, 140))
+            win.blit(t1, t1.get_rect(center=(w // 2, h // 2 - 24)))
+            win.blit(t2, t2.get_rect(center=(w // 2, h // 2 + 20)))
+            pygame.display.flip()
+            clock.tick(30)
+
+    # ── Start / retry a game ─────────────────────────────────────────
+
+    def _retry_game(self):
+        """M-003: Replay the exact same board (same seed).  Reuses existing Renderer."""
+        if self._engine:
+            self._engine.retry()
+            self._engine.start()
+        if self._renderer:
+            self._renderer.win_anim = None
+            self._renderer.cascade = None
+            self._renderer._ghost_surf = None
+            self._renderer._ghost_mine_surf = None
+            self._renderer._ghost_wrong_surf = None
+        self._state = self.PLAYING
+        self._result_shown = False
 
     def _start_game(self):
         eng = self._build_engine()
@@ -126,7 +175,10 @@ class GameLoop:
     # ── Main loop ─────────────────────────────────────────────────────
 
     def run(self):
-        if not self._engine:
+        # FA-014: MENU state is now honoured — show a simple "Press any key" splash
+        # before starting the first game, implementing the documented MENU→PLAYING arc.
+        if self._state == self.MENU:
+            self._show_menu_screen()
             self._start_game()
 
         running = True
@@ -144,7 +196,12 @@ class GameLoop:
                     running = False
                     break
                 elif r_action == "restart":
+                    self._state = self.MENU         # FA-014: RESULT → MENU → PLAYING
+                    self._show_menu_screen()
                     self._start_game()
+                    continue
+                elif r_action == "retry":           # M-003: replay same board layout
+                    self._retry_game()
                     continue
                 elif r_action and r_action.startswith("click:"):
                     _, rc = r_action.split(":")
@@ -271,8 +328,48 @@ class GameLoop:
 #  Entry point
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def preflight_check(args) -> None:
+    """DP-R6: Validate CLI args before constructing GameLoop.
+
+    Raises SystemExit with a human-readable message on any detected problem
+    so errors surface before the game window opens, not mid-loop.
+    """
+    import sys
+    errors: list = []
+
+    if args.image:
+        if not Path(args.image).exists():
+            errors.append(f"--image path not found: {args.image!r}")
+        elif not Path(args.image).is_file():
+            errors.append(f"--image is not a file: {args.image!r}")
+
+    if args.load:
+        if not Path(args.load).exists():
+            errors.append(f"--load path not found: {args.load!r}")
+        elif not args.load.endswith(".npy"):
+            errors.append(f"--load expects a .npy file, got: {args.load!r}")
+
+    if getattr(args, 'board_w', 1) < 1 or getattr(args, 'board_h', 1) < 1:
+        errors.append(f"Board dimensions must be >= 1 (got {args.board_w}x{args.board_h})")
+
+    if getattr(args, 'mines', 0) < 0:
+        errors.append(f"Mine count must be >= 0 (got {args.mines})")
+
+    try:
+        import pygame  # noqa: F401 — confirm pygame is importable
+    except ImportError:
+        errors.append("pygame is not installed — run: pip install pygame")
+
+    if errors:
+        sys.stderr.write("preflight_check failed:\n")
+        for e in errors:
+            sys.stderr.write(f"  • {e}\n")
+        sys.exit(1)
+
+
 def main():
     args = build_parser().parse_args()
+    preflight_check(args)       # DP-R6: validate before opening window
 
     loop = GameLoop(args)
     loop.run()

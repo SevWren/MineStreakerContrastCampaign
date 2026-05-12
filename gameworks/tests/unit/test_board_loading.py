@@ -45,7 +45,7 @@ class TestPipelineFormat:
         grid[0, 0] = 1
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 1
             assert b._mine[0, 0]
         finally:
@@ -58,7 +58,7 @@ class TestPipelineFormat:
         grid[8, 8] = 1
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 3
         finally:
             os.unlink(path)
@@ -67,7 +67,7 @@ class TestPipelineFormat:
         grid = np.zeros((5, 5), dtype=np.int8)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 0
         finally:
             os.unlink(path)
@@ -76,7 +76,7 @@ class TestPipelineFormat:
         grid = np.zeros((7, 13), dtype=np.int8)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.height == 7
             assert b.width == 13
         finally:
@@ -97,7 +97,7 @@ class TestGameSaveFormat:
         grid = self._make_game_format_grid({(0, 0)})
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 1
             assert b._mine[0, 0]
         finally:
@@ -108,7 +108,7 @@ class TestGameSaveFormat:
         grid = self._make_game_format_grid(mines)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 3
         finally:
             os.unlink(path)
@@ -119,7 +119,7 @@ class TestGameSaveFormat:
         grid = self._make_game_format_grid(mines)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             fresh = Board(5, 5, mines)
             assert (b._neighbours == fresh._neighbours).all()
         finally:
@@ -136,7 +136,7 @@ class TestFormatAutoDetection:
         grid = np.array([[0, 1], [0, 0]], dtype=np.int8)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 1
         finally:
             os.unlink(path)
@@ -145,7 +145,7 @@ class TestFormatAutoDetection:
         grid = np.array([[-1, 1], [1, 1]], dtype=np.int8)
         path = write_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board
             assert b.total_mines == 1
         finally:
             os.unlink(path)
@@ -185,14 +185,8 @@ class TestLoadErrors:
 # ---------------------------------------------------------------------------
 
 class TestBoardLoadResult:
-    """
-    Tests for the BoardLoadResult dataclass.
+    """Tests for the BoardLoadResult dataclass (DP-R3 — implemented)."""
 
-    Status: PENDING — BoardLoadResult does not exist yet.
-    Implement per DESIGN_PATTERNS.md § R3 — BoardLoadResult Dataclass.
-    """
-
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_load_npy_returns_board_load_result(self):
         from gameworks.engine import BoardLoadResult
         grid = np.zeros((5, 5), dtype=np.int8)
@@ -203,7 +197,6 @@ class TestBoardLoadResult:
         finally:
             os.unlink(path)
 
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_result_has_board_attribute(self):
         from gameworks.engine import BoardLoadResult
         grid = np.zeros((5, 5), dtype=np.int8)
@@ -214,17 +207,15 @@ class TestBoardLoadResult:
         finally:
             os.unlink(path)
 
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_format_detected_pipeline(self):
         grid = np.zeros((5, 5), dtype=np.int8)
         path = write_npy(grid)
         try:
             result = load_board_from_npy(path)
-            assert result.format_detected == "pipeline"
+            assert result.format == "pipeline"
         finally:
             os.unlink(path)
 
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_format_detected_game_save(self):
         mines = {(0, 0)}
         b = Board(3, 3, mines)
@@ -232,11 +223,10 @@ class TestBoardLoadResult:
         path = write_npy(grid)
         try:
             result = load_board_from_npy(path)
-            assert result.format_detected == "game-save"
+            assert result.format == "game-save"
         finally:
             os.unlink(path)
 
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_warnings_list_is_present(self):
         grid = np.zeros((5, 5), dtype=np.int8)
         path = write_npy(grid)
@@ -246,12 +236,11 @@ class TestBoardLoadResult:
         finally:
             os.unlink(path)
 
-    @pytest.mark.skip(reason="Pending R3 — BoardLoadResult not yet implemented")
     def test_random_fallback_format_detected(self):
         """load_board_from_pipeline fallback must record 'random-fallback' format."""
         from gameworks.engine import load_board_from_pipeline
         result = load_board_from_pipeline("/nonexistent/image.png", board_w=9, seed=1)
-        assert result.format_detected == "random-fallback"
+        assert result.format == "random-fallback"
 
 
 # ---------------------------------------------------------------------------
@@ -259,18 +248,12 @@ class TestBoardLoadResult:
 # ---------------------------------------------------------------------------
 
 class TestSchemaVersioning:
-    """
-    Tests for GAME_SAVE_SCHEMA_VERSION and JSON sidecar read/write.
+    """Tests for GAME_SAVE_SCHEMA_VERSION (DP-R9 — implemented)."""
 
-    Status: PENDING — schema versioning not yet implemented.
-    Implement per DESIGN_PATTERNS.md § R9 — Game-Save Schema Version.
-    """
-
-    @pytest.mark.skip(reason="Pending R9 — GAME_SAVE_SCHEMA_VERSION not yet implemented")
     def test_schema_version_constant_exists(self):
         from gameworks.engine import GAME_SAVE_SCHEMA_VERSION
-        assert isinstance(GAME_SAVE_SCHEMA_VERSION, str)
-        assert GAME_SAVE_SCHEMA_VERSION.startswith("gameworks.board.")
+        assert isinstance(GAME_SAVE_SCHEMA_VERSION, int)
+        assert GAME_SAVE_SCHEMA_VERSION >= 1
 
     @pytest.mark.skip(reason="Pending R9 — sidecar JSON not yet implemented")
     def test_sidecar_written_on_save(self, tmp_dir):

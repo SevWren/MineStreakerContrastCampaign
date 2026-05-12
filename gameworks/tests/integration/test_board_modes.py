@@ -124,7 +124,7 @@ class TestSaveLoadRoundTrip:
         np.save(f.name, b._mine.astype(np.int8))
         f.close()
         try:
-            b2 = load_board_from_npy(f.name)
+            b2 = load_board_from_npy(f.name).board
             assert b2.total_mines == b.total_mines
             assert set(b2.all_mine_positions()) == set(b.all_mine_positions())
         finally:

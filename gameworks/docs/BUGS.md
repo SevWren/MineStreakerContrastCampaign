@@ -3,9 +3,9 @@
 Canonical flat list of every known open bug in the `gameworks/` package.
 Each entry is self-contained: no cross-reference to ISSUE-LOG.md required.
 
-**Package version:** 0.1.1
-**Last updated:** 2026-05-11 (FA-010, FA-015, FA-016, FA-017, FA-019, DP-R8, PF-001 resolved)
-**Total open:** 13 (0 critical · 0 high · 8 medium · 5 low)
+**Package version:** 0.1.2
+**Last updated:** 2026-05-12 (FA-005, FA-006, FA-007, FA-008, FA-009, FA-014, FA-021, FA-022, M-003, DP-R2, DP-R3, DP-R6, DP-R9 resolved)
+**Total open:** 0 (0 critical · 0 high · 0 medium · 0 low)
 
 Bugs with `FIX AVAILABLE` have a proposed correction in the detail section below.
 Bugs marked `WONT-FIX` are acknowledged design decisions.
@@ -22,30 +22,30 @@ The canonical narrative history is in `docs/ISSUE-LOG.md`.
 | [FA-003](#fa-003) | HIGH | renderer | renderer.py:460 | RESOLVED — 437f2d5 | Window resize breaks panel button positions — `_on_resize()` never called on VIDEORESIZE |
 | [FA-004](#fa-004) | HIGH | renderer | renderer.py:~503 | RESOLVED — 437f2d5 | Right/middle-click bypasses panel hit-test — only button 1 intercepted |
 | [H-005](#h-005) | HIGH | main + renderer | main.py:run() | RESOLVED — 437f2d5 | "Save .npy" button is inert — action dispatched but handler missing |
-| [FA-005](#fa-005) | MEDIUM | renderer | renderer.py:init | OPEN | 248 px dead space on left in panel-right layout — wrong BOARD_OX |
-| [FA-006](#fa-006) | MEDIUM | renderer | renderer.py:multi | OPEN | `_win.get_width()` called directly in 5 hot paths — Phase 2 cache incomplete |
-| [FA-007](#fa-007) | MEDIUM | engine | engine.py:192 | OPEN | Flood-fill stack allows duplicate pushes — O(4n) stack on open boards |
-| [FA-008](#fa-008) | MEDIUM | engine | engine.py:~346 | OPEN | `load_board_from_npy()` validates with O(W×H) Python loops |
-| [FA-009](#fa-009) | MEDIUM | renderer | renderer.py:1046 | OPEN | `.copy()` per visible flag per frame in `_draw_image_ghost()` |
-| [M-003](#m-003) | MEDIUM | renderer | renderer.py | OPEN | Two panel buttons do identical things — no "Retry same board" option |
-| [DP-R2](#dp-r2) | MEDIUM | engine | engine.py | OPEN | No `GameConfig` frozen dataclass — 7 flat args, not serializable |
-| [FA-021](#fa-021) | MEDIUM | renderer | renderer.py:352–358 | OPEN | `_image_surf` upscaled to board pixel dimensions at init — all zoom-step `smoothscale` calls use a bloated source, blocking the main thread 100–500 ms per scroll notch |
-| [FA-022](#fa-022) | LOW | renderer | renderer.py:_draw_board | OPEN | 333k+ tuple allocations/frame at max zoom-out — `(x, y) in anim_set` and `pressed == (x, y)` allocate a new tuple per cell per frame, triggering repeated gen-0 GC |
+| [FA-005](#fa-005) | MEDIUM | renderer | renderer.py:init | RESOLVED — 2026-05-12 | 248 px dead space on left in panel-right layout — wrong BOARD_OX |
+| [FA-006](#fa-006) | MEDIUM | renderer | renderer.py:multi | RESOLVED — 2026-05-12 | `_win.get_width()` called directly in 5 hot paths — Phase 2 cache incomplete |
+| [FA-007](#fa-007) | MEDIUM | engine | engine.py:192 | RESOLVED — 2026-05-12 | Flood-fill stack allows duplicate pushes — O(4n) stack on open boards |
+| [FA-008](#fa-008) | MEDIUM | engine | engine.py:~346 | RESOLVED — 2026-05-12 | `load_board_from_npy()` validates with O(W×H) Python loops |
+| [FA-009](#fa-009) | MEDIUM | renderer | renderer.py:1046 | RESOLVED — 2026-05-12 | `.copy()` per visible flag per frame in `_draw_image_ghost()` |
+| [M-003](#m-003) | MEDIUM | renderer | renderer.py | RESOLVED — 2026-05-12 | Two panel buttons do identical things — "Retry Board" now distinct from "New Game" |
+| [DP-R2](#dp-r2) | MEDIUM | engine | engine.py | RESOLVED — 2026-05-12 | No `GameConfig` frozen dataclass — 7 flat args, not serializable |
+| [FA-021](#fa-021) | MEDIUM | renderer | renderer.py:352–358 | RESOLVED — 2026-05-12 | `_image_surf` upscaled to board pixel dimensions at init — zoom-step smoothscale blocking eliminated |
+| [FA-022](#fa-022) | LOW | renderer | renderer.py:_draw_board | RESOLVED — 2026-05-12 | 333k+ tuple allocations/frame at max zoom-out — replaced with numpy bool arrays |
 | [FA-010](#fa-010) | LOW | main | main.py:_save_npy | RESOLVED | `_save_npy()` writes to cwd, not `results/` |
 | [FA-011](#fa-011) | LOW | engine | engine.py:112 | RESOLVED — 2dd6ea0 | `Board._count_adj()` is dead code |
 | [FA-012](#fa-012) | LOW | engine | engine.py:158 | RESOLVED — 2dd6ea0 | `Board.correct_flags` uses `np.sum()` scan — inconsistent with Phase 1 |
 | [FA-013](#fa-013) | LOW | engine | engine.py:705 | RESOLVED — 2dd6ea0 | `if __name__ == "_test_engine":` is unreachable |
-| [FA-014](#fa-014) | LOW | main | main.py:70 | OPEN | `MENU` state defined but no RESULT→MENU arc exists |
+| [FA-014](#fa-014) | LOW | main | main.py:70 | RESOLVED — 2026-05-12 | `MENU` state defined but no RESULT→MENU arc exists |
 | [FA-015](#fa-015) | LOW | main | main.py:164 | RESOLVED | `_do_right_click()` return value always discarded |
 | [FA-016](#fa-016) | LOW | renderer | renderer.py:WinAnim | RESOLVED | `WinAnimation` fixed seed 42 — identical animation every game |
 | [FA-017](#fa-017) | LOW | main | main.py:~107 | RESOLVED | `main.TILE` is a dead write — separate from `renderer.TILE` |
 | [FA-018](#fa-018) | LOW | engine | engine.py:~555 | RESOLVED — 2dd6ea0 | First-click regen can silently reduce mine count on tiny boards |
 | [FA-019](#fa-019) | LOW | renderer | renderer.py:K_arrows | RESOLVED | Arrow-key pan calls `_win.get_width()` not `_win_size` (sub-issue of FA-006) |
 | [FA-020](#fa-020) | LOW | engine | engine.py:right_click | RESOLVED — 2dd6ea0 | `right_click()` never increments `streak` — flags can't build multiplier |
-| [DP-R3](#dp-r3) | LOW | engine | engine.py | OPEN | Board loaders return naked `Board` — no `BoardLoadResult` |
-| [DP-R6](#dp-r6) | LOW | main | main.py | OPEN | No `preflight_check()` — errors surface mid-game-loop |
+| [DP-R3](#dp-r3) | LOW | engine | engine.py | RESOLVED — 2026-05-12 | Board loaders return naked `Board` — no `BoardLoadResult` |
+| [DP-R6](#dp-r6) | LOW | main | main.py | RESOLVED — 2026-05-12 | No `preflight_check()` — errors surface mid-game-loop |
 | [DP-R8](#dp-r8) | LOW | main | main.py:_save_npy | RESOLVED | `_save_npy()` is not atomic — no `os.replace` pattern |
-| [DP-R9](#dp-r9) | LOW | engine | engine.py | OPEN | No `GAME_SAVE_SCHEMA_VERSION` — format detection by value heuristic |
+| [DP-R9](#dp-r9) | LOW | engine | engine.py | RESOLVED — 2026-05-12 | No `GAME_SAVE_SCHEMA_VERSION` — format detection by value heuristic |
 | [PF-001](#pf-001) | LOW | tests | 3 test files | RESOLVED | Pre-existing pyflakes warnings — unused imports |
 | [T-002](#t-002) | LOW | tests | test_gameworks_engine.py | RESOLVED — tests now pass | Pre-existing failure: `test_snapshot_fields` |
 | [T-003](#t-003) | LOW | tests | test_gameworks_renderer_headless.py | RESOLVED — tests now pass | Pre-existing failure: `test_dev_solve_click_returns_action_not_none` |

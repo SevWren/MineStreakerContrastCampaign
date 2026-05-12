@@ -28,6 +28,25 @@ from scipy.ndimage import convolve as _ndconvolve
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Schema versioning — DP-R9
+# ═══════════════════════════════════════════════════════════════════════════════
+
+GAME_SAVE_SCHEMA_VERSION = 1
+"""Integer schema version embedded in every .npy save via numpy structured array.
+
+Increment when the save format changes so load_board_from_npy() can migrate old
+files instead of silently misinterpreting them.
+
+History:
+  v1 (2026-05-12): initial versioned format.  Single int8 2-D array, -1=mine,
+                   0-8=neighbour count, with a 1-row uint8 header row prepended
+                   encoding [MAGIC_BYTE, SCHEMA_VERSION, 0, 0, ...].
+"""
+
+_SAVE_MAGIC: int = 0xAB   # first byte of header row — distinguishes v1+ from legacy
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Scoring constants
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -184,20 +203,24 @@ class Board:
             # No game-over: mine hit is a score penalty, game continues.
             return True, [(x, y)]
 
+        # FA-007: pre-mark as revealed at push time to prevent duplicate pushes.
+        # The old code marked on pop, so a cell queued by N zero-neighbours could
+        # be pushed N times before being popped, growing the stack to O(4×area).
         newly: List[Tuple[int, int]] = []
+        self._revealed[y, x] = True
+        self._n_revealed += 1
+        self._n_safe_revealed += 1
+        newly.append((x, y))
         stack = [(x, y)]
         while stack:
             cx, cy = stack.pop()
-            cell = self._revealed[cy, cx] or self._flagged[cy, cx] or self._mine[cy, cx]
-            if cell:
-                continue
-            self._revealed[cy, cx] = True
-            self._n_revealed += 1
-            self._n_safe_revealed += 1
-            newly.append((cx, cy))
             if self._neighbours[cy, cx] == 0:
                 for nx, ny in self._neighbours_iter(cx, cy):
                     if not self._revealed[ny, nx] and not self._flagged[ny, nx] and not self._mine[ny, nx]:
+                        self._revealed[ny, nx] = True
+                        self._n_revealed += 1
+                        self._n_safe_revealed += 1
+                        newly.append((nx, ny))
                         stack.append((nx, ny))
 
         if self._n_safe_revealed == self.total_safe:
@@ -310,12 +333,34 @@ def place_random_mines(width: int, height: int, count: int,
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  BoardLoadResult — DP-R3: structured loader return type
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class BoardLoadResult:
+    """Structured result returned by board-loader functions.
+
+    Callers can inspect ``format``, ``used_fallback``, and ``warnings``
+    without parsing exception messages.  The ``board`` field holds the
+    fully-initialised Board ready for play.
+    """
+    board:        "Board"
+    format:       str          # "pipeline" | "game-save" | "random-fallback"
+    used_fallback: bool = False
+    warnings:     List[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self):
+        if self.warnings is None:
+            self.warnings = []
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Board Loading — Random / .npy / Image Pipeline
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def load_board_from_npy(path: str) -> Board:
+def load_board_from_npy(path: str) -> "BoardLoadResult":
     """
-    Load a board from an .npy file.
+    Load a board from an .npy file.  Returns a BoardLoadResult (DP-R3).
 
     Supports two encodings:
     - Pipeline format (run_iter9.py output): int8, 0=safe, 1=mine
@@ -324,12 +369,28 @@ def load_board_from_npy(path: str) -> Board:
     Format is auto-detected: if all values are in {0, 1} (no negatives, max <= 1)
     the pipeline format is assumed.
     """
-    grid = np.load(path)
-    if grid.ndim != 2:
-        raise ValueError(f"Expected 2D array, got shape {grid.shape}")
+    raw = np.load(path)
+    if raw.ndim != 2:
+        raise ValueError(f"Expected 2D array, got shape {raw.shape}")
+
+    warnings: List[str] = []
+
+    # DP-R9: detect versioned save (magic byte in first row, first cell).
+    # Legacy files (pipeline or pre-v1 game-save) never start with _SAVE_MAGIC.
+    if raw.shape[0] >= 2 and int(raw[0, 0]) & 0xFF == _SAVE_MAGIC:
+        schema_ver = int(raw[0, 1])
+        if schema_ver > GAME_SAVE_SCHEMA_VERSION:
+            warnings.append(
+                f"File schema v{schema_ver} is newer than engine v{GAME_SAVE_SCHEMA_VERSION}; "
+                "loading may be incomplete."
+            )
+        grid = raw[1:].astype(np.int8)   # strip header row
+    else:
+        grid = raw   # legacy format — no version info
 
     h, w = grid.shape
     is_pipeline_format = int(grid.min()) >= 0 and int(grid.max()) <= 1
+    fmt = "pipeline" if is_pipeline_format else "game-save"
 
     if is_pipeline_format:
         # Pipeline format: 1=mine, 0=safe — no neighbour counts stored
@@ -342,17 +403,15 @@ def load_board_from_npy(path: str) -> Board:
 
     board = Board(w, h, mine_pos)
 
-    # Validate neighbour counts only for game format (pipeline boards don't store them)
+    # FA-008: validate neighbour counts via single vectorised comparison — O(1) numpy ops
+    # instead of O(W×H) Python loops calling _count_adj() per cell.
     if not is_pipeline_format:
-        for y in range(h):
-            for x in range(w):
-                if not board._mine[y, x]:
-                    if int(grid[y, x]) != int(board._neighbours[y, x]):
-                        raise ValueError(
-                            f"Neighbour mismatch at ({x},{y}): file={grid[y,x]}, "
-                            f"computed={board._neighbours[y,x]}"
-                        )
-    return board
+        safe_mask = ~board._mine
+        stored = grid[safe_mask].astype(np.int16)
+        computed = board._neighbours[safe_mask].astype(np.int16)
+        if not np.array_equal(stored, computed):
+            raise ValueError("Neighbour count mismatch in loaded board")
+    return BoardLoadResult(board=board, format=fmt, warnings=warnings)
 
 
 def load_board_from_pipeline(image_path: str, board_w: int = 30,
@@ -420,7 +479,8 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
         if not positions:
             raise RuntimeError("Pipeline produced 0 mines")
 
-        return Board(board_w, board_h, positions)
+        return BoardLoadResult(board=Board(board_w, board_h, positions),
+                               format="pipeline")
 
     except Exception as exc:
         print(f"[WARN] MineStreaker pipeline failed ({exc}); falling back to random.")
@@ -428,9 +488,36 @@ def load_board_from_pipeline(image_path: str, board_w: int = 30,
         _h = locals().get("board_h", board_w)
         c = max(1, board_w * _h // 8)
         mp = place_random_mines(board_w, _h, c, seed=seed)
-        return Board(board_w, _h, mp)
+        return BoardLoadResult(
+            board=Board(board_w, _h, mp),
+            format="random-fallback",
+            used_fallback=True,
+            warnings=[f"Pipeline failed: {exc}"],
+        )
     finally:
         _sys.path = _backup
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  GameConfig — DP-R2: serialisable, comparable, frozen config object
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass(frozen=True)
+class GameConfig:
+    """Immutable configuration for a single GameEngine instance.
+
+    Replaces the 7 flat keyword arguments of GameEngine.__init__ with a
+    hashable, serialisable config object.  Existing callers can still pass
+    arguments directly to GameEngine (the constructor builds a GameConfig
+    internally); new callers may pass ``config=`` explicitly.
+    """
+    mode:       str = "random"
+    width:      int = 16
+    height:     int = 16
+    mines:      int = 0
+    image_path: str = ""
+    npy_path:   str = ""
+    seed:       int = 42
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -476,16 +563,28 @@ class GameEngine:
 
     def __init__(self, mode: str = "random", width: int = 16, height: int = 16,
                  mines: int = 0, image_path: str = "", npy_path: str = "",
-                 seed: int = 42):
+                 seed: int = 42, config: Optional[GameConfig] = None):
+        # DP-R2: accept a GameConfig directly; flat args remain for backwards-compat.
+        if config is not None:
+            mode       = config.mode
+            width      = config.width
+            height     = config.height
+            mines      = config.mines
+            image_path = config.image_path
+            npy_path   = config.npy_path
+            seed       = config.seed
+        self.config = GameConfig(mode=mode, width=width, height=height,
+                                 mines=mines, image_path=image_path,
+                                 npy_path=npy_path, seed=seed)
         self.seed = seed
         self.mode = mode
         self.image_path = image_path if mode == "image" else ""
         self.npy_path = npy_path if mode == "npy" else ""
 
         if mode == "npy" and npy_path:
-            self.board = load_board_from_npy(npy_path)
+            self.board = load_board_from_npy(npy_path).board       # DP-R3: unwrap BoardLoadResult
         elif mode == "image" and image_path:
-            self.board = load_board_from_pipeline(image_path, width, seed)
+            self.board = load_board_from_pipeline(image_path, width, seed).board
         else:
             c = mines if mines > 0 else max(1, width * height // 6)
             mp = place_random_mines(width, height, c, seed=seed)
@@ -714,19 +813,27 @@ class GameEngine:
         This method can be called at any time after GameEngine initialization.
         It does not require the game to be started or in any particular state.
         """
-        # Extract grid data from board
-        grid = np.zeros((self.board.height, self.board.width), dtype=np.int8)
-        for y in range(self.board.height):
-            for x in range(self.board.width):
-                cell = self.board.snapshot(x, y)
-                grid[y, x] = -1 if cell.is_mine else cell.neighbour_mines
+        # Build board data: -1=mine, 0-8=neighbour count
+        grid = np.where(self.board._mine,
+                        np.int8(-1),
+                        self.board._neighbours.astype(np.int8))
+
+        # DP-R9: prepend a 1-row uint8 header encoding schema version so
+        # load_board_from_npy() can detect versioned files unambiguously.
+        # Header row: [_SAVE_MAGIC, GAME_SAVE_SCHEMA_VERSION, 0, 0, ...]
+        # Header stored as int8 with unsigned reinterpretation: cast _SAVE_MAGIC via
+        # view to avoid int8 overflow (0xAB = 171 > 127).
+        header = np.zeros((1, self.board.width), dtype=np.uint8)
+        header[0, 0] = _SAVE_MAGIC
+        header[0, 1] = GAME_SAVE_SCHEMA_VERSION
+        versioned = np.vstack([header.view(np.int8), grid])
 
         # Atomic write pattern: write to temp file, then replace
         # CRITICAL: Temp path must end with .npy or numpy will add it
         path_obj = Path(path)
         tmp = path_obj.parent / (path_obj.stem + ".tmp.npy")
 
-        np.save(tmp, grid)      # Creates exactly tmp (numpy sees .npy suffix)
+        np.save(tmp, versioned)    # Creates exactly tmp (numpy sees .npy suffix)
         os.replace(tmp, path_obj)  # Atomic replace
 
     def restart(self, width=None, height=None, mines=None):
@@ -738,13 +845,37 @@ class GameEngine:
         self.streak = 0
         self.mine_flash = {}
         if self.mode == "npy" and self.npy_path:
-            self.board = load_board_from_npy(self.npy_path)
+            self.board = load_board_from_npy(self.npy_path).board
         elif self.mode == "image" and self.image_path:
             self.board = load_board_from_pipeline(
-                self.image_path, width or self.board.width, self.seed)
+                self.image_path, width or self.board.width, self.seed).board
         else:
             w = width or self.board.width
             h = height or self.board.height
             m = mines if mines is not None else self.board.total_mines
+            mp = place_random_mines(w, h, m, seed=self.seed)
+            self.board = Board(w, h, mp)
+
+    def retry(self):
+        """M-003: Replay the exact same board layout (same seed, no increment).
+
+        Resets score, timer and first-click flag but regenerates from the same
+        seed so the mine layout is identical to the previous game.
+        """
+        self._first_click = True
+        self._start_time = 0.0
+        self._paused_elapsed = 0.0
+        self.score = 0
+        self.streak = 0
+        self.mine_flash = {}
+        if self.mode == "npy" and self.npy_path:
+            self.board = load_board_from_npy(self.npy_path).board
+        elif self.mode == "image" and self.image_path:
+            self.board = load_board_from_pipeline(
+                self.image_path, self.board.width, self.seed).board
+        else:
+            w = self.board.width
+            h = self.board.height
+            m = self.board.total_mines
             mp = place_random_mines(w, h, m, seed=self.seed)
             self.board = Board(w, h, mp)

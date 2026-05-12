@@ -270,7 +270,7 @@ class Renderer:
             self.PANEL_W = PANEL_W
             self.PAD = PAD
             self.HEADER_H = HEADER_H
-            self.BOARD_OX = self.PAD + self.PANEL_W
+            self.BOARD_OX = self.PAD              # FA-005: panel is on the RIGHT; board starts at PAD, not PAD+PANEL_W
             self.BOARD_OY = self.HEADER_H + self.PAD
             bw_px = w_cols * self._tile
             bh_px = h_rows * self._tile
@@ -349,11 +349,23 @@ class Renderer:
         if image_path and pygame.image.get_extended():
             try:
                 img = pygame.image.load(image_path).convert_alpha()
-                scale = min((w_cols * self._tile) / max(img.get_width(), 1),
-                            (h_rows * self._tile) / max(img.get_height(), 1))
-                tw = max(1, int(img.get_width() * scale))
-                th = max(1, int(img.get_height() * scale))
-                self._image_surf = pygame.transform.smoothscale(img, (tw, th))
+                # FA-021: NEVER upscale _image_surf beyond the natural image dimensions.
+                # Upscaling bloats _image_surf (e.g. 200px → 3000px), making every
+                # subsequent smoothscale call in _draw_image_ghost read millions of
+                # pixels per zoom step, causing 100–500 ms blocking freezes.
+                # Only downscale if the image exceeds the board area at maximum zoom
+                # (BASE_TILE px/cell).  At any other zoom the source is downscaled
+                # from natural size — a small fraction of the cost.
+                max_w = w_cols * BASE_TILE
+                max_h = h_rows * BASE_TILE
+                if img.get_width() > max_w or img.get_height() > max_h:
+                    cap_scale = min(max_w / max(img.get_width(), 1),
+                                    max_h / max(img.get_height(), 1))
+                    cw = max(1, int(img.get_width() * cap_scale))
+                    ch = max(1, int(img.get_height() * cap_scale))
+                    self._image_surf = pygame.transform.smoothscale(img, (cw, ch))
+                else:
+                    self._image_surf = img   # keep at natural resolution
             except Exception:
                 self._image_enabled = False
 
@@ -361,7 +373,7 @@ class Renderer:
         self.help_visible  = False
         self.fog            = False
         self._show_dev      = False
-        self.pressed_cell:  Optional[Tuple[int, int]] = None
+        self.pressed_cell:  Optional[Tuple[int, int]] = None   # public API kept for compat
         self.cascade:       Optional[AnimationCascade] = None
         self._pan_x         = 0
         self._pan_y         = 0
@@ -372,6 +384,20 @@ class Renderer:
         # ── Win animation state ───────────────────────────────────────────
         self.win_anim: Optional[WinAnimation] = None
         self._ghost_surf: Optional[pygame.Surface] = None
+        # FA-009: pre-composed per-alpha ghost surfaces — rebuilt only on zoom change,
+        # never per-flag per-frame.  None = needs rebuild.
+        self._ghost_mine_surf: Optional[pygame.Surface] = None    # alpha=200 (correct flag)
+        self._ghost_wrong_surf: Optional[pygame.Surface] = None   # alpha=40  (wrong flag)
+
+        # FA-022: pre-allocated numpy bool arrays for animation membership.
+        # Replaces per-cell (x,y) tuple construction & set lookup (333k+ allocs/frame
+        # at max zoom-out → gen-0 GC storms).
+        bh_arr, bw_arr = self.board.height, self.board.width
+        self._anim_arr:     np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._win_anim_arr: np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        # FA-022: separate int coords for pressed cell — avoids tuple comparison per cell.
+        self._pressed_x: int = -1
+        self._pressed_y: int = -1
 
         # ── Render caches ─────────────────────────────────────────────
         # Number surfaces: pre-rendered text for digits 1-8.
@@ -529,6 +555,7 @@ class Renderer:
             cy = (ev.pos[1] - self.BOARD_OY - self._pan_y) // self._tile
             if 0 <= cx < self.board.width and 0 <= cy < self.board.height:
                 self.pressed_cell = (cx, cy)
+                self._pressed_x, self._pressed_y = cx, cy   # FA-022: int coords for draw loop
             return None
 
         if ev.type == MOUSEMOTION and self._dragging:
@@ -558,6 +585,7 @@ class Renderer:
             self._dragging = False
             cx, cy = self.pressed_cell or (-1, -1)
             self.pressed_cell = None
+            self._pressed_x = self._pressed_y = -1   # FA-022: clear int coords
             if not b_rect.collidepoint(ev.pos):
                 return None
             rcx = (ev.pos[0] - self.BOARD_OX - self._pan_x) // self._tile
@@ -632,7 +660,7 @@ class Renderer:
 
         # ── Smiley click (restart) ────────────────────────────────────
         if ev.type == MOUSEBUTTONDOWN and ev.button == 1:
-            _cx = self._win.get_width() // 2
+            _cx = self._win_size[0] // 2
             _smiley_rect = pygame.Rect(_cx - 25, 4, 50, self.HEADER_H - 4)
             if _smiley_rect.collidepoint(ev.pos):
                 return "restart"
@@ -648,7 +676,7 @@ class Renderer:
     def handle_panel(self, pos) -> Optional[str]:
         mx, my = pos
         if self._btn_new.collidepoint(mx, my):
-            return "restart"
+            return "retry"       # M-003: retry same board (same seed, no increment)
         if self._btn_help.collidepoint(mx, my):
             self.help_visible = not self.help_visible
             return None
@@ -715,7 +743,7 @@ class Renderer:
             px = self.board.width * ts + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
         elif self._panel_overlay:
-            px = self._win.get_width() - self.PANEL_W - self.PAD
+            px = self._win_size[0] - self.PANEL_W - self.PAD   # FA-006: use cached _win_size
             oy = self.BOARD_OY
         else:
             px = self.PAD
@@ -767,7 +795,7 @@ class Renderer:
     # ── Header ────────────────────────────────────────────────────────
 
     def _draw_header(self, elapsed, game_state, mouse_pos):
-        w = self._win.get_width()
+        w = self._win_size[0]          # FA-006: use cached _win_size
         r = pygame.Rect(0, 0, w, self.HEADER_H + 4)
         pygame.draw.rect(self._win, C["panel"], r)
         pygame.draw.line(self._win, C["border"],
@@ -780,7 +808,7 @@ class Renderer:
         self._win.blit(mt, (self.BOARD_OX + 8, (self.HEADER_H - mt.get_height()) // 2))
 
         # ── Centre: smiley (clickable reset button) ───────────────────
-        cx = self._win.get_width() // 2
+        cx = self._win_size[0] // 2    # FA-006: use cached _win_size
         self._draw_smiley(cx - 25, 4, 50, self.HEADER_H - 4, game_state, mouse_pos)
 
         # ── Right: two-row scoreboard — guaranteed no overlap ─────────
@@ -789,7 +817,7 @@ class Renderer:
         streak = self.engine.streak
         mult = self.engine.streak_multiplier
         secs = int(elapsed)
-        win_w = self._win.get_width()
+        win_w = self._win_size[0]      # FA-006: use cached _win_size
 
         fsh = self._font_small.get_height()
         # Centre the two rows vertically in the header
@@ -857,17 +885,26 @@ class Renderer:
         if self._image_enabled and self._image_surf:
             self._draw_image_ghost(ox, oy, bw, bh)
 
-        # Cascade animation set (reveal animation)
-        anim_set = set()
-        if self.cascade and not self.cascade.done:
-            anim_set = set(self.cascade.current())
-        elif not cascade_done:
-            pass
+        # FA-022: populate numpy bool arrays instead of building set-of-tuples.
+        # At max zoom-out (111k cells visible), building sets and testing (x,y) membership
+        # allocates 333k+ tuples/frame → gen-0 GC fires ~476 times/frame.
+        # Array index access (self._anim_arr[y, x]) allocates nothing.
+        anim_arr     = self._anim_arr
+        win_anim_arr = self._win_anim_arr
+        anim_arr.fill(False)
+        win_anim_arr.fill(False)
 
-        # Win animation set (progressive flag reveal)
+        anim_set = set()     # kept for _draw_win_animation_fx which still needs the set
+        if self.cascade and not self.cascade.done:
+            for (cx, cy) in self.cascade.current():
+                anim_arr[cy, cx] = True
+                anim_set.add((cx, cy))
+
         win_anim_set = set()
         if self.win_anim and not self.win_anim.done:
-            win_anim_set = set(self.win_anim.current())
+            for (cx, cy) in self.win_anim.current():
+                win_anim_arr[cy, cx] = True
+                win_anim_set.add((cx, cy))
 
         # ── Compute visible tile range (skip off-screen tiles) ──────
         # This is critical for 300×370 boards — only draw what's visible
@@ -879,7 +916,9 @@ class Renderer:
         ty1 = min(self.board.height, (win_h - oy) // ts + 2)
 
         # Draw visible cells — read board arrays once to avoid per-cell snapshot() overhead
-        pressed = self.pressed_cell
+        # FA-022: use _pressed_x/_pressed_y (ints) instead of pressed_cell tuple comparison.
+        pressed_x = self._pressed_x
+        pressed_y = self._pressed_y
         mpos = mouse_pos
         _mine       = self.board._mine
         _revealed   = self.board._revealed
@@ -894,13 +933,14 @@ class Renderer:
             for x in range(tx0, tx1):
                 px = ox + x * ts
                 py = oy + y * ts
-                ip = _revealed[y, x] and (x, y) in anim_set
-                in_win_anim = (x, y) in win_anim_set
+                # FA-022: array index — no tuple allocation per cell
+                ip          = bool(_revealed[y, x]) and anim_arr[y, x]
+                in_win_anim = bool(win_anim_arr[y, x])
                 self._draw_cell(
                     x, y,
                     _mine[y, x], _revealed[y, x], _flagged[y, x],
                     _questioned[y, x], _neighbours[y, x],
-                    (px, py), ip, pressed == (x, y),
+                    (px, py), ip, (pressed_x == x and pressed_y == y),
                     self.fog, ts, in_win_anim, now
                 )
 
@@ -1059,11 +1099,18 @@ class Renderer:
         if not self._image_surf:
             return
 
-        # Rebuild cached scaled surface only when board pixel dimensions change
+        # Rebuild cached scaled surface only when board pixel dimensions change.
+        # FA-009: also rebuild the two pre-alpha composited surfaces on the same trigger.
         if self._ghost_surf is None or self._ghost_surf.get_size() != (bw, bh):
             self._ghost_surf = pygame.transform.smoothscale(self._image_surf, (bw, bh))
+            # Pre-compose one copy at alpha=200 (correct flag / mine) and one at alpha=40
+            # (wrong flag / safe cell).  Blit uses special_flags=0 so per-cell alpha is
+            # applied to the pre-composited surface without extra allocations per frame.
+            self._ghost_mine_surf = self._ghost_surf.copy()
+            self._ghost_mine_surf.set_alpha(200)
+            self._ghost_wrong_surf = self._ghost_surf.copy()
+            self._ghost_wrong_surf.set_alpha(40)
 
-        scaled = self._ghost_surf
         ts = self._tile
         _flagged = self.board._flagged
         _mine    = self.board._mine
@@ -1083,17 +1130,17 @@ class Renderer:
         ys = ys + ty0
         xs = xs + tx0
 
+        # FA-009: blit from pre-composited surface — zero new Surface allocations per frame.
         for y, x in zip(ys, xs):
             px = ox + int(x) * ts
             py = oy + int(y) * ts
             src_rect = pygame.Rect(int(x) * ts, int(y) * ts, ts, ts)
-            sub = scaled.subsurface(src_rect).copy()
-            sub.set_alpha(200 if _mine[y, x] else 40)
-            self._win.blit(sub, (px, py))
+            surf = self._ghost_mine_surf if _mine[y, x] else self._ghost_wrong_surf
+            self._win.blit(surf, (px, py), area=src_rect)
     # ── Right panel ───────────────────────────────────────────────────
 
     def _draw_panel(self, mouse_pos, game_state, elapsed):
-        win_w = self._win.get_width()
+        win_w = self._win_size[0]      # FA-006: use cached _win_size
         if self._panel_right:
             px = self.board.width * self._tile + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
@@ -1102,7 +1149,7 @@ class Renderer:
             oy = self.BOARD_OY
             # Semi-transparent backdrop so panel text/buttons are readable over board tiles
             _bd_w = self.PANEL_W + self.PAD * 2
-            _bd_h = self._win.get_height() - oy
+            _bd_h = self._win_size[1] - oy   # FA-006: use cached _win_size
             if _bd_h > 0:
                 _ov = pygame.Surface((_bd_w, _bd_h), pygame.SRCALPHA)
                 _ov.fill((18, 18, 24, 215))
@@ -1119,16 +1166,16 @@ class Renderer:
 
         mx, my = mouse_pos
         buttons = [
-            (self._btn_new,    "Restart"),
+            (self._btn_new,    "Retry Board"),   # M-003: replays exact same layout
             (self._btn_help,   "Help"),
             (self._btn_fog,    "Hide Fog" if self.fog else "Toggle Fog"),
             (self._btn_save,   "Save .npy"),
-            (self._btn_restart,"New Game"),
+            (self._btn_restart,"New Game"),       # M-003: new seed → new layout
         ]
 
         for rect, label in buttons:
             hover = rect.collidepoint(mx, my)
-            base_col = C["green"] if "Restart" in label or "New Game" in label else \
+            base_col = C["green"] if "Retry" in label or "New Game" in label else \
                        C["blue"] if "Help" in label else \
                        C["purple"] if "Fog" in label else C["cyan"]
             pill(win, base_col, rect)
@@ -1244,7 +1291,7 @@ class Renderer:
         overlay.fill((0, 0, 0, 160))
         self._win.blit(overlay, (0, 0))
 
-        cx, cy = self._win.get_width() // 2, self._win.get_height() // 2
+        cx, cy = self._win_size[0] // 2, self._win_size[1] // 2   # FA-006: use cached _win_size
         bw, bh = 400, 170
         rect = pygame.Rect(cx - bw // 2, cy - bh // 2, bw, bh)
         rrect(self._win, C["panel"], rect, 14)
@@ -1265,7 +1312,7 @@ class Renderer:
         overlay.fill((0, 0, 0, 200))
         self._win.blit(overlay, (0, 0))
 
-        cx, cy = self._win.get_width() // 2, self._win.get_height() // 2
+        cx, cy = self._win_size[0] // 2, self._win_size[1] // 2   # FA-006: use cached _win_size
         bw, bh = 580, 520
         rect = pygame.Rect(cx - bw // 2, cy - bh // 2, bw, bh)
         rrect(self._win, C["panel"], rect, 14)

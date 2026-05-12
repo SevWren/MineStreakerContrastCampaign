@@ -163,15 +163,16 @@ class TestMinFitTileFormula:
 
     def test_floor_for_known_40x30_at_800x600(self, renderer_panel_large):
         """
-        Regression: 40×30 board at 800×600 with panel_right=True must yield 7.
+        Regression: 40×30 board at 800×600 with panel_right=True.
 
-        avail_w = 800 - BOARD_OX(252) - PANEL_W(240) - PAD(12) = 296
-        avail_h = 600 - BOARD_OY(60) - HEADER_H(48)            = 492
-        min_fit_tile = min(296//40, 492//30) = min(7, 16)       = 7
+        FA-005 fixed BOARD_OX for panel_right=True from PAD+PANEL_W to PAD:
+          avail_w = 800 - BOARD_OX(12) - PANEL_W(240) - PAD(12) = 536
+          avail_h = 600 - BOARD_OY(60) - HEADER_H(48)            = 492
+          min_fit_tile = min(536//40, 492//30) = min(13, 16)       = 13
         """
         r, _ = renderer_panel_large
         r._win_size = (800, 600)
-        assert _min_fit_tile(r) == 7
+        assert _min_fit_tile(r) == 13
 
 
 # ---------------------------------------------------------------------------
