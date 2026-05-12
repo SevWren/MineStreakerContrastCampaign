@@ -8,6 +8,7 @@ and ties the engine to the renderer.
 from __future__ import annotations
 
 import argparse
+import threading
 import time
 from pathlib import Path
 
@@ -163,10 +164,70 @@ class GameLoop:
         self._result_shown = False
 
     def _start_game(self):
-        eng = self._build_engine()
+        """Build the engine on a background thread to keep the event loop alive.
+
+        Board generation (especially the SA pipeline for --image mode) can block
+        for 30-90+ seconds.  Running it on the main thread freezes the pygame
+        event queue, causing Windows to mark the window "(Not Responding)".
+        This method runs _build_engine() on a daemon thread and shows an animated
+        loading screen while waiting, so the window stays responsive throughout.
+        """
+        result: list = []           # filled by worker: [eng] on success, [None, exc] on error
+        done = threading.Event()
+
+        def _worker():
+            try:
+                result.append(self._build_engine())
+            except Exception as exc:  # noqa: BLE001
+                result.append(None)
+                result.append(exc)
+            finally:
+                done.set()
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+
+        # ── Loading screen — main thread keeps pumping events ─────────────
+        win = pygame.display.get_surface()
+        if win is None:
+            pygame.init()
+            win = pygame.display.set_mode((640, 200), pygame.RESIZABLE)
+            pygame.display.set_caption("Mine-Streaker")
+
+        font_big   = pygame.font.SysFont("consolas", 28, bold=True)
+        font_small = pygame.font.SysFont("consolas", 16)
+        clock      = pygame.time.Clock()
+        start_t    = time.monotonic()
+        dots       = ["   ", ".  ", ".. ", "..."]
+
+        while not done.is_set():
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    pygame.quit()
+                    raise SystemExit
+            elapsed  = time.monotonic() - start_t
+            dot_idx  = int(elapsed * 2) % len(dots)
+            w, h     = win.get_size()
+            win.fill((18, 18, 24))
+            t1 = font_big.render("Generating board" + dots[dot_idx], True, (55, 195, 195))
+            t2 = font_small.render(
+                f"elapsed: {elapsed:.0f}s  (SA pipeline may take up to 90s)",
+                True, (90, 90, 110),
+            )
+            win.blit(t1, t1.get_rect(center=(w // 2, h // 2 - 20)))
+            win.blit(t2, t2.get_rect(center=(w // 2, h // 2 + 20)))
+            pygame.display.flip()
+            clock.tick(30)
+
+        t.join()
+
+        # Re-raise any exception that occurred in the worker thread
+        if len(result) == 2 and result[0] is None:
+            raise result[1]
+
+        eng = result[0]
         self._engine = eng
         self._engine.start()
-
         image_path = eng.image_path if eng.mode == "image" else None
         self._renderer = Renderer(eng, image_path=image_path)
         self._state = self.PLAYING

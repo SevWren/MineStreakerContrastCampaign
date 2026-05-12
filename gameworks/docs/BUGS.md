@@ -3,8 +3,8 @@
 Canonical flat list of every known open bug in the `gameworks/` package.
 Each entry is self-contained: no cross-reference to ISSUE-LOG.md required.
 
-**Package version:** 0.1.2
-**Last updated:** 2026-05-12 (FA-005, FA-006, FA-007, FA-008, FA-009, FA-014, FA-021, FA-022, M-003, DP-R2, DP-R3, DP-R6, DP-R9 resolved)
+**Package version:** 0.1.3
+**Last updated:** 2026-05-12 (FA-023 resolved)
 **Total open:** 0 (0 critical · 0 high · 0 medium · 0 low)
 
 Bugs with `FIX AVAILABLE` have a proposed correction in the detail section below.
@@ -31,6 +31,7 @@ The canonical narrative history is in `docs/ISSUE-LOG.md`.
 | [DP-R2](#dp-r2) | MEDIUM | engine | engine.py | RESOLVED — 2026-05-12 | No `GameConfig` frozen dataclass — 7 flat args, not serializable |
 | [FA-021](#fa-021) | MEDIUM | renderer | renderer.py:352–358 | RESOLVED — 2026-05-12 | `_image_surf` upscaled to board pixel dimensions at init — zoom-step smoothscale blocking eliminated |
 | [FA-022](#fa-022) | LOW | renderer | renderer.py:_draw_board | RESOLVED — 2026-05-12 | 333k+ tuple allocations/frame at max zoom-out — replaced with numpy bool arrays |
+| [FA-023](#fa-023) | HIGH | main | main.py:_start_game | RESOLVED — 2026-05-12 | Board generation blocks main thread — window shows "(Not Responding)" for 30-90s during SA pipeline |
 | [FA-010](#fa-010) | LOW | main | main.py:_save_npy | RESOLVED | `_save_npy()` writes to cwd, not `results/` |
 | [FA-011](#fa-011) | LOW | engine | engine.py:112 | RESOLVED — 2dd6ea0 | `Board._count_adj()` is dead code |
 | [FA-012](#fa-012) | LOW | engine | engine.py:158 | RESOLVED — 2dd6ea0 | `Board.correct_flags` uses `np.sum()` scan — inconsistent with Phase 1 |
@@ -712,6 +713,56 @@ Why `BASE_TILE` (not `self._tile`): `BASE_TILE` is the hard maximum tile size (3
 **Impact of fix:** `smoothscale(_image_surf, (bw, bh))` now scales from the natural image size (e.g., 512×512) rather than from the inflated board pixel dimensions. For a 200×200 natural image, each zoom-step `smoothscale` shrinks from 40 000 source pixels instead of 9 000 000 — a 225× reduction in source data touched. The multi-second blocking freezes during zoom-out are eliminated; each zoom step completes in < 5 ms.
 
 **Test gap:** No test asserts that `renderer._image_surf.get_width()` is ≤ the natural image width after `Renderer.__init__` completes. The existing `test_renderer_init.py` tests verify surface existence but not dimensions.
+
+---
+
+### FA-023
+
+**Severity:** HIGH
+**Component:** main
+**File:** `main.py:_start_game`
+**Status:** RESOLVED — 2026-05-12
+**Symptom:** Window shows "(Not Responding)" for 30–90 seconds after the user presses a key on the splash screen when running in `--image` mode.
+
+**Root cause:** `_start_game()` called `_build_engine()` synchronously on the main thread. `_build_engine()` calls `GameEngine.__init__()` which calls `load_board_from_pipeline()`, which runs the full SA pipeline (SA warmup → SA optimization → phase-1 repair). The SA repair phase alone has `time_budget_s=90.0`. During this entire period, `pygame.event.get()` is never called — the OS event queue fills up and Windows marks the window as "(Not Responding)".
+
+**Fix:** `_start_game()` now launches `_build_engine()` on a `daemon=True` background thread and runs an animated loading screen loop on the main thread while waiting. The loop drains the pygame event queue at 30 fps, displays elapsed time and an animated ellipsis ("Generating board..."), and handles `QUIT` events so the user can close the window during generation. The thread result (or exception) is collected via a shared list and `threading.Event`; any exception is re-raised on the main thread after join.
+
+```python
+# main.py — _start_game()
+result: list = []
+done = threading.Event()
+
+def _worker():
+    try:
+        result.append(self._build_engine())
+    except Exception as exc:
+        result.append(None)
+        result.append(exc)
+    finally:
+        done.set()
+
+t = threading.Thread(target=_worker, daemon=True)
+t.start()
+
+# main thread: drain events, draw loading screen at 30 fps
+while not done.is_set():
+    for ev in pygame.event.get():
+        if ev.type == pygame.QUIT:
+            pygame.quit(); raise SystemExit
+    # ... draw "Generating board..." with elapsed counter ...
+    clock.tick(30)
+
+t.join()
+if len(result) == 2 and result[0] is None:
+    raise result[1]
+```
+
+**Thread safety:** `_build_engine()` only reads `self.args` (immutable after construction) and returns a new `GameEngine`. It does not touch `self._engine`, `self._renderer`, or any pygame surface. The worker thread never calls pygame. All pygame calls remain on the main thread. No locking is required.
+
+**Impact:** Window stays fully responsive throughout board generation. The loading screen shows live elapsed time so the user knows the program is working. The "(Not Responding)" state is completely eliminated.
+
+**Test gap:** No automated test covers the threading path — doing so would require mocking `_build_engine()` to block for a measurable duration and asserting that pygame events are processed during that time, which is impractical in headless CI. The fix is verified by observation.
 
 ---
 
