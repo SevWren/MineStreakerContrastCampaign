@@ -171,51 +171,124 @@ class GameLoop:
         event queue, causing Windows to mark the window "(Not Responding)".
         This method runs _build_engine() on a daemon thread and shows an animated
         loading screen while waiting, so the window stays responsive throughout.
+
+        Pipeline stdout is intercepted and forwarded to the loading screen so
+        the user can see live stage progress (SA warmup, corridor build, repair, etc.)
+        without any changes to the pipeline code.
         """
+        import io
+        import queue as _queue
+        import sys
+
         result: list = []           # filled by worker: [eng] on success, [None, exc] on error
-        done = threading.Event()
+        done      = threading.Event()
+        msg_q: _queue.SimpleQueue = _queue.SimpleQueue()
+        _orig_out = sys.stdout
+
+        class _Capture(io.TextIOBase):
+            """Tee: forward every write to the real stdout AND post to msg_q."""
+            def write(self, s: str) -> int:
+                _orig_out.write(s)
+                stripped = s.strip()
+                if stripped:
+                    msg_q.put(stripped)
+                return len(s)
+            def flush(self) -> None:
+                _orig_out.flush()
+            def writable(self) -> bool:
+                return True
 
         def _worker():
+            sys.stdout = _Capture()
             try:
                 result.append(self._build_engine())
             except Exception as exc:  # noqa: BLE001
                 result.append(None)
                 result.append(exc)
             finally:
+                sys.stdout = _orig_out
                 done.set()
 
         t = threading.Thread(target=_worker, daemon=True)
         t.start()
 
-        # ── Loading screen — main thread keeps pumping events ─────────────
-        win = pygame.display.get_surface()
-        if win is None:
-            pygame.init()
-            win = pygame.display.set_mode((640, 200), pygame.RESIZABLE)
-            pygame.display.set_caption("Mine-Streaker")
+        # ── Loading screen — resize to a proper loading window ────────────
+        pygame.init()
+        win = pygame.display.set_mode((800, 300), pygame.RESIZABLE)
+        pygame.display.set_caption("Mine-Streaker — Generating Board...")
 
-        font_big   = pygame.font.SysFont("consolas", 28, bold=True)
-        font_small = pygame.font.SysFont("consolas", 16)
+        font_title = pygame.font.SysFont("consolas", 30, bold=True)
+        font_stage = pygame.font.SysFont("consolas", 14)
+        font_timer = pygame.font.SysFont("consolas", 12)
         clock      = pygame.time.Clock()
         start_t    = time.monotonic()
-        dots       = ["   ", ".  ", ".. ", "..."]
+        last_msg   = "Starting pipeline..."
+        bar_pos    = 0.0   # leading edge of bouncing bar [0.0 .. 1.0]
+        bar_dir    = 1.0
+        BAR_FRAC   = 0.25  # bar width as fraction of track
+
+        C_BG       = (18,  18,  24)
+        C_TITLE    = (55,  195, 195)
+        C_STAGE    = (160, 160, 180)
+        C_TRACK    = (40,  45,  55)
+        C_BAR      = (55,  195, 195)
+        C_TIMER    = (70,  75,  90)
 
         while not done.is_set():
             for ev in pygame.event.get():
                 if ev.type == pygame.QUIT:
                     pygame.quit()
                     raise SystemExit
-            elapsed  = time.monotonic() - start_t
-            dot_idx  = int(elapsed * 2) % len(dots)
-            w, h     = win.get_size()
-            win.fill((18, 18, 24))
-            t1 = font_big.render("Generating board" + dots[dot_idx], True, (55, 195, 195))
-            t2 = font_small.render(
-                f"elapsed: {elapsed:.0f}s  (SA pipeline may take up to 90s)",
-                True, (90, 90, 110),
-            )
-            win.blit(t1, t1.get_rect(center=(w // 2, h // 2 - 20)))
-            win.blit(t2, t2.get_rect(center=(w // 2, h // 2 + 20)))
+
+            # Drain all queued messages; keep only the latest
+            while not msg_q.empty():
+                try:
+                    last_msg = msg_q.get_nowait()
+                except _queue.Empty:
+                    break
+
+            elapsed = time.monotonic() - start_t
+            dt      = clock.get_time() / 1000.0     # seconds since last tick
+
+            # Advance bouncing bar
+            bar_pos += bar_dir * dt * 0.55
+            if bar_pos + BAR_FRAC >= 1.0:
+                bar_pos = 1.0 - BAR_FRAC
+                bar_dir = -1.0
+            elif bar_pos <= 0.0:
+                bar_pos = 0.0
+                bar_dir = 1.0
+
+            w, h = win.get_size()
+            win.fill(C_BG)
+
+            # Title
+            s_title = font_title.render("MINE-STREAKER", True, C_TITLE)
+            win.blit(s_title, s_title.get_rect(center=(w // 2, h // 2 - 80)))
+
+            # Subtitle
+            s_sub = font_stage.render("Generating board — please wait", True, (80, 130, 130))
+            win.blit(s_sub, s_sub.get_rect(center=(w // 2, h // 2 - 46)))
+
+            # Live pipeline stage message (truncate to fit)
+            msg = last_msg if len(last_msg) <= 80 else last_msg[:77] + "..."
+            s_stage = font_stage.render(msg, True, C_STAGE)
+            win.blit(s_stage, s_stage.get_rect(center=(w // 2, h // 2 - 14)))
+
+            # Indeterminate progress bar
+            track_x = w // 8
+            track_w = w * 6 // 8
+            track_y = h // 2 + 14
+            track_h = 10
+            pygame.draw.rect(win, C_TRACK, (track_x, track_y, track_w, track_h), border_radius=5)
+            bx = track_x + int(bar_pos * track_w)
+            bw = int(BAR_FRAC * track_w)
+            pygame.draw.rect(win, C_BAR, (bx, track_y, bw, track_h), border_radius=5)
+
+            # Elapsed time
+            s_timer = font_timer.render(f"{elapsed:.0f}s elapsed", True, C_TIMER)
+            win.blit(s_timer, s_timer.get_rect(center=(w // 2, h // 2 + 40)))
+
             pygame.display.flip()
             clock.tick(30)
 
