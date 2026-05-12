@@ -36,9 +36,9 @@ FPS = 30                # Minesweeper needs no more than 30 fps
 C = dict(
     bg           =( 18,  18,  24),
     panel        =( 28,  28,  38),
-    border       =( 60,  60,  80),
-    tile_hidden  =( 45,  45,  60),
-    tile_hi       =( 58,  58,  80),
+    border       =( 108, 108, 136),   # was (60,60,80) — raised for 2:1+ contrast at min tile size
+    tile_hidden  =( 72,  72,  96),    # was (45,45,60) — 1.88:1 vs panel (was 1.25:1)
+    tile_hi      =( 88,  88, 115),    # was (58,58,80) — hover highlight stays above tile_hidden
     tile_reveal  =( 12,  12,  16),
     tile_flag    =( 48,  48,  64),
     flag_red     =(235, 210, 210),
@@ -487,6 +487,9 @@ class Renderer:
             self._win = pygame.display.set_mode(ev.size, pygame.RESIZABLE)
             self._win_size = ev.size
             self._cached_board_rect = None   # FA-003: invalidate before _on_resize reads it
+            # Recompute _panel_overlay: board pixel height may now fit/not fit in new window
+            bh_px = self.board.height * self._tile
+            self._panel_overlay = (not self._panel_right) and (bh_px > self._win_size[1] - self.BOARD_OY)
             self._on_resize()               # FA-003: recompute all button positions
             self._center_board()
             return None
@@ -990,11 +993,9 @@ class Renderer:
         _flash_end = self.engine.mine_flash.get((x, y), 0)
         _flashing = now < _flash_end
 
-        # Guard assertion: tile size must match cached surfaces
-        assert self._num_tile == ts, (
-            f"_draw_cell: tile size mismatch — _num_tile={self._num_tile} != ts={ts}. "
-            "Call _rebuild_num_surfs() before drawing."
-        )
+        # Ensure cached number surfaces match current tile size
+        if self._num_tile != ts:
+            self._rebuild_num_surfs()
 
         if is_revealed:
             bg = C["red"] if _flashing else C["tile_reveal"]
@@ -1159,6 +1160,11 @@ class Renderer:
             oy = int(self.BOARD_OY + self.board.height * self._tile + self.PAD)
 
         win = self._win
+        win_h = self._win_size[1]
+
+        # Clip panel drawing to the window height so buttons never render off-screen
+        old_clip = win.get_clip()
+        win.set_clip(pygame.Rect(0, 0, self._win_size[0], win_h))
 
         # Title
         surf = self._font_small.render("CONTROLS", True, C["text_dim"])
@@ -1174,6 +1180,8 @@ class Renderer:
         ]
 
         for rect, label in buttons:
+            if rect.top >= win_h:
+                break   # button is fully off-screen — skip drawing and interaction
             hover = rect.collidepoint(mx, my)
             base_col = C["green"] if "Retry" in label or "New Game" in label else \
                        C["blue"] if "Help" in label else \
@@ -1249,6 +1257,8 @@ class Renderer:
         if self._thumb_surf:
             tw = self._thumb_surf.get_width()
             win.blit(self._thumb_surf, (px + (self._btn_w - tw) // 2, oy - 64 - 14))
+
+        win.set_clip(old_clip)   # restore clip after panel drawing
 
     # ── Victory overlay ───────────────────────────────────────────────
 
