@@ -1,9 +1,7 @@
 ﻿## **Example Commands**:  Commands to utilize different features of native Iter9 image-sweep mode to obtain different results for different reasons:
 
 
-```powershell
-D:\Github\MineSweepResearchFilesFinalIteration
-```
+# Run from repo root. Adjust --out-root to your local results directory.
 
 ---
 

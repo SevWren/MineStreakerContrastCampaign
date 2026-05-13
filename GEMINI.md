@@ -71,6 +71,7 @@ python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
   - `sa.py`: Optimization kernel only (no repair logic).
 - **Coding Style:** PEP 8, 4-space indent, type hints for public functions, `snake_case` for variables/functions.
 - **Safety:** Use atomic output writes (`*.tmp` then `os.replace`).
+- **Route State Invariants:** All repair route artifacts must satisfy the accepted-move-count invariants defined in `docs/ROUTE_STATE_FIELD_INVARIANTS.md`. This is the binding contract for the 4-field route-state model (`phase1_route`, `phase2_route`, `phase2_repair_status`, `route_resolution_status`).
 - **Numba:** Keep kernels isolated and deterministic.
 
 ### Iter9 Visual Solver Demo (Strict Contracts)

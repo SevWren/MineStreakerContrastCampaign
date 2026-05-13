@@ -82,7 +82,7 @@ These terms are valid only in technical report artifacts.
 - Preserve existing CLI behavior for `run_iter9.py` and `run_benchmark.py`.
 - Preserve existing metrics fields and final `total_time_s` behavior.
 - Keep explained layout anti-clipping behavior:
-  - `fig = plt.figure(figsize=(22, 14.5))`
+  - `fig = plt.figure(figsize=(24, 15.5))`
   - `wspace=0.34`
   - `bbox_inches="tight"`
 

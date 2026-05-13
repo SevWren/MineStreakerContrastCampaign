@@ -32,7 +32,7 @@ Internal/private members (prefixed `_`) are excluded unless noted where they are
 ### `gameworks.__version__`
 
 ```python
-__version__: str = "0.1.1"
+__version__: str = "0.1.3"
 ```
 
 Package version string.

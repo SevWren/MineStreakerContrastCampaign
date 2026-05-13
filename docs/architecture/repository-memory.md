@@ -1,5 +1,5 @@
 # Repository Memory
-## Last Updated: 2026-05-10 (Session 5 — design pattern scaffold + test suite)
+## Last Updated: 2026-05-13 (Session 6 — documentation refresh)
 
 ## Architectural Assumptions
 
@@ -20,8 +20,10 @@
 5. `gameworks/docs/` is the self-contained documentation tree for the game package.
    Do not use root `docs/` for gameworks-specific contracts or API docs.
 
-6. `gameworks/tests/` is the package-local test suite. Root `tests/` contains legacy
-   regression guards and pipeline tests; both suites must stay green.
+6. `gameworks/tests/` is the package-local test suite (unit, integration, renderer, CLI,
+   architecture). Root `tests/` contains pipeline contract tests and legacy regression
+   guards (`tests/test_gameworks_engine.py`, `tests/test_gameworks_renderer_headless.py`)
+   — these live under `tests/`, NOT `gameworks/tests/`. Both suites must stay green.
 
 ---
 

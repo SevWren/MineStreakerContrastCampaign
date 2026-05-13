@@ -6,7 +6,16 @@ This index defines active versus archived documentation paths for this repositor
 
 - `AGENTS.md` — Agent instruction priority and working guidelines for all AI agents in this repo
 - `GEMINI.md` — Project context for Gemini agents: project overview, architecture, and conventions
+- `CONTRIBUTING.md` — Contribution guidelines: branch naming, commit format, pre-merge checklist, module ownership rules
 - `for_user_review.md` — Policy document: when and how to log changes affecting external consumers
+
+## Active — Developer & Architecture Documentation
+
+- `docs/DEVELOPER_SETUP.md` — Project-wide developer onboarding: install, run pipeline, run tests, project structure
+- `docs/TESTING_STRATEGY.md` — Project-wide test strategy: suite map, what each category tests, headless requirements, what is not tested
+- `docs/architecture/SYSTEM_OVERVIEW.md` — Top-level system diagram: how pipeline, gameworks, and demo subsystems connect
+- `docs/architecture/PIPELINE_ARCHITECTURE.md` — Pipeline stage sequence, module-to-stage mapping, route state machine, artifact output map
+- `docs/architecture/repository-memory.md` — Session-level architectural assumptions, known technical debt, unresolved risks (session memory; see SYSTEM_OVERVIEW.md for primary reference)
 
 ## Active — Pipeline / Reconstruction
 
