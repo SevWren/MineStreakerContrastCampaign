@@ -15,44 +15,50 @@ This installs pytest, pygame, pyflakes, and all dependencies needed for testing 
 After making code changes, verify them by running:
 
 ```bash
-# Run all tests
-pytest tests/ -v
+# Full gameworks suite (requires dummy SDL for headless renderer tests)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v
 
 # Check for code issues (unused imports, etc.)
-pyflakes gameworks/ tests/
+pyflakes gameworks/ gameworks/tests/
 
-# Run specific test suites
-pytest tests/unit/ -v
-pytest tests/integration/ -v
-pytest tests/architecture/ -v
+# Run specific gameworks suites
+pytest gameworks/tests/unit/ gameworks/tests/architecture/ gameworks/tests/cli/ gameworks/tests/integration/ -v
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
+
+# Pipeline / reconstruction tests (root test suite)
+python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ## Repository Structure
 
 - `gameworks/` - Main game package (engine, renderer, main loop)
-- `pipeline/` - Image-to-board conversion pipeline
-- `tests/` - Test suite (unit, integration, architecture)
-- `docs/` - Documentation including BUGS.md, PERFORMANCE_PLAN.md
+- `core.py`, `sa.py`, `solver.py`, `repair.py`, `pipeline.py`, etc. - Reconstruction pipeline (root-level modules)
+- `demos/iter9_visual_solver/` - Visual solver demo package
+- `tests/` - Root test suite (pipeline, benchmark, gameworks legacy regression guard)
+- `gameworks/tests/` - Package-local gameworks test suite (unit, integration, renderer, CLI, architecture)
+- `gameworks/docs/` - Documentation including BUGS.md, PERFORMANCE_PLAN.md
+- `docs/` - Pipeline and governance documentation
 - `results/` - Output directory for saved boards (.npy files)
 
 ## Key Files
 
 - `gameworks/docs/BUGS.md` - Canonical bug tracker
 - `gameworks/docs/PERFORMANCE_PLAN.md` - Performance optimization roadmap
-- `gameworks/docs/ISSUE-LOG.md` - Session-by-session change narrative
-- `gameworks/docs/AGENTS.md` - Development standards and patterns
+- `gameworks/docs/CHANGELOG.md` - Version history
+- `AGENTS.md` - Development standards and patterns (repo root)
+- `docs/DOCS_INDEX.md` - Active vs archived documentation index
 
 ## Commit Standards
 
 When committing changes:
 - Follow the existing commit message style (check `git log`)
 - Update BUGS.md status when resolving bugs
-- Always include co-author line: `Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>`
+- Always include co-author line: `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 - Use the GitHub token provided by the user for all git operations
 
 ## Development Standards
 
-Follow the patterns documented in `gameworks/docs/AGENTS.md`:
+Follow the patterns documented in `AGENTS.md` (repo root):
 - Industry-standard code quality
 - Comprehensive test coverage
 - Performance-conscious implementations

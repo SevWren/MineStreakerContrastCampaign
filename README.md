@@ -5,7 +5,7 @@ The objective is dual:
 - visual fidelity to the source image
 - deterministic solver reachability (low or zero unresolved safe cells)
 
-## Current Reality (April 2026 Snapshot)
+## Current Reality (May 2026 Snapshot)
 Primary workflows:
 - `run_iter9.py` for single image reconstruction
 - `run_benchmark.py` for benchmark matrices and regression-only checks
@@ -105,9 +105,11 @@ python -m gameworks.main --image assets/tessa_line_art_stiletto.png --board-w 30
 ### Running tests
 
 ```bash
-pytest tests/test_gameworks_engine.py -v
-# For headless environments (no display):
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py -v
+# Full gameworks suite (headless — no display required for renderer tests)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v
+
+# Legacy regression guard (root suite)
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
 ```
 
 ## Source Image Runtime Contract
@@ -131,6 +133,7 @@ Batch-image guidance:
 ```text
 .
 |-- AGENTS.md
+|-- CLAUDE.md
 |-- README.md
 |-- board_sizing.py
 |-- core.py
@@ -144,8 +147,20 @@ Batch-image guidance:
 |-- solver.py
 |-- source_config.py
 |-- assets/
-|-- docs/
-|-- tests/
+|-- configs/
+|   `-- demo/
+|-- demos/
+|   `-- iter9_visual_solver/   # Visual solver demo package
+|-- demo/
+|   `-- docs/                  # Demo contracts and schema docs
+|-- docs/                      # Pipeline and governance docs
+|-- gameworks/                 # Interactive Pygame Minesweeper game
+|   |-- engine.py
+|   |-- renderer.py
+|   |-- main.py
+|   |-- docs/
+|   `-- tests/
+|-- tests/                     # Root test suite (pipeline + gameworks legacy)
 `-- results/
 ```
 

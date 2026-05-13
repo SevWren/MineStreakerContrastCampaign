@@ -580,10 +580,10 @@ Primary files:
 - `gameworks/engine.py` — `Board`, `GameEngine`, scoring, mine-flash, flood-fill
 - `gameworks/renderer.py` — All pygame drawing, animation, HUD, panel, image ghost
 - `gameworks/main.py` — CLI args, game loop state machine, event dispatch
-- `gameworks/corridors.py` — `build_adaptive_corridors()` (returns `(forbidden, coverage_pct, seeds, mst)` tuple — NOT a dict)
+- `corridors.py` (repo root) — `build_adaptive_corridors()` (returns `(forbidden, coverage_pct, seeds, mst)` tuple — NOT a dict); imported dynamically inside `engine.py::load_board_from_pipeline`
 
-Issue tracking: `docs/ISSUE-LOG.md` — canonical record of all known bugs and their status.
-Performance analysis: `docs/M001-M002-analysis.md`
+Issue tracking: `gameworks/docs/BUGS.md` — canonical bug register with severity, root cause, and fix spec per entry.
+Performance analysis: `gameworks/docs/ZOOM_OUT_PERFORMANCE_REPORT.md` (13 bottleneck forensics) and `gameworks/docs/PERFORMANCE_PLAN.md` (Phases 1–8 remediation plan)
 
 Key design decisions:
 - No-game-over on mine hit: `Board._state` is NEVER set to `"lost"`. Mine hit = score penalty + 1.5 s flash.
@@ -610,11 +610,10 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.py tests/test_gameworks_renderer_headless.py -v
 ```
 
-Pending implementation tests (activate when the corresponding R2/R3/R6/R8/R9 feature is built):
+Pending implementation tests (activate when the corresponding R2/R3/R9 feature is built):
 - `gameworks/tests/unit/test_config.py` — R2: GameConfig frozen dataclass
 - `gameworks/tests/unit/test_board_loading.py` (partial) — R3: BoardLoadResult
-- `gameworks/tests/cli/test_preflight.py` — R6: preflight_check()
-- `gameworks/tests/integration/test_board_modes.py::test_atomic_save` — R8: atomic .npy save
+- `gameworks/tests/cli/test_preflight.py` — R6: preflight_check() (DP-R6 resolved; test un-skip pending)
 - `gameworks/tests/unit/test_board_loading.py` (schema section) — R9: GAME_SAVE_SCHEMA_VERSION
 
 ---
@@ -766,7 +765,7 @@ diff /tmp/baseline_failures.txt /tmp/after_failures.txt
 
 Only lines that appear in `after_failures.txt` but not in `baseline_failures.txt`
 are regressions introduced by this change. All other failures are pre-existing
-and must be documented in the commit message and `docs/ISSUE-LOG.md` — they are
+and must be documented in the commit message — they are
 not acceptable to silently push over.
 
 **Suite commands by change area:**
@@ -816,7 +815,7 @@ dependency on test ordering or shared mutable state. Fix it before pushing.
 - If your change caused a previously-passing test to fail: **fix the code or
   update the test** before pushing. Do not push failing tests.
 - If a test was already failing *before* your change (pre-existing breakage):
-  document it explicitly in the commit message and in `docs/ISSUE-LOG.md`.
+  document it explicitly in the commit message.
   Do not silently push over pre-existing failures as if they are acceptable —
   make the state visible.
 - If you add new behaviour (new function, new fix, new feature): check whether
