@@ -75,8 +75,8 @@ python -m gameworks.main --random --hard
 
 **Load a pre-built pipeline board (recommended for development):**
 ```bash
-# Tessa board — 300x300, 5.3% density, source image available
-python -m gameworks.main --load results/iter9/20260510T054753Z_tessa_line_art_stiletto_300w_seed11_GAME_DevelopmentBOARD/grid_iter9_300x300.npy
+# Load a board from a previous pipeline run
+python -m gameworks.main --load results/iter9/<run_id>/grid_iter9_300x300.npy
 
 # Custom board size
 python -m gameworks.main --load path/to/board.npy --seed 42
@@ -249,6 +249,21 @@ Technical report wording remains:
 - `Loss curve (log)`
 - `x50k iters`
 - `Weighted loss`
+
+## Demo — Visual Solver Playback
+
+The `demos/iter9_visual_solver/` package provides a visual replay of the pipeline solver,
+rendering each solver event frame-by-frame over the source image.
+
+**Launch:**
+```bash
+python -m demos.iter9_visual_solver --config configs/demo/<config_file>.json
+```
+
+Full runtime contracts, config schema, and acceptance criteria are in `demo/docs/`.
+See `demo/iter9_visual_solver_demo_plan.md` for background and design rationale.
+
+---
 
 ## Tests and Validation
 Default test suite:

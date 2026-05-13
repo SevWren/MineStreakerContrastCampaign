@@ -6,17 +6,22 @@ This index defines active versus archived documentation paths for this repositor
 
 - `AGENTS.md` — Agent instruction priority and working guidelines for all AI agents in this repo
 - `GEMINI.md` — Project context for Gemini agents: project overview, architecture, and conventions
+- `CONTRIBUTING.md` — Contribution guidelines: branch naming, commit format, pre-merge checklist, module ownership rules
 - `for_user_review.md` — Policy document: when and how to log changes affecting external consumers
+
+## Active — Developer & Architecture Documentation
+
+- `docs/DEVELOPER_SETUP.md` — Project-wide developer onboarding: install, run pipeline, run tests, project structure
+- `docs/TESTING_STRATEGY.md` — Project-wide test strategy: suite map, what each category tests, headless requirements, what is not tested
+- `docs/architecture/SYSTEM_OVERVIEW.md` — Top-level system diagram: how pipeline, gameworks, and demo subsystems connect
+- `docs/architecture/PIPELINE_ARCHITECTURE.md` — Pipeline stage sequence, module-to-stage mapping, route state machine, artifact output map
+- `docs/architecture/repository-memory.md` — Session-level architectural assumptions, known technical debt, unresolved risks (session memory; see SYSTEM_OVERVIEW.md for primary reference)
 
 ## Active — Pipeline / Reconstruction
 
 - `docs/explained_report_artifact_contract.md`
 - `docs/back_log.md`
 - `docs/ROUTE_STATE_FIELD_INVARIANTS.md`
-- `docs/forensic_analysis_accepted_move_count_field_verification.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md`
 - `docs/example_commands_image_sweep_mode.md`
 - `docs/json_schema/benchmark_summary.schema.md`
 - `docs/json_schema/failure_taxonomy.schema.md`
@@ -25,6 +30,7 @@ This index defines active versus archived documentation paths for this repositor
 - `docs/json_schema/repair_route_decision.schema.md`
 - `docs/json_schema/visual_delta_summary.schema.md`
 - `docs/DOCS_INDEX.md`
+
 
 ## Active — Gameworks Package
 
@@ -86,6 +92,17 @@ Legacy root-level gameworks tests (regression guard):
 - `PHASE_0_IMPLEMENTATION_SUMMARY.md` — WinAnimation._idx pre-impl summary (superseded by BACKLOG.md)
 - `REMEDIATION_PLAN_VERIFICATION_DETAILED.md` — Detailed phase-by-phase readiness check (summary in REMEDIATION_PLAN_VERIFICATION.md)
 
+### archives/pipeline/ — Completed Recommendation 4 implementation (2026-05-13)
+
+Implemented: four-field route-state model · commit `ef7d5de` · branch `working-changes`
+Active contract: `docs/json_schema/repair_route_decision.schema.md` + `AGENTS.md`
+
+- `implementation_prompt_recommendation_4.md` — Primary execution prompt; hardening checklist (all 20 items checked)
+- `industry_standard_implementation_execution_plan_recommendation_4.md` — Detailed plan; all code anchor rows resolved
+- `industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` — Pre-impl traceability audit; all blockers resolved
+- `industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` — Pre-impl plan review; all 14 mandatory corrections applied
+- `forensic_analysis_accepted_move_count_field_verification.md` — Accepted-move-count analysis; resolved via `RouteStateInvariantError`
+
 ### archives/pipeline/ — Superseded pipeline docs
 - `ISSUE-LOG.md` — Superseded by gameworks/docs/BUGS.md; all OPEN items are now RESOLVED
 - `M001-M002-analysis.md` — M-001/M-002 deep-dive (both resolved, code in repo)
@@ -117,3 +134,8 @@ Legacy root-level gameworks tests (regression guard):
 - `docs/industry_standard_plan_remove_hardcoded_input_source_image.md` -> `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md`
 - `docs/implement_clarified_source_image_runtime_contract.md` -> `docs/archive/implement_clarified_source_image_runtime_contract.md`
 - `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md` -> `docs/archive/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
+- `docs/implementation_prompt_recommendation_4.md` -> `archives/pipeline/implementation_prompt_recommendation_4.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md`
+- `docs/forensic_analysis_accepted_move_count_field_verification.md` -> `archives/pipeline/forensic_analysis_accepted_move_count_field_verification.md`

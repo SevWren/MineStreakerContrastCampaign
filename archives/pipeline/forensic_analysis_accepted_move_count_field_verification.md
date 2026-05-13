@@ -1,5 +1,18 @@
 # Forensic Cross-Analysis: accepted_move_count Field Verification
 
+---
+
+## IMPLEMENTATION STATUS: COMPLETE — FINDING RESOLVED
+
+**This analysis identified a defensive recomputation seam between `n_fixed` and `accepted_move_count`.**
+The implementation enforces both equality (`n_fixed == accepted_move_count`) via `RouteStateInvariantError` in `write_repair_route_artifacts()`.
+
+**Resolved:** 2026-05-13 · Commit `ef7d5de` · Branch `working-changes`
+
+> The "CRITICAL FINDING" below was the pre-implementation state. It is now resolved.
+
+---
+
 **Audit Date**: 2026-05-04  
 **Verified By**: Code Trace + Artifact Analysis  
 **Query**: Are `visual_delta_summary.json.accepted_move_count` and `repair_route_decision.json.phase2_full_repair_accepted_move_count` the correct fields to enforce equality? What determined these fields? Is this logically sound?

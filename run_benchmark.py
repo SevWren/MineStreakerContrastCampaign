@@ -551,7 +551,9 @@ def run_normal_child(
             "name": source_cfg.name,
             "project_relative_path": source_cfg.project_relative_path,
         },
+        **route.route_state_fields(),
         "repair_route_selected": route.selected_route,
+        "repair_route_result": route.route_result,
         "coverage": float(sr_final.coverage),
         "solvable": bool(sr_final.solvable),
         "mine_accuracy": float(sr_final.mine_accuracy),
@@ -632,12 +634,11 @@ def run_normal_child(
         "duration_wall_s": duration_s,
     }
     route_summary = {
-        "selected_route": route.selected_route,
-        "route_result": route.route_result,
+        **route.route_state_fields(),
+        "repair_route_selected": route.selected_route,
+        "repair_route_result": route.route_result,
         "dominant_failure_class": route.failure_taxonomy.get("dominant_failure_class"),
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
-        "phase2_fixes": len(route.phase2_log),
-        "last100_fixes": len(route.last100_log),
         "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
         "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
         "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
@@ -688,13 +689,20 @@ def run_normal_child(
         "pct_within_1": float(np.mean(err <= 1.0) * 100.0),
         "mine_density": float(grid.mean()),
         "corridor_pct": float(cpct),
-        "repair_reason": f"phase1={phase1_reason}+route={route.selected_route}",
+        "repair_reason": (
+            f"phase1={phase1_reason}"
+            f"+selected_route={route.selected_route}"
+            f"+route_result={route.route_result}"
+            f"+route_outcome_detail={route.route_outcome_detail}"
+            f"+next_recommended_route={route.next_recommended_route}"
+        ),
+        **route.route_state_fields(),
         "repair_route_selected": route.selected_route,
         "repair_route_result": route.route_result,
         "dominant_failure_class": route.failure_taxonomy.get("dominant_failure_class"),
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
-        "phase2_fixes": len(route.phase2_log),
-        "last100_fixes": len(route.last100_log),
+        "phase2_fixes": route.phase2_full_repair_accepted_move_count,
+        "last100_fixes": route.last100_n_fixes,
         "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
         "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
         "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
@@ -746,10 +754,18 @@ def _rows_from_child_metrics(metrics_docs: Iterable[dict]) -> list[dict]:
                 "n_unknown": metrics.get("n_unknown"),
                 "coverage": metrics.get("coverage"),
                 "solvable": metrics.get("solvable"),
-                "repair_route_selected": metrics.get("repair_route_selected"),
-                "repair_route_result": metrics.get("repair_route_result"),
+                "selected_route": metrics.get("selected_route"),
+                "route_result": metrics.get("route_result"),
+                "route_outcome_detail": metrics.get("route_outcome_detail"),
+                "next_recommended_route": metrics.get("next_recommended_route"),
+                "repair_route_selected": metrics.get("selected_route"),   # exact alias
+                "repair_route_result": metrics.get("route_result"),        # exact alias
                 "phase2_fixes": metrics.get("phase2_fixes"),
                 "last100_fixes": metrics.get("last100_fixes"),
+                "phase2_full_repair_invoked": metrics.get("phase2_full_repair_invoked"),
+                "phase2_full_repair_accepted_move_count": metrics.get("phase2_full_repair_accepted_move_count"),
+                "last100_invoked": metrics.get("last100_invoked"),
+                "last100_accepted_move_count": metrics.get("last100_accepted_move_count"),
                 "phase1_repair_hit_time_budget": bool(metrics.get("phase1_repair_hit_time_budget", False)),
                 "phase2_full_repair_hit_time_budget": bool(
                     metrics.get("phase2_full_repair_hit_time_budget", False)
@@ -837,15 +853,16 @@ def _build_summary_markdown(
             "",
             "## Child Runs",
             "",
-            "| board | seed | child_dir | n_unknown | coverage | solvable | route | phase2_fixes | last100_fixes | phase1_timeout | phase2_full_timeout | last100_timeout | visual_delta | total_time_s |",
-            "|---|---:|---|---:|---:|---|---|---:|---:|---|---|---|---:|---:|",
+            "| board | seed | child_dir | n_unknown | coverage | solvable | selected_route | route_result | route_outcome_detail | next_recommended_route | phase2_accepted | last100_accepted | phase1_timeout | phase2_full_timeout | last100_timeout | visual_delta | total_time_s |",
+            "|---|---:|---|---:|---:|---|---|---|---|---|---:|---:|---|---|---|---:|---:|",
         ]
     )
     for row in rows:
         lines.append(
             f"| {row['board']} | {row['seed']} | {row['child_dir']} | {row['n_unknown']} | "
-            f"{float(row['coverage']):.5f} | {row['solvable']} | {row['repair_route_selected']} | "
-            f"{row['phase2_fixes']} | {row['last100_fixes']} | "
+            f"{float(row['coverage']):.5f} | {row['solvable']} | {row.get('selected_route')} | "
+            f"{row.get('route_result')} | {row.get('route_outcome_detail')} | {row.get('next_recommended_route')} | "
+            f"{row.get('phase2_full_repair_accepted_move_count')} | {row.get('last100_accepted_move_count')} | "
             f"{row['phase1_repair_hit_time_budget']} | {row['phase2_full_repair_hit_time_budget']} | "
             f"{row['last100_repair_hit_time_budget']} | {float(row['visual_delta'] or 0.0):.5f} | "
             f"{float(row['total_time_s']):.2f} |"
@@ -892,8 +909,18 @@ def write_normal_benchmark_summaries(
         "n_unknown",
         "coverage",
         "solvable",
-        "repair_route_selected",
-        "repair_route_result",
+        "selected_route",
+        "route_result",
+        "route_outcome_detail",
+        "next_recommended_route",
+        "phase2_full_repair_invoked",
+        "phase2_full_repair_n_fixed",
+        "phase2_full_repair_accepted_move_count",
+        "last100_invoked",
+        "last100_n_fixes",
+        "last100_accepted_move_count",
+        "repair_route_selected",   # exact alias
+        "repair_route_result",     # exact alias
         "phase2_fixes",
         "last100_fixes",
         "phase1_repair_hit_time_budget",
@@ -991,13 +1018,20 @@ def run_regression_from_baseline(case: dict, seed: int) -> dict:
         "pct_within_1": float(np.mean(err <= 1) * 100),
         "mine_density": float(grid.mean()),
         "corridor_pct": float(cpct),
-        "repair_reason": f"baseline={baseline_metrics.get('repair_reason')}+{route.selected_route}",
+        "repair_reason": (
+            f"baseline={baseline_metrics.get('repair_reason')}"
+            f"+selected_route={route.selected_route}"
+            f"+route_result={route.route_result}"
+            f"+route_outcome_detail={route.route_outcome_detail}"
+            f"+next_recommended_route={route.next_recommended_route}"
+        ),
+        **route.route_state_fields(),
         "repair_route_selected": route.selected_route,
         "repair_route_result": route.route_result,
         "dominant_failure_class": route.failure_taxonomy.get("dominant_failure_class"),
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
-        "phase2_fixes": len(route.phase2_log),
-        "last100_fixes": len(route.last100_log),
+        "phase2_fixes": route.phase2_full_repair_accepted_move_count,
+        "last100_fixes": route.last100_n_fixes,
         "phase1_repair_hit_time_budget": False,
         "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
         "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
@@ -1032,10 +1066,10 @@ def run_regression_cases(out_dir: Path) -> list[dict]:
                     f"Baseline unknown mismatch for {case['name']} seed {seed}: "
                     f"expected {expected_baseline}, got {result['baseline_n_unknown']}"
                 )
-            if result["repair_route_selected"] != case["expected_route"]:
+            if result["selected_route"] != case["expected_route"]:
                 raise RuntimeError(
                     f"Regression route mismatch for {case['name']} seed {seed}: "
-                    f"expected {case['expected_route']}, got {result['repair_route_selected']}"
+                    f"expected {case['expected_route']}, got {result['selected_route']}"
                 )
             if result["n_unknown"] != case["expected_final_unknown"]:
                 raise RuntimeError(
@@ -1051,8 +1085,11 @@ def run_regression_cases(out_dir: Path) -> list[dict]:
             case_results.append(result)
             regression_results.append(result)
             print(
-                f" baseline_n_unk={result['baseline_n_unknown']} route={result['repair_route_selected']} "
-                f"n_unk={result['n_unknown']} cov={result['coverage']:.5f}",
+                f" baseline_n_unk={result['baseline_n_unknown']}"
+                f" route={result['selected_route']}"
+                f" route_result={result['route_result']}"
+                f" route_outcome_detail={result['route_outcome_detail']}"
+                f" n_unk={result['n_unknown']} cov={result['coverage']:.5f}",
                 flush=True,
             )
         _atomic_write_json(case_results, out_dir / f"{case['name']}_results.json")

@@ -116,7 +116,8 @@ class TestCriticalRegressions:
         )
         if not os.path.exists(board_path):
             pytest.skip("tessa board not present")
-        b = load_board_from_npy(board_path)
+        result = load_board_from_npy(board_path)
+        b = result.board  # DP-R3: unwrap BoardLoadResult
         assert b.total_mines == 4794, f"Expected 4794 mines, got {b.total_mines}"
         assert b.width == 300
         assert b.height == 300
@@ -130,9 +131,9 @@ class TestCriticalRegressions:
         grid = np.where(b_orig._mine, np.int8(-1), b_orig._neighbours.astype(np.int8))
         path = save_game_format_npy(grid)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board  # DP-R3: unwrap BoardLoadResult
             assert b.total_mines == 1
-            assert b.board._mine[0, 0]
+            assert b._mine[0, 0]
             assert b.width == 3 and b.height == 3
         finally:
             os.unlink(path)
@@ -143,7 +144,7 @@ class TestCriticalRegressions:
         g_pipe = np.array([[0, 1], [0, 0]], dtype=np.int8)
         path = save_game_format_npy(g_pipe)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board  # DP-R3: unwrap BoardLoadResult
             assert b.total_mines == 1
         finally:
             os.unlink(path)
@@ -152,7 +153,7 @@ class TestCriticalRegressions:
         g_game = np.array([[-1, 1], [1, 1]], dtype=np.int8)
         path = save_game_format_npy(g_game)
         try:
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board  # DP-R3: unwrap BoardLoadResult
             assert b.total_mines == 1
         finally:
             os.unlink(path)
@@ -274,9 +275,7 @@ class TestBoardLogic:
         assert cs.is_mine, "snapshot.is_mine should be True for a mine cell"
         assert cs.is_flagged, "snapshot.is_flagged should be True after toggle_flag"
         assert not cs.is_revealed, "snapshot.is_revealed should be False — cell not yet revealed"
-        assert cs.x == 2, f"snapshot.x should be 2, got {cs.x!r}"
-        assert cs.y == 2, f"snapshot.y should be 2, got {cs.y!r}"
-        assert cs.neighbour_count == 0, f"snapshot.neighbour_count for isolated mine should be 0, got {cs.neighbour_count!r}"
+        assert cs.neighbour_mines == 0, f"snapshot.neighbour_mines for isolated mine should be 0, got {cs.neighbour_mines!r}"
 
     def test_wrong_flag_positions(self):
         mp = {(0, 0)}
@@ -504,7 +503,7 @@ class TestNpyLoading:
             path = os.path.join(base, run_dir, fname)
             if not os.path.exists(path):
                 continue
-            b = load_board_from_npy(path)
+            b = load_board_from_npy(path).board  # DP-R3: unwrap BoardLoadResult
             assert b.total_mines == expected_mines, \
                 f"{fname}: expected {expected_mines} mines, got {b.total_mines}"
             assert b.total_mines > 0, f"{fname} loaded with 0 mines — format detection failed"

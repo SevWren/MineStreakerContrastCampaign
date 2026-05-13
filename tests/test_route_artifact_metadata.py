@@ -23,6 +23,17 @@ class RouteArtifactMetadataTests(unittest.TestCase):
             result = write_repair_route_artifacts(str(out_dir), "300x370", route)
             return json.loads(Path(result["repair_route_decision"]).read_text(encoding="utf-8"))
 
+    def test_repair_route_decision_contains_four_primary_fields(self):
+        grid = np.zeros((3, 3), dtype=np.int8)
+        target = grid.astype(np.float32)
+        weights = np.ones((3, 3), dtype=np.float32)
+        forbidden = np.zeros((3, 3), dtype=np.int8)
+        sr = SolveResult(n_unknown=0, state=np.full((3, 3), SAFE, dtype=np.int8))
+        route = route_late_stage_failure(grid, target, weights, forbidden, sr, RepairRoutingConfig())
+        payload = self._write_decision_payload(route)
+        for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+            self.assertIn(field, payload, msg=f"repair_route_decision.json missing required field: {field}")
+
     def test_route_artifacts_include_metadata_and_return_shape(self):
         with tempfile.TemporaryDirectory() as td:
             out_dir = Path(td)
@@ -31,9 +42,34 @@ class RouteArtifactMetadataTests(unittest.TestCase):
                 sr=object(),
                 selected_route="phase2_full_repair",
                 route_result="solved",
+                route_outcome_detail="phase2_full_repair_solved",
+                next_recommended_route=None,
                 failure_taxonomy={"dominant_failure_class": "sealed_single_mesa"},
                 visual_delta_summary={"visual_delta": 0.0},
-                decision={"selected_route": "phase2_full_repair", "route_result": "solved"},
+                decision={
+                    "selected_route": "phase2_full_repair",
+                    "route_result": "solved",
+                    "route_outcome_detail": "phase2_full_repair_solved",
+                    "next_recommended_route": None,
+                    "solver_n_unknown_before": 0,
+                    "solver_n_unknown_after": 0,
+                    "phase2_full_repair_invoked": True,
+                    "phase2_full_repair_hit_time_budget": False,
+                    "phase2_full_repair_n_fixed": 0,
+                    "phase2_full_repair_accepted_move_count": 0,
+                    "phase2_full_repair_changed_grid": False,
+                    "phase2_full_repair_reduced_unknowns": False,
+                    "phase2_full_repair_solved": True,
+                    "phase2_solver_n_unknown_before": 0,
+                    "phase2_solver_n_unknown_after": 0,
+                    "last100_invoked": False,
+                    "last100_repair_hit_time_budget": False,
+                    "last100_n_fixes": 0,
+                    "last100_accepted_move_count": 0,
+                    "last100_solver_n_unknown_before": None,
+                    "last100_solver_n_unknown_after": None,
+                    "last100_stop_reason": None,
+                },
             )
             metadata = {
                 "run_id": "20260426T000000Z_line_art_irl_11_v2_300w_seed11",
@@ -132,7 +168,7 @@ class RouteArtifactMetadataTests(unittest.TestCase):
         phase2_result = Phase2FullRepairResult(
             grid=np.zeros((3, 3), dtype=np.int8),
             n_fixed=1,
-            log=[{"visual_delta": 0.0}],
+            log=[{"accepted": True}],
             phase2_full_repair_hit_time_budget=True,
         )
         with mock.patch("pipeline.run_phase2_full_repair", return_value=phase2_result):
@@ -155,7 +191,7 @@ class RouteArtifactMetadataTests(unittest.TestCase):
             grid=np.zeros((3, 3), dtype=np.int8),
             sr=SolveResult(n_unknown=0, state=last100_state),
             n_fixes=1,
-            move_log=[{"visual_delta": 0.0}],
+            move_log=[{"accepted": True}],
             stop_reason="timeout",
             last100_repair_hit_time_budget=True,
         )

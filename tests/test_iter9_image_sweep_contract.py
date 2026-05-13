@@ -77,10 +77,18 @@ def make_success_metrics_doc(image_stem: str, *, board: str = "300x370", seed: i
         "solvable": True,
         "mean_abs_error": 0.1,
         "repair_route_selected": "already_solved",
+        "selected_route": "already_solved",
+        "route_result": "solved",
+        "route_outcome_detail": "already_solved_before_routing",
+        "next_recommended_route": None,
         "phase1_repair_hit_time_budget": False,
         "phase2_full_repair_hit_time_budget": False,
         "last100_repair_hit_time_budget": False,
         "repair_route_summary": {
+            "selected_route": "already_solved",
+            "route_result": "solved",
+            "route_outcome_detail": "already_solved_before_routing",
+            "next_recommended_route": None,
             "phase1_repair_hit_time_budget": False,
             "phase2_full_repair_hit_time_budget": False,
             "last100_repair_hit_time_budget": False,
@@ -990,10 +998,90 @@ class Iter9ImageSweepContractTests(unittest.TestCase):
             "solvable",
             "mean_abs_error",
             "repair_route_selected",
+            "selected_route",
+            "route_result",
+            "route_outcome_detail",
+            "next_recommended_route",
             "error_type",
             "error_message",
         ]
         self.assertEqual(run_iter9.IMAGE_SWEEP_SUMMARY_FIELDS, expected_fields, msg="IMAGE_SWEEP_SUMMARY_FIELDS must match the exact expected field order")
+
+    def test_sweep_success_row_contains_four_route_state_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image_path = write_fake_png(root / "images" / "sample.png")
+            source_cfg = make_source_cfg(image_path, sha="9" * 64)
+            child_dir = root / "out" / "child"
+            child_dir.mkdir(parents=True, exist_ok=True)
+            metrics_doc = make_success_metrics_doc("sample")
+            row = run_iter9._image_sweep_success_row(
+                batch_index=1,
+                source_cfg=source_cfg,
+                child_run_dir=child_dir,
+                metrics_doc=metrics_doc,
+                project_root=root,
+            )
+        for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+            self.assertIn(field, row, msg=f"success row missing field: {field}")
+        self.assertEqual(row["selected_route"], "already_solved")
+        self.assertEqual(row["route_result"], "solved")
+
+    def test_sweep_failure_row_four_route_fields_are_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image_path = write_fake_png(root / "images" / "bad.png")
+            source_cfg = make_source_cfg(image_path)
+            row = run_iter9._image_sweep_failure_row(
+                batch_index=1,
+                image_path=image_path,
+                source_cfg=source_cfg,
+                child_run_dir=None,
+                board_label="300x370",
+                seed=11,
+                error=RuntimeError("boom"),
+                project_root=root,
+            )
+        for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+            self.assertIn(field, row, msg=f"failure row missing field: {field}")
+            self.assertIsNone(row[field], msg=f"failure row {field} must be None")
+
+    def test_skipped_existing_row_uses_selected_route_not_synthesized(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            image_path = write_fake_png(root / "images" / "sample.png")
+            source_cfg = make_source_cfg(image_path, sha="9" * 64)
+            child_dir = root / "out" / "child"
+            child_dir.mkdir(parents=True, exist_ok=True)
+            metrics_path = child_dir / "metrics_iter9_300x370.json"
+            metrics_path.write_text(
+                json.dumps({
+                    "n_unknown": 0,
+                    "coverage": 1.0,
+                    "solvable": True,
+                    "mean_abs_error": 0.1,
+                    "repair_route_selected": "phase2_full_repair",
+                    "selected_route": "phase2_full_repair",
+                    "route_result": "solved",
+                    "route_outcome_detail": "phase2_full_repair_solved",
+                    "next_recommended_route": None,
+                    "llm_review_summary": {"best_artifact_to_open_first": "artifact.png"},
+                }),
+                encoding="utf-8",
+            )
+            row = run_iter9._image_sweep_skipped_existing_row(
+                batch_index=1,
+                source_cfg=source_cfg,
+                child_run_dir=child_dir,
+                metrics_path=metrics_path,
+                board_label="300x370",
+                seed=11,
+                project_root=root,
+            )
+        # Must read selected_route directly, not synthesize from repair_route_selected
+        self.assertEqual(row["selected_route"], "phase2_full_repair")
+        self.assertEqual(row["route_result"], "solved")
+        self.assertEqual(row["route_outcome_detail"], "phase2_full_repair_solved")
 
     def test_summary_writer_accepts_image_dir_string_and_stores_images_discovered(self):
         with tempfile.TemporaryDirectory() as td:

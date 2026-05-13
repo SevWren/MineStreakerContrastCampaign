@@ -291,7 +291,7 @@ Versioned artifact naming is permitted. The following names are the current v1 b
 - `repair_route_decision.json`
 - `visual_delta_summary.json`
 
-`run_benchmark.py --regression-only` is a fixed-case mode and must preserve stable behavior.
+`run_benchmark.py --regression-only` is a fixed-case mode and must preserve stable case selection, validation gates, and explicit normal-mode flag rejection. Route-state field semantics may be corrected when required by an approved route-state contract, but regression-only outputs, checks, docs, and expected-route comparisons must be updated consistently in the same change.
 When `--regression-only` is set, explicit normal-mode flags must remain rejected as currently implemented.
 
 ## Explained Report Contract

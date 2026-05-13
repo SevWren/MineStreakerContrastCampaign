@@ -161,14 +161,22 @@ The top-level object contains:
 | `board_ratio` | number | Yes | No | Generated board aspect ratio. |
 | `aspect_ratio_relative_error` | number | Yes | No | Relative aspect-ratio error. |
 | `gate_aspect_ratio_within_0_5pct` | boolean | Yes | No | Board/source aspect-ratio validation gate. |
-| `repair_route_selected` | string enum | Yes | No | Selected late-stage route. |
-| `repair_route_result` | string enum | Yes | No | Selected route result. |
+| `selected_route` | string enum | Yes | No | Route family actually invoked. Never `needs_sa_or_adaptive_rerun`. |
+| `route_result` | string enum | Yes | No | Route outcome summary. |
+| `route_outcome_detail` | string enum | Yes | No | Precise outcome; one of 11 permitted values. |
+| `next_recommended_route` | string or null | Yes | Yes | Next recommended route; `null` when solved. |
+| `repair_route_selected` | string enum | Yes | No | Exact alias of `selected_route` for backward compatibility. |
+| `repair_route_result` | string enum | Yes | No | Exact alias of `route_result` for backward compatibility. |
 | `dominant_failure_class` | string | Yes | Yes | From `failure_taxonomy`. Nullable only if taxonomy key missing unexpectedly. |
 | `sealed_cluster_count` | integer | Yes | Yes | From `failure_taxonomy`. Nullable only if taxonomy key missing unexpectedly. |
 | `sealed_single_mesa_count` | integer | Yes | Yes | From `failure_taxonomy`. Nullable only if taxonomy key missing unexpectedly. |
 | `sealed_multi_cell_cluster_count` | integer | Yes | Yes | From `failure_taxonomy`. Nullable only if taxonomy key missing unexpectedly. |
-| `phase2_fixes` | integer | Yes | No | Length of `route.phase2_log`. |
-| `last100_fixes` | integer | Yes | No | Length of `route.last100_log`. Note this is log-entry count, not necessarily accepted-fix count. |
+| `phase2_fixes` | integer | Yes | No | Alias of `phase2_full_repair_accepted_move_count`; accepted Phase2 move count, not raw log length. |
+| `last100_fixes` | integer | Yes | No | Alias of `last100_n_fixes`; accepted Last100 move count, not raw log length. |
+| `phase2_full_repair_invoked` | boolean | Yes | No | Whether Phase2 full repair was invoked. |
+| `phase2_full_repair_accepted_move_count` | integer | Yes | No | Accepted Phase2 move count. |
+| `last100_invoked` | boolean | Yes | No | Whether Last100 repair was invoked. |
+| `last100_accepted_move_count` | integer | Yes | No | Accepted Last100 move count. |
 | `phase1_repair_hit_time_budget` | boolean | Yes | No | Phase1 repair timeout boolean persisted from `Phase1RepairResult`. |
 | `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Phase2 route timeout boolean persisted from `RepairRouteResult`. |
 | `last100_repair_hit_time_budget` | boolean | Yes | No | Last100 route timeout boolean persisted from `RepairRouteResult`. |
@@ -400,16 +408,21 @@ Each `solver_summary` child object has:
 
 | Field | Type | Required | Nullable | Description |
 |---|---:|---:|---:|---|
-| `selected_route` | string enum | Yes | No | Same as `repair_route_selected`. |
-| `route_result` | string enum | Yes | No | Same as `repair_route_result`. |
+| `selected_route` | string enum | Yes | No | Route family actually invoked. |
+| `route_result` | string enum | Yes | No | Route outcome summary. |
+| `route_outcome_detail` | string enum | Yes | No | Precise outcome detail. |
+| `next_recommended_route` | string or null | Yes | Yes | Next recommended route; `null` when solved. |
+| `repair_route_selected` | string | Yes | No | Exact alias of `selected_route`. |
+| `repair_route_result` | string | Yes | No | Exact alias of `route_result`. |
+| `phase2_fixes` | integer | Yes | No | Alias of `phase2_full_repair_accepted_move_count`; accepted move count. |
+| `last100_fixes` | integer | Yes | No | Alias of `last100_n_fixes`; accepted move count. |
 | `dominant_failure_class` | string | Yes | Yes | Dominant failure class. |
 | `sealed_cluster_count` | integer | Yes | No | Sealed-cluster count coerced to integer fallback `0`. |
-| `phase2_fixes` | integer | Yes | No | Length of Phase2 log. |
-| `last100_fixes` | integer | Yes | No | Length of Last100 log. |
 | `phase1_repair_hit_time_budget` | boolean | Yes | No | Phase1 timeout boolean. |
 | `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Phase2 full repair timeout boolean. |
 | `last100_repair_hit_time_budget` | boolean | Yes | No | Last100 repair timeout boolean. |
 | `sa_rerun_invoked` | boolean | Yes | No | Current code emits `false`. |
+| All `route_state_fields()` keys | various | Yes | varies | All fields from `RepairRouteResult.route_state_fields()` are included. |
 
 ### `visual_quality_summary`
 
@@ -613,20 +626,47 @@ piecewise_T_compression
 full_cluster_repair
 ```
 
-### `repair_route_selected` / `repair_route_summary.selected_route`
+### `selected_route` / `repair_route_selected` (alias)
+
+`"needs_sa_or_adaptive_rerun"` is **not** a valid `selected_route` value. It only appears in `next_recommended_route`.
 
 ```text
+none
 already_solved
 phase2_full_repair
 last100_repair
-needs_sa_or_adaptive_rerun
 ```
 
-### `repair_route_result` / `repair_route_summary.route_result`
+### `route_result`
 
 ```text
 solved
 unresolved_after_repair
+unresolved_repair_error
+```
+
+### `route_outcome_detail`
+
+```text
+already_solved_before_routing
+phase2_full_repair_solved
+phase2_full_repair_partial_progress_unresolved
+phase2_full_repair_no_op
+phase2_full_repair_no_accepted_moves
+last100_repair_solved
+last100_repair_timeout_unresolved
+last100_repair_partial_progress_unresolved
+last100_repair_no_accepted_moves
+no_late_stage_route_invoked
+unresolved_repair_error
+```
+
+### `next_recommended_route`
+
+```text
+null                        (when route_result == "solved")
+needs_sa_or_adaptive_rerun  (when unresolved and no further route available)
+last100_repair              (when Phase2 unresolved and config.enable_last100 is True)
 ```
 
 ### `dominant_failure_class`

@@ -42,8 +42,9 @@ class RepairVisualDeltaTests(unittest.TestCase):
         _json.dumps(result)
         self.assertEqual(
             set(result.keys()),
-            {"changed_cells", "removed_mines", "added_mines", "mean_abs_error_before", "mean_abs_error_after", "visual_delta"},
-            msg=f"Expected exact keys {{changed_cells, removed_mines, added_mines, mean_abs_error_before, mean_abs_error_after, visual_delta}}, got {set(result.keys())}",
+            {"changed_cells", "removed_mines", "added_mines",
+             "mean_abs_error_before", "mean_abs_error_after", "visual_delta"},
+            msg=f"Expected exact keys, got {set(result.keys())}",
         )
 
 

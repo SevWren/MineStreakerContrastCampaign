@@ -41,11 +41,12 @@ Stores the final route-level visual-delta summary selected by late-stage repair 
 
 The file is written by `write_repair_route_artifacts(...)` whenever route artifacts are written.
 
-The object shape is a union of three variants:
+The object shape is a union of four variants:
 
 1. Empty/no-move variant: no repair move log exists, so route-level summary is `{}` before optional metadata injection.
-2. Phase2 variant: last item from `phase2_log` when Phase2 solves the board.
-3. Last100 variant: last item from `last100_log` when the Last100 route is selected.
+2. Route-wide Phase2 variant: produced by `compute_repair_visual_delta(...)` when Phase2 runs (solved or partial). Contains `summary_scope`, `route_phase`, and full route-state fields.
+3. Route-wide Last100 variant: produced by `compute_repair_visual_delta(...)` when Last100 runs. Contains `summary_scope`, `route_phase`, and full route-state fields.
+4. Legacy move-log variant: last item from `phase2_log` or `last100_log` (for backward compatibility with pre-Recommendation-4 runs).
 
 ## Top-level JSON structure
 
@@ -167,6 +168,31 @@ No variant-specific fields are required. The artifact may be `{}` if metadata is
 | `accepted` | boolean | Yes | No | Whether the candidate passed unknown-reduction and visual guardrails. |
 | `reject_reason` | string | Yes | No | Empty string for accepted candidates; otherwise a reason string. |
 
+### Route-wide variant required fields (Phase2 and Last100)
+
+| Field | Type | Required | Nullable | Description |
+|---|---:|---:|---:|---|
+| `summary_scope` | string | Yes | No | Always `"route_phase"` for route-wide summaries. |
+| `route_phase` | string | Yes | No | `"phase2_full_repair"` or `"last100_repair"`. |
+| `selected_route` | string | Yes | No | Route family invoked (from `route_state_fields()`). |
+| `route_result` | string | Yes | No | Route outcome summary. |
+| `route_outcome_detail` | string | Yes | No | Precise outcome detail. |
+| `next_recommended_route` | string or null | Yes | Yes | Next recommended route or `null`. |
+| `solver_n_unknown_before` | integer | Yes | No | Unknown count before the route phase ran. |
+| `solver_n_unknown_after` | integer | Yes | No | Unknown count after the route phase ran. |
+| `accepted_move_count` | integer | Yes | No | Number of accepted moves in this route phase. |
+| `n_fixed` | integer | Yes | No | Number of cells fixed (equals `accepted_move_count`). |
+| `mean_abs_error_before` | number | Yes | No | MAE before the route phase ran. |
+| `mean_abs_error_after` | number | Yes | No | MAE after the route phase ran. |
+| `visual_delta` | number | Yes | No | `mean_abs_error_after - mean_abs_error_before`; negative is visually better. |
+| `removed_mine_count` | integer | Yes | No | Count of mines removed by this route phase. |
+| `added_mine_count` | integer | Yes | No | Count of mines added by this route phase. |
+| `removed_mines` | array | Yes | No | List of `[row, col]` coordinate pairs for removed mines. |
+| `added_mines` | array | Yes | No | List of `[row, col]` coordinate pairs for added mines. |
+| `changed_cells` | integer | Yes | No | Total cells changed. |
+| `visual_quality_improved` | boolean | Yes | No | `true` when `visual_delta < 0`. |
+| `solver_progress_improved` | boolean | Yes | No | `true` when `solver_n_unknown_after < solver_n_unknown_before`. |
+
 ## Optional fields
 
 | Field | Type | Required | Nullable | Description |
@@ -257,4 +283,4 @@ hi_err_guardrail
 - `visual_delta_summary.json` is the least stable of the four requested artifacts because its shape depends on the selected route and the repair log source.
 - Current code stores `last100_log[-1]`, which is the last logged Last100 candidate, not necessarily the best or accepted candidate. Consumers should inspect `accepted` and `reject_reason` before treating it as a successful move summary.
 - Phase2 appends only accepted moves, so `accepted` is currently always `true` for Phase2 variant entries.
-- The empty/no-move variant occurs for `already_solved`, `needs_sa_or_adaptive_rerun`, and any repair route that produces no log entries.
+- The empty/no-move variant occurs for `already_solved`, `none`, and any repair route that produces no log entries.

@@ -82,7 +82,11 @@ class ReportExplanationTests(unittest.TestCase):
             {
                 "board": "300x370",
                 "seed": 11,
-                "repair_route_selected": "needs_sa_or_adaptive_rerun",
+                "repair_route_selected": "none",
+                "selected_route": "none",
+                "route_result": "unresolved_after_repair",
+                "route_outcome_detail": "no_late_stage_route_invoked",
+                "next_recommended_route": "needs_sa_or_adaptive_rerun",
                 "solvable": False,
                 "n_unknown": 42,
                 "coverage": 0.91,
@@ -94,6 +98,47 @@ class ReportExplanationTests(unittest.TestCase):
         joined = " ".join(lines).lower()
         self.assertIn("42 unresolved cells", joined)
         self.assertIn("did not finish fully solved", joined)
+
+    def test_report_reads_selected_route_not_repair_route_selected(self):
+        from report import _format_metric_explanations
+        # When selected_route is present, it must be used over repair_route_selected
+        metrics = {
+            "selected_route": "phase2_full_repair",
+            "route_result": "solved",
+            "route_outcome_detail": "phase2_full_repair_solved",
+            "next_recommended_route": None,
+            "repair_route_selected": "old_stale_value",
+            "coverage": 1.0,
+            "mine_accuracy": 0.95,
+            "mean_abs_error": 0.2,
+            "mine_density": 0.18,
+            "n_unknown": 0,
+        }
+        lines = _format_metric_explanations(metrics)
+        joined = " ".join(lines)
+        self.assertIn("phase2_full_repair", joined)
+        self.assertNotIn("old_stale_value", joined)
+
+    def test_report_no_fallback_to_repair_route_selected_for_selected_route(self):
+        from report import build_plain_english_run_summary
+        # When selected_route is missing, must warn about schema violation, not silently use repair_route_selected
+        metrics = {
+            # selected_route intentionally absent to test schema_incomplete fallback
+            "repair_route_selected": "phase2_full_repair",
+            "route_result": "solved",
+            "board": "300x370",
+            "seed": 11,
+            "solvable": True,
+            "n_unknown": 0,
+            "coverage": 1.0,
+            "mine_accuracy": 0.95,
+            "mean_abs_error": 0.2,
+            "mine_density": 0.18,
+        }
+        lines = build_plain_english_run_summary(metrics)
+        joined = " ".join(lines)
+        # Must NOT silently use repair_route_selected as the selected route
+        self.assertNotIn("phase2_full_repair", joined)
 
     def test_repair_summary_reports_exact_counts(self):
         lines = build_plain_english_repair_summary(
@@ -348,20 +393,14 @@ class ReportExplanationTests(unittest.TestCase):
         self.assertEqual(sr.n_unknown, 5)
 
         captured_labels = []
-        _labels = captured_labels
-        _RealPatch = mpatches.Patch
+        original_Patch = mpatches.Patch
 
-        class _SpyPatch(_RealPatch):
+        class SpyPatch(original_Patch):
             def __init__(self, *args, **kwargs):
-                _labels.append(kwargs.get("label", ""))
+                captured_labels.append(kwargs.get("label", ""))
                 super().__init__(*args, **kwargs)
 
-        import types as _types
-        _fake_mpatches = _types.ModuleType("matplotlib.patches")
-        _fake_mpatches.__dict__.update(mpatches.__dict__)
-        _fake_mpatches.Patch = _SpyPatch
-
-        with mock.patch.object(report_module, "mpatches", _fake_mpatches):
+        with mock.patch.object(report_module.mpatches, "Patch", SpyPatch):
             with tempfile.TemporaryDirectory() as td:
                 out_path = Path(td) / "out.png"
                 render_report_explained(
@@ -383,24 +422,24 @@ class ReportExplanationTests(unittest.TestCase):
 
     def test_render_report_legend_mine_count_uses_n_mines_not_subtraction(self):
         """R-008 regression: render_report (non-explained) legend must also use n_mines."""
+        import types as _types
         from report import render_report
 
         sr = _fake_solve_result(n_unknown=5, solvable=False)
         captured_labels = []
-        _labels2 = captured_labels
-        _RealPatch2 = mpatches.Patch
 
-        class _SpyPatch2(_RealPatch2):
+        # Patch report_module.mpatches with a fake namespace so that matplotlib's
+        # own internal code keeps the original Patch class (avoiding _api.check_isinstance
+        # failures when matplotlib checks that Rectangle instances are Patch subclasses).
+        class SpyPatch(mpatches.Patch):
             def __init__(self, *args, **kwargs):
-                _labels2.append(kwargs.get("label", ""))
+                captured_labels.append(kwargs.get("label", ""))
                 super().__init__(*args, **kwargs)
 
-        import types as _types
-        _fake_mpatches2 = _types.ModuleType("matplotlib.patches")
-        _fake_mpatches2.__dict__.update(mpatches.__dict__)
-        _fake_mpatches2.Patch = _SpyPatch2
+        fake_mpatches = _types.SimpleNamespace(**vars(mpatches))
+        fake_mpatches.Patch = SpyPatch
 
-        with mock.patch.object(report_module, "mpatches", _fake_mpatches2):
+        with mock.patch.object(report_module, "mpatches", fake_mpatches):
             with tempfile.TemporaryDirectory() as td:
                 render_report(
                     np.zeros((3, 3), dtype=np.float32),
