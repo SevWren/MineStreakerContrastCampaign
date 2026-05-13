@@ -315,7 +315,39 @@ def _format_metric_explanations(metrics: dict) -> list[str]:
     mean_abs_error = _safe_float(metrics.get("mean_abs_error"))
     mine_density = _safe_float(metrics.get("mine_density"))
     n_unknown = _safe_int(metrics.get("n_unknown"))
-    route = _coalesce(metrics.get("repair_route_selected"), "unknown repair route")
+
+    selected_route = metrics.get("selected_route")
+    route_result = metrics.get("route_result")
+    route_outcome_detail = _coalesce(metrics.get("route_outcome_detail"), "unknown detail")
+    next_recommended_route = metrics.get("next_recommended_route")
+    route_contract_warning = None
+
+    if selected_route is None:
+        selected_route = "schema_incomplete_missing_selected_route"
+        route_contract_warning = (
+            "This metrics document predates or violates the route-state contract; "
+            "repair_route_selected was not used as the performed route."
+        )
+
+    if route_result is None:
+        route_result = "schema_incomplete_missing_route_result"
+
+    if next_recommended_route is not None:
+        route_text = (
+            f"The late-stage route used here was {selected_route}. "
+            f"It ended with route_result={route_result} and route_outcome_detail={route_outcome_detail}. "
+            f"The next recommended route is {next_recommended_route}."
+        )
+    else:
+        route_text = (
+            f"The late-stage route used here was {selected_route}. "
+            f"It ended with route_result={route_result} and route_outcome_detail={route_outcome_detail}. "
+            f"No next route is required."
+        )
+
+    if route_contract_warning is not None:
+        route_text = route_text + " " + route_contract_warning
+
     lines = [
         f"The solver proved {_percent_text(coverage)} of safe cells, which tells you how complete the logical solve became.",
         (
@@ -326,7 +358,7 @@ def _format_metric_explanations(metrics: dict) -> list[str]:
         f"The generated numbers stayed about {mean_abs_error:.2f} away from the target values on average, so lower is visually better.",
         f"When the solver marked mines, it was correct about {_percent_text(mine_accuracy)} of the time.",
         f"About {_percent_text(mine_density)} of all cells are mines, which describes the final board density.",
-        f"The late-stage route used here was {route}, which explains how the pipeline finished the board.",
+        route_text,
     ]
     return lines
 
@@ -337,7 +369,6 @@ def build_plain_english_run_summary(metrics: dict) -> list[str]:
     source_name = _source_name(metrics)
     n_unknown = _safe_int(metrics.get("n_unknown"))
     solved = bool(metrics.get("solvable")) and n_unknown == 0
-    route = _coalesce(metrics.get("repair_route_selected"), "unknown route")
     if source_name:
         intro = f"This run used {source_name} to build a {board} board with seed {seed}."
     else:
@@ -346,7 +377,7 @@ def build_plain_english_run_summary(metrics: dict) -> list[str]:
         result = "The solver resolved all cells, so the board finished completely solved."
     else:
         result = f"The solver still left {n_unknown} unresolved cells, so the board did not finish fully solved."
-    return [f"{intro} {result} The final route was {route}.", *_format_metric_explanations(metrics)]
+    return [f"{intro} {result}", *_format_metric_explanations(metrics)]
 
 
 def build_plain_english_repair_summary(

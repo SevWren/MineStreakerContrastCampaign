@@ -59,10 +59,18 @@ The same row shape is used by:
 | `n_unknown` | integer | Yes | No | Final unknown-cell count. |
 | `coverage` | number | Yes | No | Final solver coverage. |
 | `solvable` | boolean | Yes | No | Final solvability flag. |
-| `repair_route_selected` | string | Yes | No | Selected late-stage route. |
-| `repair_route_result` | string | Yes | No | Route result. |
-| `phase2_fixes` | integer | Yes | No | Length of Phase2 repair log. |
-| `last100_fixes` | integer | Yes | No | Length of Last100 repair log. |
+| `selected_route` | string enum | Yes | No | Route family actually invoked. Never `needs_sa_or_adaptive_rerun`. |
+| `route_result` | string enum | Yes | No | Route outcome summary. |
+| `route_outcome_detail` | string enum | Yes | Yes | Precise outcome detail. |
+| `next_recommended_route` | string or null | Yes | Yes | Next recommended route; `null` when solved. |
+| `repair_route_selected` | string | Yes | No | Exact alias of `selected_route`. |
+| `repair_route_result` | string | Yes | No | Exact alias of `route_result`. |
+| `phase2_fixes` | integer | Yes | No | Alias of `phase2_full_repair_accepted_move_count`; accepted Phase2 move count. |
+| `last100_fixes` | integer | Yes | No | Alias of `last100_n_fixes`; accepted Last100 move count. |
+| `phase2_full_repair_invoked` | boolean | Yes | Yes | Whether Phase2 was invoked. |
+| `phase2_full_repair_accepted_move_count` | integer | Yes | Yes | Accepted Phase2 move count. |
+| `last100_invoked` | boolean | Yes | Yes | Whether Last100 was invoked. |
+| `last100_accepted_move_count` | integer | Yes | Yes | Accepted Last100 move count. |
 | `phase1_repair_hit_time_budget` | boolean | Yes | No | Phase1 timeout boolean copied from child metrics. |
 | `phase2_full_repair_hit_time_budget` | boolean | Yes | No | Phase2 full repair timeout boolean copied from child metrics. |
 | `last100_repair_hit_time_budget` | boolean | Yes | No | Last100 repair timeout boolean copied from child metrics. |

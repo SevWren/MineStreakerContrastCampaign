@@ -70,6 +70,10 @@ IMAGE_SWEEP_SUMMARY_FIELDS = [
     "solvable",
     "mean_abs_error",
     "repair_route_selected",
+    "selected_route",
+    "route_result",
+    "route_outcome_detail",
+    "next_recommended_route",
     "error_type",
     "error_message",
 ]
@@ -397,15 +401,27 @@ def _llm_review_summary(
     n_unknown: int,
     artifact_inventory: dict,
     warnings: list[dict],
+    route_result: str = "unresolved_after_repair",
+    route_outcome_detail: str = "no_late_stage_route_invoked",
+    next_recommended_route: object = None,
 ) -> dict:
     risk = "No critical risks detected."
     if warnings:
         risk = warnings[0].get("message", risk)
+    next_text = (
+        f" Next recommended route: {next_recommended_route}."
+        if next_recommended_route is not None
+        else " No next route is required."
+    )
+    one_sentence_result = (
+        f"The run used {source_cfg.command_arg} at {board_label} with seed {seed} "
+        f"and ended after selected_route={selected_route} "
+        f"with route_result={route_result} "
+        f"and route_outcome_detail={route_outcome_detail}."
+        f"{next_text}"
+    )
     return {
-        "one_sentence_result": (
-            f"The run used {source_cfg.command_arg} at {board_label} with seed {seed} "
-            f"and ended with n_unknown={n_unknown} through {selected_route}."
-        ),
+        "one_sentence_result": one_sentence_result,
         "main_success": "The routed repair pipeline completed and produced final artifacts.",
         "main_risk": risk,
         "best_artifact_to_open_first": artifact_inventory.get("visual_explained_png"),
@@ -849,7 +865,9 @@ def run_iter9_single(
             "name": source_cfg.name,
             "project_relative_path": source_cfg.project_relative_path,
         },
-        "repair_route_selected": route.selected_route,
+        **route.route_state_fields(),
+        "repair_route_selected": route.selected_route,   # exact alias
+        "repair_route_result": route.route_result,        # exact alias
         "coverage": float(sr_final.coverage),
         "solvable": bool(sr_final.solvable),
         "mine_accuracy": float(sr_final.mine_accuracy),
@@ -936,7 +954,13 @@ def run_iter9_single(
         "solvable": bool(sr_final.solvable),
         "mine_accuracy": float(sr_final.mine_accuracy),
         "n_unknown": int(sr_final.n_unknown),
-        "repair_reason": f"phase1={phase1_reason}+route={route.selected_route}",
+        "repair_reason": (
+            f"phase1={phase1_reason}"
+            f"+selected_route={route.selected_route}"
+            f"+route_result={route.route_result}"
+            f"+route_outcome_detail={route.route_outcome_detail}"
+            f"+next_recommended_route={route.next_recommended_route}"
+        ),
         "total_time_s": float(duration_wall_s),
         "seed": int(args.seed),
         "iter": 9,
@@ -957,14 +981,15 @@ def run_iter9_single(
         "board_ratio": float(sizing["board_ratio"]),
         "aspect_ratio_relative_error": float(sizing["aspect_ratio_relative_error"]),
         "gate_aspect_ratio_within_0_5pct": bool(sizing["gate_aspect_ratio_within_tolerance"]),
-        "repair_route_selected": route.selected_route,
-        "repair_route_result": route.route_result,
+        **route.route_state_fields(),
+        "repair_route_selected": route.selected_route,   # exact alias
+        "repair_route_result": route.route_result,        # exact alias
         "dominant_failure_class": route.failure_taxonomy.get("dominant_failure_class"),
         "sealed_cluster_count": route.failure_taxonomy.get("sealed_cluster_count"),
         "sealed_single_mesa_count": route.failure_taxonomy.get("sealed_single_mesa_count"),
         "sealed_multi_cell_cluster_count": route.failure_taxonomy.get("sealed_multi_cell_cluster_count"),
-        "phase2_fixes": len(route.phase2_log),
-        "last100_fixes": len(route.last100_log),
+        "phase2_fixes": route.phase2_full_repair_accepted_move_count,
+        "last100_fixes": route.last100_n_fixes,
         "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
         "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
         "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
@@ -1072,12 +1097,13 @@ def run_iter9_single(
         },
     }
     repair_route_summary = {
-        "selected_route": route.selected_route,
-        "route_result": route.route_result,
+        **route.route_state_fields(),
+        "repair_route_selected": route.selected_route,
+        "repair_route_result": route.route_result,
+        "phase2_fixes": route.phase2_full_repair_accepted_move_count,
+        "last100_fixes": route.last100_n_fixes,
         "dominant_failure_class": route.failure_taxonomy.get("dominant_failure_class"),
         "sealed_cluster_count": int(route.failure_taxonomy.get("sealed_cluster_count", 0) or 0),
-        "phase2_fixes": len(route.phase2_log),
-        "last100_fixes": len(route.last100_log),
         "phase1_repair_hit_time_budget": phase1_repair_hit_time_budget,
         "phase2_full_repair_hit_time_budget": bool(route.phase2_full_repair_hit_time_budget),
         "last100_repair_hit_time_budget": bool(route.last100_repair_hit_time_budget),
@@ -1141,6 +1167,9 @@ def run_iter9_single(
         int(sr_final.n_unknown),
         artifact_inventory,
         warnings_and_exceptions,
+        route_result=route.route_result,
+        route_outcome_detail=route.route_outcome_detail,
+        next_recommended_route=route.next_recommended_route,
     )
 
     metrics_doc = build_metrics_document(
@@ -1206,6 +1235,10 @@ def _image_sweep_success_row(
         "solvable": metrics_doc.get("solvable"),
         "mean_abs_error": metrics_doc.get("mean_abs_error"),
         "repair_route_selected": metrics_doc.get("repair_route_selected"),
+        "selected_route": metrics_doc.get("selected_route"),
+        "route_result": metrics_doc.get("route_result"),
+        "route_outcome_detail": metrics_doc.get("route_outcome_detail"),
+        "next_recommended_route": metrics_doc.get("next_recommended_route"),
         "error_type": None,
         "error_message": None,
     }
@@ -1250,6 +1283,10 @@ def _image_sweep_failure_row(
         "solvable": None,
         "mean_abs_error": None,
         "repair_route_selected": None,
+        "selected_route": None,
+        "route_result": None,
+        "route_outcome_detail": None,
+        "next_recommended_route": None,
         "error_type": type(error).__name__,
         "error_message": str(error),
     }
@@ -1273,6 +1310,10 @@ def _image_sweep_skipped_existing_row(
         "solvable": None,
         "mean_abs_error": None,
         "repair_route_selected": None,
+        "selected_route": None,
+        "route_result": None,
+        "route_outcome_detail": None,
+        "next_recommended_route": None,
     }
     try:
         existing = json.loads(metrics_path.read_text(encoding="utf-8"))
@@ -1283,6 +1324,11 @@ def _image_sweep_skipped_existing_row(
         hydrated["solvable"] = existing.get("solvable")
         hydrated["mean_abs_error"] = existing.get("mean_abs_error")
         hydrated["repair_route_selected"] = existing.get("repair_route_selected")
+        # Use selected_route directly — do NOT synthesize from repair_route_selected
+        hydrated["selected_route"] = existing.get("selected_route")
+        hydrated["route_result"] = existing.get("route_result")
+        hydrated["route_outcome_detail"] = existing.get("route_outcome_detail")
+        hydrated["next_recommended_route"] = existing.get("next_recommended_route")
     except Exception:
         pass
 
@@ -1303,6 +1349,10 @@ def _image_sweep_skipped_existing_row(
         "solvable": hydrated["solvable"],
         "mean_abs_error": hydrated["mean_abs_error"],
         "repair_route_selected": hydrated["repair_route_selected"],
+        "selected_route": hydrated["selected_route"],
+        "route_result": hydrated["route_result"],
+        "route_outcome_detail": hydrated["route_outcome_detail"],
+        "next_recommended_route": hydrated["next_recommended_route"],
         "error_type": None,
         "error_message": None,
     }
@@ -1388,8 +1438,8 @@ def write_iter9_image_sweep_summaries(
         f"- runs_failed: `{int(runs_failed)}`",
         f"- runs_skipped: `{int(runs_skipped)}`",
         "",
-        "| batch_index | status | image_path | board | seed | n_unknown | coverage | solvable | repair_route_selected | best_artifact_to_open_first | error_message |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| batch_index | status | image_path | board | seed | n_unknown | coverage | solvable | selected_route | route_result | repair_route_selected | best_artifact_to_open_first | error_message |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in normalized_rows:
         md_lines.append(
@@ -1404,6 +1454,8 @@ def write_iter9_image_sweep_summaries(
                     _md_table_cell(row.get("n_unknown")),
                     _md_table_cell(row.get("coverage")),
                     _md_table_cell(row.get("solvable")),
+                    _md_table_cell(row.get("selected_route")),
+                    _md_table_cell(row.get("route_result")),
                     _md_table_cell(row.get("repair_route_selected")),
                     _md_table_cell(row.get("best_artifact_to_open_first")),
                     _md_table_cell(row.get("error_message")),
@@ -1507,6 +1559,10 @@ def run_iter9_image_sweep(
                 "solvable": None,
                 "mean_abs_error": None,
                 "repair_route_selected": None,
+                "selected_route": None,
+                "route_result": None,
+                "route_outcome_detail": None,
+                "next_recommended_route": None,
                 "error_type": type(error).__name__,
                 "error_message": str(error),
             }

@@ -268,11 +268,41 @@ class BenchmarkLayoutTests(unittest.TestCase):
                 ),
                 selected_route="phase2_full_repair",
                 route_result="solved",
+                route_outcome_detail="phase2_full_repair_solved",
+                next_recommended_route=None,
                 failure_taxonomy={"dominant_failure_class": "sealed_single_mesa", "sealed_cluster_count": 1},
                 phase2_full_repair_hit_time_budget=True,
                 last100_repair_hit_time_budget=False,
-                phase2_log=[{"visual_delta": 0.0}],
+                phase2_full_repair_invoked=True,
+                phase2_full_repair_n_fixed=1,
+                phase2_full_repair_accepted_move_count=1,
+                phase2_full_repair_solved=True,
+                phase2_log=[{"accepted": True}],
                 visual_delta_summary={"visual_delta": 0.0},
+                decision={
+                    "selected_route": "phase2_full_repair",
+                    "route_result": "solved",
+                    "route_outcome_detail": "phase2_full_repair_solved",
+                    "next_recommended_route": None,
+                    "solver_n_unknown_before": 0,
+                    "solver_n_unknown_after": 0,
+                    "phase2_full_repair_invoked": True,
+                    "phase2_full_repair_hit_time_budget": True,
+                    "phase2_full_repair_n_fixed": 1,
+                    "phase2_full_repair_accepted_move_count": 1,
+                    "phase2_full_repair_changed_grid": False,
+                    "phase2_full_repair_reduced_unknowns": False,
+                    "phase2_full_repair_solved": True,
+                    "phase2_solver_n_unknown_before": 0,
+                    "phase2_solver_n_unknown_after": 0,
+                    "last100_invoked": False,
+                    "last100_repair_hit_time_budget": False,
+                    "last100_n_fixes": 0,
+                    "last100_accepted_move_count": 0,
+                    "last100_solver_n_unknown_before": None,
+                    "last100_solver_n_unknown_after": None,
+                    "last100_stop_reason": None,
+                },
             )
             case = {
                 "image_path": "fake.png",
@@ -294,6 +324,100 @@ class BenchmarkLayoutTests(unittest.TestCase):
         self.assertFalse(result["phase1_repair_hit_time_budget"], msg="phase1_repair_hit_time_budget should be False (not set in route)")
         self.assertTrue(result["phase2_full_repair_hit_time_budget"], msg="phase2_full_repair_hit_time_budget should be True (set in route)")
         self.assertFalse(result["last100_repair_hit_time_budget"], msg="last100_repair_hit_time_budget should be False (not set in route)")
+
+    def test_child_metrics_phase2_fixes_equals_accepted_move_count(self):
+        flat_metrics = {
+            "corridor_pct": 0.1,
+            "phase1_budget_s": 12.0,
+            "mean_abs_error": 0.25,
+            "visual_delta": -0.1,
+            "pct_within_1": 98.0,
+            "n_unknown": 0,
+            "coverage": 1.0,
+            "solvable": True,
+            "repair_route_selected": "phase2_full_repair",
+            "phase2_fixes": 3,
+            "phase2_full_repair_accepted_move_count": 3,
+            "phase1_repair_hit_time_budget": False,
+            "phase2_full_repair_hit_time_budget": False,
+            "last100_repair_hit_time_budget": False,
+            "solver_summary": {},
+        }
+        doc = _build_child_metrics_document(
+            flat_metrics,
+            run_identity={"benchmark_run_id": "x", "board_width": 300, "board_height": 370, "seed": 11, "child_run_dir": "x", "board": "300x370"},
+            run_timing={},
+            source_image={"name": "x.png"},
+            source_image_validation={"ok": True, "canonical_match": None, "noncanonical_allowed": True, "warnings": []},
+            board_sizing={},
+            target_stats={},
+            route_summary={
+                "selected_route": "phase2_full_repair",
+                "route_result": "solved",
+                "route_outcome_detail": "phase2_full_repair_solved",
+                "next_recommended_route": None,
+                "phase2_fixes": 3,
+                "phase2_full_repair_accepted_move_count": 3,
+                "phase1_repair_hit_time_budget": False,
+                "phase2_full_repair_hit_time_budget": False,
+                "last100_repair_hit_time_budget": False,
+            },
+            artifact_inventory={},
+            phase_timing={},
+        )
+        self.assertEqual(
+            doc.get("phase2_fixes"),
+            doc.get("phase2_full_repair_accepted_move_count"),
+            msg="phase2_fixes must equal phase2_full_repair_accepted_move_count in child metrics",
+        )
+
+    def test_benchmark_summary_rows_contain_four_route_fields(self):
+        rows = [
+            {
+                "board": "300x370",
+                "seed": 11,
+                "child_dir": "300x370_seed11",
+                "n_unknown": 0,
+                "coverage": 1.0,
+                "solvable": True,
+                "selected_route": "phase2_full_repair",
+                "route_result": "solved",
+                "route_outcome_detail": "phase2_full_repair_solved",
+                "next_recommended_route": None,
+                "repair_route_selected": "phase2_full_repair",
+                "repair_route_result": "solved",
+                "phase2_fixes": 1,
+                "last100_fixes": 0,
+                "phase2_full_repair_accepted_move_count": 1,
+                "last100_accepted_move_count": 0,
+                "phase1_repair_hit_time_budget": False,
+                "phase2_full_repair_hit_time_budget": False,
+                "last100_repair_hit_time_budget": False,
+                "visual_delta": 0.0,
+                "total_time_s": 12.3,
+                "source_image_name": "x.png",
+                "source_image_stem": "x",
+                "source_image_project_relative_path": None,
+                "source_image_sha256": "abc",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "benchmark_root"
+            root.mkdir(parents=True, exist_ok=True)
+            source_cfg = resolve_source_image_config("assets/line_art_irl_11_v2.png", project_root=PROJECT_ROOT)
+            paths = write_normal_benchmark_summaries(
+                benchmark_root=root,
+                benchmark_run_id="test_run_id",
+                source_cfg=source_cfg,
+                source_validation={"ok": True, "warnings": []},
+                rows=rows,
+                widths=[300],
+                seeds=[11],
+            )
+            summary = json.loads((root / "benchmark_summary.json").read_text(encoding="utf-8"))
+            row = summary["rows"][0]
+            for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+                self.assertIn(field, row, msg=f"benchmark summary row missing field: {field}")
 
 
 if __name__ == "__main__":

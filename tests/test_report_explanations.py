@@ -82,7 +82,11 @@ class ReportExplanationTests(unittest.TestCase):
             {
                 "board": "300x370",
                 "seed": 11,
-                "repair_route_selected": "needs_sa_or_adaptive_rerun",
+                "repair_route_selected": "none",
+                "selected_route": "none",
+                "route_result": "unresolved_after_repair",
+                "route_outcome_detail": "no_late_stage_route_invoked",
+                "next_recommended_route": "needs_sa_or_adaptive_rerun",
                 "solvable": False,
                 "n_unknown": 42,
                 "coverage": 0.91,
@@ -94,6 +98,47 @@ class ReportExplanationTests(unittest.TestCase):
         joined = " ".join(lines).lower()
         self.assertIn("42 unresolved cells", joined)
         self.assertIn("did not finish fully solved", joined)
+
+    def test_report_reads_selected_route_not_repair_route_selected(self):
+        from report import _format_metric_explanations
+        # When selected_route is present, it must be used over repair_route_selected
+        metrics = {
+            "selected_route": "phase2_full_repair",
+            "route_result": "solved",
+            "route_outcome_detail": "phase2_full_repair_solved",
+            "next_recommended_route": None,
+            "repair_route_selected": "old_stale_value",
+            "coverage": 1.0,
+            "mine_accuracy": 0.95,
+            "mean_abs_error": 0.2,
+            "mine_density": 0.18,
+            "n_unknown": 0,
+        }
+        lines = _format_metric_explanations(metrics)
+        joined = " ".join(lines)
+        self.assertIn("phase2_full_repair", joined)
+        self.assertNotIn("old_stale_value", joined)
+
+    def test_report_no_fallback_to_repair_route_selected_for_selected_route(self):
+        from report import build_plain_english_run_summary
+        # When selected_route is missing, must warn about schema violation, not silently use repair_route_selected
+        metrics = {
+            # selected_route intentionally absent to test schema_incomplete fallback
+            "repair_route_selected": "phase2_full_repair",
+            "route_result": "solved",
+            "board": "300x370",
+            "seed": 11,
+            "solvable": True,
+            "n_unknown": 0,
+            "coverage": 1.0,
+            "mine_accuracy": 0.95,
+            "mean_abs_error": 0.2,
+            "mine_density": 0.18,
+        }
+        lines = build_plain_english_run_summary(metrics)
+        joined = " ".join(lines)
+        # Must NOT silently use repair_route_selected as the selected route
+        self.assertNotIn("phase2_full_repair", joined)
 
     def test_repair_summary_reports_exact_counts(self):
         lines = build_plain_english_repair_summary(

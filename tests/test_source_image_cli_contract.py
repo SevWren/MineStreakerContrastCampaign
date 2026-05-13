@@ -213,6 +213,54 @@ class SourceImageCliContractTests(unittest.TestCase):
         legacy_script = PROJECT_ROOT / "run_iris3d_visual_report.py"
         self.assertFalse(legacy_script.exists(), msg=f"Legacy script {legacy_script} must have been removed")
 
+    def test_new_route_state_fields_propagate_through_cli_output(self):
+        run_iter9 = importlib.import_module("run_iter9")
+        flat = {
+            "selected_route": "phase2_full_repair",
+            "route_result": "solved",
+            "route_outcome_detail": "phase2_full_repair_solved",
+            "next_recommended_route": None,
+            "repair_route_selected": "phase2_full_repair",
+            "repair_route_result": "solved",
+        }
+        doc = run_iter9.build_metrics_document(
+            flat,
+            run_identity={},
+            run_timing={},
+            project_identity={},
+            command_invocation={},
+            source_image={},
+            source_image_analysis={},
+            effective_config={},
+            board_sizing={},
+            preprocessing_config={},
+            target_field_stats={},
+            weight_config={},
+            corridor_config={},
+            sa_config={},
+            repair_config={},
+            solver_summary={},
+            repair_route_summary={
+                "selected_route": "phase2_full_repair",
+                "route_result": "solved",
+                "route_outcome_detail": "phase2_full_repair_solved",
+                "next_recommended_route": None,
+            },
+            visual_quality_summary={},
+            runtime_phase_timing_s={},
+            environment={},
+            artifact_inventory={},
+            validation_gates={},
+            warnings_and_exceptions=[],
+            llm_review_summary={},
+            source_image_validation={"ok": True},
+        )
+        for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+            self.assertIn(field, doc, msg=f"build_metrics_document output missing new route-state field: {field}")
+        for field in ("selected_route", "route_result", "route_outcome_detail", "next_recommended_route"):
+            self.assertIn(field, doc["repair_route_summary"],
+                          msg=f"repair_route_summary missing new route-state field: {field}")
+
     def test_abs_error_variance_replaces_loss_per_cell_in_metrics_write_sites(self):
         """R-009 regression: both metrics write sites must use abs_error_variance,
         not the old misleading name loss_per_cell."""

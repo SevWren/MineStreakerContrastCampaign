@@ -265,6 +265,21 @@ solver_summary
 repair_route_summary
 ```
 
+## 7.3b Route-state fields in metrics
+
+The `metrics_iter9_<board>.json` document now includes the four primary route-state fields at the top level and in `repair_route_summary`:
+
+| Field | Description |
+|---|---|
+| `selected_route` | Route family actually invoked. Never `needs_sa_or_adaptive_rerun`. |
+| `route_outcome_detail` | Precise outcome; one of 11 permitted values. |
+| `next_recommended_route` | Next recommended route; `null` when solved. |
+| `route_result` | Route outcome summary (`solved` or `unresolved_after_repair`). |
+
+Consumers must read `selected_route` for the performed route and `next_recommended_route` for follow-up strategy. Do not use `repair_route_selected` to derive route identity from new artifacts; it exists only as an exact alias.
+
+---
+
 ## 7.4 Metrics field fallback rules
 
 | Desired Value | Preferred Source | Fallback Source |
