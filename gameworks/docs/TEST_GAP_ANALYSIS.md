@@ -1,17 +1,21 @@
 # Test Gap Analysis — gameworks/
-**Date:** 2026-05-10
+**Date:** 2026-05-10 (counts updated 2026-05-13)
 **Analysis of:** `/home/vercel-sandbox/MineStreakerContrastCampaign/gameworks`
 
 ---
 
 ## Executive Summary
 
-**Current Test Status:**
-- Total test files: 18
-- Total tests: 417 (386 passed, 31 skipped, 0 failed)
-- Passing: 100% of collected (386/386)
+**Current Test Status (as of 2026-05-13, v0.1.3):**
+- Total tests: 434 (410 passed, 24 skipped, 0 failed)
+- Passing: 100% of collected (410/410)
 - Failing: 0
-- Performance test coverage: 20.6% (7/34 from PERFORMANCE_PLAN.md)
+- Performance test coverage: partial — Phases 1–3 implemented; Phases 4–8 pending
+
+**Prior snapshot (2026-05-10, v0.1.1):**
+- 417 tests (386 passed, 31 skipped)
+
+*Note: Skipped count reduced from 31 → 24 as DP-R8 atomic-save test and other scaffolds were un-skipped when bugs were resolved.*
 
 **Test Health by Category:**
 - ✅ **Unit Tests (Engine/Board):** EXCELLENT — comprehensive coverage

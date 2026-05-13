@@ -113,21 +113,27 @@ class TestPhase3CellLoop:
         # Easy board is 9×9 = 81 cells, all should be visible and drawn
         assert call_count["count"] == 81, f"Expected 81 cells drawn, got {call_count['count']}"
 
-    def test_num_tile_assertion_fails_on_mismatch(self, renderer_easy):
+    def test_num_tile_auto_rebuilds_on_mismatch(self, renderer_easy):
         """
-        _draw_cell must assert that self._num_tile == ts, catching the
-        invariant violation if _rebuild_num_surfs() was not called after zoom.
+        _draw_cell must gracefully rebuild num surfs when self._num_tile != ts,
+        rather than crashing. After the call _num_tile must equal ts.
         """
         r, eng = renderer_easy
 
         # Break the invariant: change _tile without calling _rebuild_num_surfs()
         r._tile = 64
+        original_num_tile = r._num_tile  # still the old value
 
-        # Attempt to draw a cell with mismatched tile size
-        with pytest.raises(AssertionError, match="_draw_cell: tile size mismatch"):
-            r._draw_cell(
-                0, 0,
-                False, False, False, False, 0,
-                (100, 100), False, False, False, 64, False,
-                1000.0
-            )
+        # _draw_cell should auto-rebuild — no exception raised
+        r._draw_cell(
+            0, 0,
+            False, False, False, False, 0,
+            (100, 100), False, False, False, 64, False,
+            1000.0
+        )
+
+        # After the call, _num_tile must have been updated to match ts=64
+        assert r._num_tile == 64, (
+            f"Expected _num_tile=64 after auto-rebuild, got {r._num_tile}"
+        )
+        assert r._num_tile != original_num_tile or original_num_tile == 64

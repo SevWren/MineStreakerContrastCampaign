@@ -16,12 +16,15 @@ All documentation for this package lives here and is self-contained — independ
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | Dev environment setup, testing, extending the package |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [DESIGN_PATTERNS.md](DESIGN_PATTERNS.md) | Pipeline alignment audit: design patterns, gaps, and recommended improvements |
-| [BUGS.md](BUGS.md) | All open bugs — flat register with root cause, fix spec, and test coverage gap per entry |
-| [BUG_REMEDIATION_PLAN.md](BUG_REMEDIATION_PLAN.md) | 8-phase industry-standard remediation plan — exact code, tests, and verification commands for all 30 bugs |
-| [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) | Performance remediation plan for P-01 through P-18 hot-path optimisations |
-| [TEST_GAP_ANALYSIS.md](TEST_GAP_ANALYSIS.md) | Test gap analysis: health by category, coverage table, and prioritised action plan |
+| [BUGS.md](BUGS.md) | All known bugs — flat register with root cause, fix spec, and test coverage gap per entry |
+| [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) | Performance remediation plan for P-01 through P-18 hot-path optimisations (Phases 1–3 done; 4–8 pending) |
+| [ZOOM_OUT_PERFORMANCE_REPORT.md](ZOOM_OUT_PERFORMANCE_REPORT.md) | Forensic analysis of 13 zoom-out bottlenecks; informs PERFORMANCE_PLAN Phases 4–8 and gap fixes N-01/N-02 |
+| [REMEDIATION_PLAN_VERIFICATION.md](REMEDIATION_PLAN_VERIFICATION.md) | Pre-execution readiness check for PERFORMANCE_PLAN; identifies Phase 7B WinAnimation._idx blocker |
+| [FORENSIC_VISUAL_RECONSTRUCTION_ANALYSIS.md](FORENSIC_VISUAL_RECONSTRUCTION_ANALYSIS.md) | 9-gap spec for pixel-perfect image reconstruction on won boards (unimplemented — ready to execute) |
+| [TEST_GAP_ANALYSIS.md](TEST_GAP_ANALYSIS.md) | Test gap analysis: health by category, coverage table, prioritised action plan (counts updated 2026-05-13) |
 | [TEST_HARDENING_PLAN.md](TEST_HARDENING_PLAN.md) | Forensic test hardening plan — 25-file audit, 17 GWHARDEN hardening items, verification commands |
-| [gameplay_visual_improvement_ideas.md](gameplay_visual_improvement_ideas.md) | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
+| [BACKLOG.md](BACKLOG.md) | Context-preserving backlog — PERF-000 (WinAnimation._idx) is the current blocking implementation task |
+| [gameplay_visual_improvement_ideas.md](gameplay_visual_improvement_ideas.md) | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized roadmap |
 
 ---
 
@@ -43,8 +46,11 @@ gameworks/
     ├── CHANGELOG.md
     ├── DESIGN_PATTERNS.md
     ├── BUGS.md
-    ├── BUG_REMEDIATION_PLAN.md
     ├── PERFORMANCE_PLAN.md
+    ├── ZOOM_OUT_PERFORMANCE_REPORT.md
+    ├── REMEDIATION_PLAN_VERIFICATION.md
+    ├── FORENSIC_VISUAL_RECONSTRUCTION_ANALYSIS.md
+    ├── BACKLOG.md
     ├── TEST_GAP_ANALYSIS.md
     ├── TEST_HARDENING_PLAN.md
     └── gameplay_visual_improvement_ideas.md
@@ -63,4 +69,4 @@ gameworks/
 
 ---
 
-*Gameworks v0.1.1 — part of the Mine-Streaker project.*
+*Gameworks v0.1.3 — part of the Mine-Streaker project.*

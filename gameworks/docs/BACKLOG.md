@@ -1,6 +1,6 @@
 # Gameworks — Implementation Backlog
-**Package version:** 0.1.1
-**Last updated:** 2026-05-11
+**Package version:** 0.1.3
+**Last updated:** 2026-05-13
 **Purpose:** Context-preserving backlog for implementation tasks requiring multi-step work
 
 This file preserves full context for implementation tasks that may span sessions or require LLM context recovery. Each entry is self-contained with problem description, solution details, and document references.

@@ -6,6 +6,39 @@ Version numbers follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.1.3] — 2026-05-13
+
+### Added
+
+- **Loading screen** (`main.py:_start_game`): Board generation now runs on a
+  background daemon thread. The main thread shows a live loading screen (800×300
+  window) with an animated bouncing progress bar, elapsed timer, and live
+  pipeline stage messages captured from stdout via a `_Capture` tee. Prevents
+  the window from entering "(Not Responding)" during SA pipeline execution
+  (FA-023).
+
+### Fixed
+
+- **FA-023 — Window "(Not Responding)" during board generation**: `_start_game()`
+  was calling `_build_engine()` synchronously on the main thread. SA pipeline
+  (warmup → optimisation → phase-1 repair, up to 90 s) blocked the pygame event
+  queue completely. Fixed by running `_build_engine()` on a daemon thread while
+  the main thread pumps events at 30 fps.
+- **Board invisible at minimum tile size**: `tile_hidden (45,45,60)` vs
+  `panel (28,28,38)` = 1.25:1 contrast — cells were indistinguishable from
+  background at `tile=10`. Raised `tile_hidden → (72,72,96)`,
+  `tile_hi → (88,88,115)`, `border → (108,108,136)` for 1.88:1 cell-to-panel
+  and 2:1+ border-to-cell contrast.
+- **Panel buttons clipped on small window**: `_panel_overlay` buttons rendered
+  off-screen when window height was shrunk. Fixed by setting a clip rect in
+  `_draw_panel`, skipping fully off-screen buttons, and recomputing
+  `_panel_overlay` on every `VIDEORESIZE` event.
+- **`assert` crash in `_draw_cell`**: `assert self._num_tile == ts` would hard-
+  crash on tile-state mismatch. Replaced with graceful rebuild:
+  `if self._num_tile != ts: self._rebuild_num_surfs()`.
+
+---
+
 ## [0.1.2] — 2026-05-10
 
 ### Added

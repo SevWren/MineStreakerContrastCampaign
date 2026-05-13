@@ -12,9 +12,12 @@ This index defines active versus archived documentation paths for this repositor
 
 - `docs/explained_report_artifact_contract.md`
 - `docs/back_log.md`
-- `docs/ISSUE-LOG.md`
 - `docs/ROUTE_STATE_FIELD_INVARIANTS.md`
-- `docs/M001-M002-analysis.md`
+- `docs/forensic_analysis_accepted_move_count_field_verification.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md`
+- `docs/example_commands_image_sweep_mode.md`
 - `docs/json_schema/benchmark_summary.schema.md`
 - `docs/json_schema/failure_taxonomy.schema.md`
 - `docs/json_schema/JSON_OUTPUT_SCHEMA_INDEX.md`
@@ -39,8 +42,10 @@ These are the canonical sources of truth for the game — read before modifying 
 | `gameworks/docs/CHANGELOG.md` | Version history |
 | `gameworks/docs/DESIGN_PATTERNS.md` | Pipeline alignment audit; R2–R9 improvement recommendations |
 | `gameworks/docs/BUGS.md` | All known bugs — flat register with severity, root cause, fix spec per entry |
-| `gameworks/docs/BUG_REMEDIATION_PLAN.md` | 8-phase remediation plan — exact code, tests, and verification commands for all 30 bugs |
 | `gameworks/docs/PERFORMANCE_PLAN.md` | Performance remediation plan for P-01 through P-18 hot-path optimisations |
+| `gameworks/docs/ZOOM_OUT_PERFORMANCE_REPORT.md` | Forensic analysis of 13 zoom-out bottlenecks; informs PERFORMANCE_PLAN Phases 4–8 |
+| `gameworks/docs/REMEDIATION_PLAN_VERIFICATION.md` | Pre-execution readiness check; identifies Phase 7B WinAnimation._idx blocker |
+| `gameworks/docs/FORENSIC_VISUAL_RECONSTRUCTION_ANALYSIS.md` | 9-gap spec for pixel-perfect image reconstruction on solved boards (unimplemented) |
 | `gameworks/docs/TEST_GAP_ANALYSIS.md` | Test gap analysis: health by category, coverage table, and prioritised action plan |
 | `gameworks/docs/TEST_HARDENING_PLAN.md` | Forensic test hardening plan — 25-file audit, 17 GWHARDEN hardening items |
 | `gameworks/docs/gameplay_visual_improvement_ideas.md` | 9-gap analysis of solved board vs. source image with per-gap code sketches and prioritized implementation roadmap |
@@ -58,11 +63,10 @@ These are the canonical sources of truth for the game — read before modifying 
 | `gameworks/tests/integration/` | Board modes, save/load round-trip (R8 pending) |
 | `gameworks/tests/fixtures/` | BoardFactory, EngineFactory shared helpers |
 
-Pending tests (skipped; activate on R2/R3/R6/R8/R9 implementation):
+Pending tests (skipped; activate on R2/R3/R9 implementation):
 - `gameworks/tests/unit/test_config.py` — R2 GameConfig
 - `gameworks/tests/unit/test_board_loading.py` (partial) — R3 BoardLoadResult, R9 schema sidecar
-- `gameworks/tests/cli/test_preflight.py` — R6 preflight_check
-- `gameworks/tests/integration/test_board_modes.py::test_atomic_save` — R8 atomic save
+- `gameworks/tests/cli/test_preflight.py` — R6 preflight_check (DP-R6 resolved; test un-skip pending)
 
 Legacy root-level gameworks tests (regression guard):
 - `tests/test_gameworks_engine.py`
@@ -72,12 +76,36 @@ Legacy root-level gameworks tests (regression guard):
 
 - `docs/FEATURE_SAVE_RESUME_LOAD.md` — Full design spec and implementation checklist for Save/Resume/Load feature (branch: `feature/save-resume-load`). Supplementary docs required on implementation: `docs/SAVE_FORMAT_SPEC.md`, `docs/SCHEMA_MIGRATION.md`, `docs/SECURITY.md`.
 
-## Archived
+## Archived (moved to `archives/`)
+
+### archives/gameworks/ — Completed implementation specs
+- `ARCH_FIX_FA010_DP-R8.md` — FA-010/DP-R8 fix spec (implemented)
+- `BUG_REMEDIATION_PLAN.md` — 8-phase remediation for 30 bugs (all resolved)
+- `CROSS_VERIFICATION_REPORT.md` — One-time consistency check across 4 performance docs
+- `IMPLEMENTATION_TASK_PLAN.md` — Phase 0–8 execution guide (Phases 1–3 done; 4–8 in PERFORMANCE_PLAN)
+- `PHASE_0_IMPLEMENTATION_SUMMARY.md` — WinAnimation._idx pre-impl summary (superseded by BACKLOG.md)
+- `REMEDIATION_PLAN_VERIFICATION_DETAILED.md` — Detailed phase-by-phase readiness check (summary in REMEDIATION_PLAN_VERIFICATION.md)
+
+### archives/pipeline/ — Superseded pipeline docs
+- `ISSUE-LOG.md` — Superseded by gameworks/docs/BUGS.md; all OPEN items are now RESOLVED
+- `M001-M002-analysis.md` — M-001/M-002 deep-dive (both resolved, code in repo)
+- `PULL_REQUEST_DESCRIPTION.md` — PR for hardening-amendments-1-4 (not merged to codex/repair_budget_reporting)
+- `HARDENING_SUMMARY.md` — Amendments 1–4 to recommendation_4.md (fully incorporated into plan doc)
+
+### archives/llm-audits/ — Completed audit artifacts
+- Full audit (34 files) — AUDIT-minestreaker-frontend-game-mockup-20260510: all critical/high findings resolved
+
+### archives/deprecated/ — Dead specs, never-installed tooling
+- `full_enterprise_grade_repository_audit_and_remediation_analysis_prompt.md` (×2, root + docs copy)
+- `frontend_spec/` (11 files) — React/TypeScript spec for unbuilt web frontend
+- `GAME_DESIGN.react.md` — Companion GDD to the React spec
+- `PRE_PUSH_HOOK_IMPLEMENTATION.md` / `PRE_PUSH_HOOK_SUMMARY.md` — Hook never installed
+
+### archives/ (pre-existing)
 - `docs/archive/codex_late_stage_repair_routing_plan.md`
 - `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md`
 - `docs/implement_clarified_source_image_runtime_contract.md`
 - `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
-  Note: `docs/archive` exists in `.gitignore`, assume files still exist unless stated otherwise.
 
 ## Review Later
 
