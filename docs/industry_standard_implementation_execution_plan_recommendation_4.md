@@ -488,8 +488,7 @@ def _build_route_result(
 # [AMENDMENT 2] USAGE CONTRACT: This function MUST be used as the sole construction path.
 # Any branch that modifies grid/sr must pass the MODIFIED copies (not originals) to this function.
 # If validation fails, the caller must NOT persist grid/sr and must handle the exception.
-
-
+```
 
 ---
 
@@ -935,6 +934,21 @@ return _build_route_result(
 # 4. Phase 3: Final Verification
 
 The serializer (Section 5) performs all invariant checks. No additional visual delta computation is required beyond what is done in Sections 3.4 and 3.6.
+
+---
+
+# 5. Phase 4: Update `write_repair_route_artifacts(...)`
+
+Modify `pipeline.py:191-226`.
+
+### 5.1 Completeness Guard
+
+The serializer must validate that all primary route-state fields are present and that the dataclass and decision dict are synchronized before writing any artifact.
+
+```python
+required = {
+    "selected_route",
+    "route_result",
     "route_outcome_detail",
     "next_recommended_route",
     "solver_n_unknown_before",
