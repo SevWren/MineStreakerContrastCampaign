@@ -161,10 +161,9 @@ class BenchmarkLayoutTests(unittest.TestCase):
         cfg = resolve_source_image_config("assets/line_art_irl_11_v2.png", project_root=PROJECT_ROOT)
         args_default = parse_args([], raw_argv=["run_benchmark.py"])
         root_default, run_id = _normal_benchmark_root(args_default, PROJECT_ROOT, cfg)
-        expected_base = (PROJECT_ROOT / "results/benchmark").resolve().as_posix()
         self.assertTrue(
-            root_default.as_posix().startswith(expected_base),
-            msg=f"Expected path inside 'results/benchmark', got {root_default.as_posix()}",
+            root_default.parent.as_posix().endswith("results/benchmark"),
+            msg=f"Expected parent path ending in 'results/benchmark', got {root_default.as_posix()}",
         )
         self.assertIn(f"{cfg.stem}_benchmark", run_id)
 

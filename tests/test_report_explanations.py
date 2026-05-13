@@ -393,20 +393,14 @@ class ReportExplanationTests(unittest.TestCase):
         self.assertEqual(sr.n_unknown, 5)
 
         captured_labels = []
-        _labels = captured_labels
-        _RealPatch = mpatches.Patch
+        original_Patch = mpatches.Patch
 
-        class _SpyPatch(_RealPatch):
+        class SpyPatch(original_Patch):
             def __init__(self, *args, **kwargs):
-                _labels.append(kwargs.get("label", ""))
+                captured_labels.append(kwargs.get("label", ""))
                 super().__init__(*args, **kwargs)
 
-        import types as _types
-        _fake_mpatches = _types.ModuleType("matplotlib.patches")
-        _fake_mpatches.__dict__.update(mpatches.__dict__)
-        _fake_mpatches.Patch = _SpyPatch
-
-        with mock.patch.object(report_module, "mpatches", _fake_mpatches):
+        with mock.patch.object(report_module.mpatches, "Patch", SpyPatch):
             with tempfile.TemporaryDirectory() as td:
                 out_path = Path(td) / "out.png"
                 render_report_explained(
@@ -428,24 +422,24 @@ class ReportExplanationTests(unittest.TestCase):
 
     def test_render_report_legend_mine_count_uses_n_mines_not_subtraction(self):
         """R-008 regression: render_report (non-explained) legend must also use n_mines."""
+        import types as _types
         from report import render_report
 
         sr = _fake_solve_result(n_unknown=5, solvable=False)
         captured_labels = []
-        _labels2 = captured_labels
-        _RealPatch2 = mpatches.Patch
 
-        class _SpyPatch2(_RealPatch2):
+        # Patch report_module.mpatches with a fake namespace so that matplotlib's
+        # own internal code keeps the original Patch class (avoiding _api.check_isinstance
+        # failures when matplotlib checks that Rectangle instances are Patch subclasses).
+        class SpyPatch(mpatches.Patch):
             def __init__(self, *args, **kwargs):
-                _labels2.append(kwargs.get("label", ""))
+                captured_labels.append(kwargs.get("label", ""))
                 super().__init__(*args, **kwargs)
 
-        import types as _types
-        _fake_mpatches2 = _types.ModuleType("matplotlib.patches")
-        _fake_mpatches2.__dict__.update(mpatches.__dict__)
-        _fake_mpatches2.Patch = _SpyPatch2
+        fake_mpatches = _types.SimpleNamespace(**vars(mpatches))
+        fake_mpatches.Patch = SpyPatch
 
-        with mock.patch.object(report_module, "mpatches", _fake_mpatches2):
+        with mock.patch.object(report_module, "mpatches", fake_mpatches):
             with tempfile.TemporaryDirectory() as td:
                 render_report(
                     np.zeros((3, 3), dtype=np.float32),
