@@ -22,30 +22,6 @@ This index defines active versus archived documentation paths for this repositor
 - `docs/json_schema/visual_delta_summary.schema.md`
 - `docs/DOCS_INDEX.md`
 
-## COMPLETE — Recommendation 4: Fully Specified Partial-Phase2 Route State
-
-**Status: IMPLEMENTED** · 2026-05-13 · Commit `ef7d5de` · Branch `working-changes`
-
-All five documents below describe a completed implementation. The primary plan and execution prompt
-are the definitive records. The audit and review docs contain the pre-implementation analysis that
-motivated the work — their "broken state" sections are historical.
-
-| Document | Role | Status |
-|---|---|---|
-| `docs/implementation_prompt_recommendation_4.md` | **Primary execution prompt** — step-by-step plan with hardening checklist | **COMPLETE** — all checklist items checked |
-| `docs/industry_standard_implementation_execution_plan_recommendation_4.md` | Industry-standard detailed plan — governance, code anchors, test-first spec | **COMPLETE** — all code anchors resolved |
-| `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` | Pre-implementation traceability audit — identified plan gaps and blockers | **COMPLETE** — all audit blockers resolved |
-| `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` | Pre-implementation plan review — 14 mandatory correction items | **COMPLETE** — all 14 corrections applied |
-| `docs/forensic_analysis_accepted_move_count_field_verification.md` | Accepted-move-count field correctness analysis — identified `n_fixed` vs log seam | **COMPLETE** — invariant enforced via `RouteStateInvariantError` |
-
-**What was implemented:**
-- `RepairRouteResult` expanded with 22 route-state fields + `route_state_fields()` method
-- `_build_route_result()` guard — only legal construction path inside `route_late_stage_failure()`
-- `selected_route` can no longer be `"needs_sa_or_adaptive_rerun"` — that value moved to `next_recommended_route`
-- `route_outcome_detail` 11-value enum covers all route outcomes
-- `write_repair_route_artifacts()` enforces `accepted_move_count == n_fixed` via `RouteStateInvariantError`
-- All metrics, summaries, sweep rows, report text, schemas, and demo docs updated
-- Verified live: `already_solved`, `phase2_full_repair` (solved), `phase2_full_repair_partial_progress_unresolved`
 
 ## Active — Gameworks Package
 
@@ -107,6 +83,17 @@ Legacy root-level gameworks tests (regression guard):
 - `PHASE_0_IMPLEMENTATION_SUMMARY.md` — WinAnimation._idx pre-impl summary (superseded by BACKLOG.md)
 - `REMEDIATION_PLAN_VERIFICATION_DETAILED.md` — Detailed phase-by-phase readiness check (summary in REMEDIATION_PLAN_VERIFICATION.md)
 
+### archives/pipeline/ — Completed Recommendation 4 implementation (2026-05-13)
+
+Implemented: four-field route-state model · commit `ef7d5de` · branch `working-changes`
+Active contract: `docs/json_schema/repair_route_decision.schema.md` + `AGENTS.md`
+
+- `implementation_prompt_recommendation_4.md` — Primary execution prompt; hardening checklist (all 20 items checked)
+- `industry_standard_implementation_execution_plan_recommendation_4.md` — Detailed plan; all code anchor rows resolved
+- `industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` — Pre-impl traceability audit; all blockers resolved
+- `industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` — Pre-impl plan review; all 14 mandatory corrections applied
+- `forensic_analysis_accepted_move_count_field_verification.md` — Accepted-move-count analysis; resolved via `RouteStateInvariantError`
+
 ### archives/pipeline/ — Superseded pipeline docs
 - `ISSUE-LOG.md` — Superseded by gameworks/docs/BUGS.md; all OPEN items are now RESOLVED
 - `M001-M002-analysis.md` — M-001/M-002 deep-dive (both resolved, code in repo)
@@ -138,3 +125,8 @@ Legacy root-level gameworks tests (regression guard):
 - `docs/industry_standard_plan_remove_hardcoded_input_source_image.md` -> `docs/archive/industry_standard_plan_remove_hardcoded_input_source_image.md`
 - `docs/implement_clarified_source_image_runtime_contract.md` -> `docs/archive/implement_clarified_source_image_runtime_contract.md`
 - `docs/implement_clarified_source_image_runtime_contract_implementation_checklist.md` -> `docs/archive/implement_clarified_source_image_runtime_contract_implementation_checklist.md`
+- `docs/implementation_prompt_recommendation_4.md` -> `archives/pipeline/implementation_prompt_recommendation_4.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md`
+- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` -> `archives/pipeline/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md`
+- `docs/forensic_analysis_accepted_move_count_field_verification.md` -> `archives/pipeline/forensic_analysis_accepted_move_count_field_verification.md`
