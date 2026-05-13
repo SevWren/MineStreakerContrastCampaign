@@ -2,16 +2,18 @@ name: CI
 
 on:
   push:
-    branches: ["frontend-game-mockup", "main"]
+    branches: ["frontend-game-mockup", "main", "working-changes"]
   pull_request:
-    branches: ["frontend-game-mockup", "main"]
+    branches: ["frontend-game-mockup", "main", "working-changes"]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -24,13 +26,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy Pillow matplotlib scikit-image pytest
-          # pygame requires a display; install without running pygame tests
-          pip install pygame --no-build-isolation || true
+          pip install numpy scipy Pillow matplotlib scikit-image numba pydantic pytest pyflakes
+          pip install pygame || true
 
       - name: Run pipeline tests
         run: |
-          python -m pytest tests/ --ignore=tests/test_gameworks_engine.py -v
+          python -m pytest tests/ --ignore=tests/test_gameworks_engine.py --ignore=tests/demo/ -v
+
+      - name: Run demo tests
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          python -m pytest tests/demo/ -v
 
       - name: Run gameworks engine tests (headless)
         env:
@@ -39,6 +47,9 @@ jobs:
         run: |
           python -m pytest tests/test_gameworks_engine.py -v
 
-      - name: Run demo tests
+      - name: Run gameworks full test suite (headless)
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
         run: |
-          python -m pytest tests/demo/ -v
+          python -m pytest gameworks/tests/ -v
