@@ -1,0 +1,17 @@
+{
+  "path": "/home/vercel-sandbox/working-changes/assets/input_source_image.png",
+  "file_size": 274108,
+  "file_md5": "22e5689948a64a7f6aeea6d6f1b3f6d4",
+  "file_sha256": "144042ebd969acf6ecd3617b8a6e39cfe07164b49937d7188ca390908ffddff7",
+  "pixel_sha256": "76d02c13e19435bd277a7ee52a7da806bd3d8aeb2b8ed64f9163a78f863867de",
+  "pixel_shape": [
+    1024,
+    831,
+    3
+  ],
+  "pixel_dtype": "uint8",
+  "pixel_mean": 238.14301019416868,
+  "pixel_std": 56.47197627597464,
+  "pixel_min": 0,
+  "pixel_max": 255
+}

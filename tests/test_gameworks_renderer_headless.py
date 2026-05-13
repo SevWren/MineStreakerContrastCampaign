@@ -261,6 +261,7 @@ class TestOverlayPanelClickRouting:
         # — this is exactly what happens on a 300×370 board (board rect spans
         # the full window width, panel buttons land inside it).
         r._panel_overlay = True
+        r._show_dev = True
         board_rect = r._board_rect()
         r._btn_dev_solve.x = board_rect.x + 10
         r._btn_dev_solve.y = board_rect.y + 10
@@ -288,8 +289,8 @@ class TestOverlayPanelClickRouting:
         pos = r._btn_new.center
         ev = pygame.event.Event(pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": pos})
         action = r.handle_event(ev)
-        assert action == "restart", (
-            f"Overlay restart button click returned {action!r}; expected 'restart'."
+        assert action == "retry", (
+            f"Overlay new/retry button click returned {action!r}; expected 'retry'."
         )
         pygame.quit()
 

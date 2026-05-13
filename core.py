@@ -7,6 +7,7 @@ so normalising pushed bg weight BELOW 1, the opposite of intent).
 Instead weights use raw values — bg cells get weight ~8, hi-target ~12.
 The SA loss scale changes but the relative gradient is correct.
 """
+from __future__ import annotations
 import numpy as np
 from scipy.ndimage import convolve, gaussian_filter, sobel
 from PIL import Image, ImageEnhance

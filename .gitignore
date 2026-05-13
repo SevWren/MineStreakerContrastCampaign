@@ -45,6 +45,7 @@ archives
 *.json
 !demo/docs/json_schemas/*.schema.json
 !configs/demo/iter9_visual_solver_demo.default.json
+!assets/SOURCE_IMAGE_HASH.json
 *.jsonl
 
 # Media and other binary assets

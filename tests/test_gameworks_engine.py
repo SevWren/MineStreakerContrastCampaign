@@ -132,7 +132,7 @@ class TestCriticalRegressions:
         try:
             b = load_board_from_npy(path)
             assert b.total_mines == 1
-            assert b._mine[0, 0]
+            assert b.board._mine[0, 0]
             assert b.width == 3 and b.height == 3
         finally:
             os.unlink(path)

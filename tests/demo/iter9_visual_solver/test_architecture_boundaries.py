@@ -37,6 +37,9 @@ class ArchitectureBoundariesTests(unittest.TestCase):
                 "demos/iter9_visual_solver/rendering",
                 "tests/demo/iter9_visual_solver/fixtures",
                 "tests/demo/iter9_visual_solver",
+                "gameworks",
+                "tests/test_gameworks_engine.py",
+                "tests/test_gameworks_renderer_headless.py",
             ],
         )
 

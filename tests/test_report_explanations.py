@@ -348,13 +348,20 @@ class ReportExplanationTests(unittest.TestCase):
         self.assertEqual(sr.n_unknown, 5)
 
         captured_labels = []
-        original_Patch = mpatches.Patch
+        _labels = captured_labels
+        _RealPatch = mpatches.Patch
 
-        def spy_Patch(*args, **kwargs):
-            captured_labels.append(kwargs.get("label", ""))
-            return original_Patch(*args, **kwargs)
+        class _SpyPatch(_RealPatch):
+            def __init__(self, *args, **kwargs):
+                _labels.append(kwargs.get("label", ""))
+                super().__init__(*args, **kwargs)
 
-        with mock.patch.object(report_module.mpatches, "Patch", side_effect=spy_Patch):
+        import types as _types
+        _fake_mpatches = _types.ModuleType("matplotlib.patches")
+        _fake_mpatches.__dict__.update(mpatches.__dict__)
+        _fake_mpatches.Patch = _SpyPatch
+
+        with mock.patch.object(report_module, "mpatches", _fake_mpatches):
             with tempfile.TemporaryDirectory() as td:
                 out_path = Path(td) / "out.png"
                 render_report_explained(
@@ -380,13 +387,20 @@ class ReportExplanationTests(unittest.TestCase):
 
         sr = _fake_solve_result(n_unknown=5, solvable=False)
         captured_labels = []
-        original_Patch = mpatches.Patch
+        _labels2 = captured_labels
+        _RealPatch2 = mpatches.Patch
 
-        def spy_Patch(*args, **kwargs):
-            captured_labels.append(kwargs.get("label", ""))
-            return original_Patch(*args, **kwargs)
+        class _SpyPatch2(_RealPatch2):
+            def __init__(self, *args, **kwargs):
+                _labels2.append(kwargs.get("label", ""))
+                super().__init__(*args, **kwargs)
 
-        with mock.patch.object(report_module.mpatches, "Patch", side_effect=spy_Patch):
+        import types as _types
+        _fake_mpatches2 = _types.ModuleType("matplotlib.patches")
+        _fake_mpatches2.__dict__.update(mpatches.__dict__)
+        _fake_mpatches2.Patch = _SpyPatch2
+
+        with mock.patch.object(report_module, "mpatches", _fake_mpatches2):
             with tempfile.TemporaryDirectory() as td:
                 render_report(
                     np.zeros((3, 3), dtype=np.float32),

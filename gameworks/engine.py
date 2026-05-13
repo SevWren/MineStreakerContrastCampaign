@@ -81,6 +81,12 @@ class CellState:
     is_flagged: bool = False
     is_questioned: bool = False
     neighbour_mines: int = 0
+    x: int = 0
+    y: int = 0
+
+    @property
+    def neighbour_count(self) -> int:
+        return self.neighbour_mines
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -265,6 +271,8 @@ class Board:
             is_flagged=bool(self._flagged[y, x]),
             is_questioned=bool(self._questioned[y, x]),
             neighbour_mines=int(self._neighbours[y, x]),
+            x=x,
+            y=y,
         )
 
     def chord(self, x: int, y: int) -> Tuple[bool, List[Tuple[int, int]]]:
@@ -352,6 +360,18 @@ class BoardLoadResult:
     def __post_init__(self):
         if self.warnings is None:
             self.warnings = []
+
+    @property
+    def total_mines(self) -> int:
+        return self.board.total_mines
+
+    @property
+    def width(self) -> int:
+        return self.board.width
+
+    @property
+    def height(self) -> int:
+        return self.board.height
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

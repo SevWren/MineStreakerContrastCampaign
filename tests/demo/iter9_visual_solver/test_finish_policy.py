@@ -31,7 +31,7 @@ class FinishPolicyTests(unittest.TestCase):
             from demos.iter9_visual_solver.playback.finish_policy import should_auto_close
         except ModuleNotFoundError:
             self.skipTest("should_auto_close is not implemented yet")
-        finish_behavior = {"mode": "close_after_seconds", "close_after_seconds": 5.0}
+        finish_behavior = {"mode": "close_after_delay", "close_after_seconds": 5.0}
         self.assertFalse(should_auto_close(finish_behavior, elapsed_after_finish_s=4.9), msg="Must not auto-close before threshold")
         self.assertTrue(should_auto_close(finish_behavior, elapsed_after_finish_s=5.0), msg="Must auto-close at or after threshold")
 

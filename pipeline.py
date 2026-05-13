@@ -1,6 +1,7 @@
 """
 pipeline.py — Full orchestration.  Iter 2: asymmetric weights + extended schedule.
 """
+from __future__ import annotations
 import os, sys, json, time, warnings
 from dataclasses import dataclass, field
 import numpy as np
