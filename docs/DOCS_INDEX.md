@@ -13,10 +13,6 @@ This index defines active versus archived documentation paths for this repositor
 - `docs/explained_report_artifact_contract.md`
 - `docs/back_log.md`
 - `docs/ROUTE_STATE_FIELD_INVARIANTS.md`
-- `docs/forensic_analysis_accepted_move_count_field_verification.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md`
-- `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md`
 - `docs/example_commands_image_sweep_mode.md`
 - `docs/json_schema/benchmark_summary.schema.md`
 - `docs/json_schema/failure_taxonomy.schema.md`
@@ -25,6 +21,31 @@ This index defines active versus archived documentation paths for this repositor
 - `docs/json_schema/repair_route_decision.schema.md`
 - `docs/json_schema/visual_delta_summary.schema.md`
 - `docs/DOCS_INDEX.md`
+
+## COMPLETE — Recommendation 4: Fully Specified Partial-Phase2 Route State
+
+**Status: IMPLEMENTED** · 2026-05-13 · Commit `ef7d5de` · Branch `working-changes`
+
+All five documents below describe a completed implementation. The primary plan and execution prompt
+are the definitive records. The audit and review docs contain the pre-implementation analysis that
+motivated the work — their "broken state" sections are historical.
+
+| Document | Role | Status |
+|---|---|---|
+| `docs/implementation_prompt_recommendation_4.md` | **Primary execution prompt** — step-by-step plan with hardening checklist | **COMPLETE** — all checklist items checked |
+| `docs/industry_standard_implementation_execution_plan_recommendation_4.md` | Industry-standard detailed plan — governance, code anchors, test-first spec | **COMPLETE** — all code anchors resolved |
+| `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_audit.md` | Pre-implementation traceability audit — identified plan gaps and blockers | **COMPLETE** — all audit blockers resolved |
+| `docs/industry_standard_implementation_execution_plan_recommendation_4_forensic_review.md` | Pre-implementation plan review — 14 mandatory correction items | **COMPLETE** — all 14 corrections applied |
+| `docs/forensic_analysis_accepted_move_count_field_verification.md` | Accepted-move-count field correctness analysis — identified `n_fixed` vs log seam | **COMPLETE** — invariant enforced via `RouteStateInvariantError` |
+
+**What was implemented:**
+- `RepairRouteResult` expanded with 22 route-state fields + `route_state_fields()` method
+- `_build_route_result()` guard — only legal construction path inside `route_late_stage_failure()`
+- `selected_route` can no longer be `"needs_sa_or_adaptive_rerun"` — that value moved to `next_recommended_route`
+- `route_outcome_detail` 11-value enum covers all route outcomes
+- `write_repair_route_artifacts()` enforces `accepted_move_count == n_fixed` via `RouteStateInvariantError`
+- All metrics, summaries, sweep rows, report text, schemas, and demo docs updated
+- Verified live: `already_solved`, `phase2_full_repair` (solved), `phase2_full_repair_partial_progress_unresolved`
 
 ## Active — Gameworks Package
 
