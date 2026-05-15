@@ -44,6 +44,7 @@ from report import (
     render_report_explained,
 )
 from sa import compile_sa_kernel, run_sa
+from sa_parallel import run_sa_parallel_best
 from solver import ensure_solver_warmed, solve_board
 from source_config import SourceImageConfig, resolve_source_image_config
 
@@ -722,7 +723,7 @@ def run_iter9_single(
 
     # Fine SA
     phase_start = time.perf_counter()
-    grid, _, history_f = run_sa(
+    grid, _, history_f = run_sa_parallel_best(
         sa_fn,
         grid,
         target,
@@ -755,7 +756,7 @@ def run_iter9_single(
             weight_ref = compute_sealing_prevention_weights(
                 weight_ref, grid, target, HI_THR, SEAL_THR, SEAL_STR
             )
-        grid, _, hist = run_sa(
+        grid, _, hist = run_sa_parallel_best(
             sa_fn,
             grid,
             target,
