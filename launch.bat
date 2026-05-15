@@ -101,12 +101,12 @@ if "!BOARD_W!"=="" set BOARD_W=300
 set BOARD_H=
 set "CALC_IMG=!IMG_PATH!"
 set "CALC_W=!BOARD_W!"
-for /f "usebackq" %%H in (`"!PYTHON!" -c "import os,sys;sys.path.insert(0,r'%~dp0');from board_sizing import derive_board_from_width;s=derive_board_from_width(os.environ['CALC_IMG'],int(os.environ['CALC_W']));print(s['board_height'])" 2^>nul`) do set BOARD_H=%%H
+for /f "usebackq" %%H in (`"!PYTHON!" -c "import os,sys;sys.path.insert(0,os.getcwd());from board_sizing import derive_board_from_width;s=derive_board_from_width(os.environ['CALC_IMG'],int(os.environ['CALC_W']));print(s['board_height'])" 2^>nul`) do set BOARD_H=%%H
 if "!BOARD_H!"=="" (
-    echo   (board height auto-calculation unavailable, using 370)
+    echo   Board height auto-calculation unavailable, using 370
     set BOARD_H=370
 ) else (
-    echo   Board height (auto from image aspect ratio): !BOARD_H! tiles
+    echo   Board height ^(auto from image aspect ratio^): !BOARD_H! tiles
 )
 
 set /p MINES=" Mine count (0 = auto) [0]: "
