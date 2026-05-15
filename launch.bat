@@ -99,7 +99,11 @@ set /p BOARD_W=" Board width  in tiles [300]: "
 if "!BOARD_W!"=="" set BOARD_W=300
 
 set BOARD_H=
-for /f "usebackq" %%H in (`"!PYTHON!" "%~dp0_calc_board_height.py" "!IMG_PATH!" !BOARD_W! 2^>nul`) do set BOARD_H=%%H
+set "_BHTMP=%TEMP%\_ms_bh.txt"
+"!PYTHON!" "%~dp0_calc_board_height.py" "!IMG_PATH!" !BOARD_W! > "!_BHTMP!" 2>nul
+if exist "!_BHTMP!" set /p BOARD_H=<"!_BHTMP!"
+if exist "!_BHTMP!" del "!_BHTMP!" >nul 2>&1
+set _BHTMP=
 if "!BOARD_H!"=="" (
     echo   Board height auto-calculation unavailable, using 370
     set BOARD_H=370
