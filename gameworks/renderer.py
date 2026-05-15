@@ -29,7 +29,8 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 BASE_TILE = 32          # nominal size; actual cell size is auto-computed
-ANIM_TICK = 0.035       # seconds per tile in cascade reveal
+ANIM_TICK = 0.035           # seconds per tile in cascade reveal (small cascades)
+CASCADE_MAX_DURATION_S = 1.0  # largest cascade never animates longer than this
 FPS = 30                # Minesweeper needs no more than 30 fps
 
 # Dark modern palette
@@ -138,7 +139,11 @@ class AnimationCascade:
 
     def __init__(self, positions: List[Tuple[int, int]], speed: float = ANIM_TICK, _clock=None):
         self.positions = positions
-        self.speed = speed
+        n = len(positions)
+        # Cap total animation to CASCADE_MAX_DURATION_S regardless of cascade size.
+        # Without this, a 1 350-cell cascade takes 45 s at 0.035 s/cell.
+        effective_speed = speed if n == 0 else min(speed, CASCADE_MAX_DURATION_S / n)
+        self.speed = effective_speed
         self._clock = _clock if _clock is not None else time.monotonic
         self._start = self._clock()
         self._idx = 0
@@ -154,6 +159,16 @@ class AnimationCascade:
         elapsed = self._clock() - self._start
         self._idx = min(int(elapsed / self.speed) + 1, len(self.positions))
         return self.positions[:self._idx]
+
+    def advance(self) -> List[Tuple[int, int]]:
+        """Return only the cells newly revealed since the last advance() or current() call.
+
+        Used by the renderer to avoid re-iterating all previously-revealed cells
+        every frame (O(N) per frame → O(delta) per frame).
+        """
+        old_idx = self._idx
+        self.current()          # updates self._idx
+        return self.positions[old_idx:self._idx]
 
     def finished_after(self) -> float:
         """Estimated seconds until finished."""
@@ -404,8 +419,12 @@ class Renderer:
         # Replaces per-cell (x,y) tuple construction & set lookup (333k+ allocs/frame
         # at max zoom-out → gen-0 GC storms).
         bh_arr, bw_arr = self.board.height, self.board.width
-        self._anim_arr:     np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
-        self._win_anim_arr: np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._anim_arr:          np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._win_anim_arr:      np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        # Persistent cascade accumulator — NOT cleared every frame; updated incrementally
+        # via AnimationCascade.advance() to avoid O(N²) re-iteration of all revealed cells.
+        self._cascade_anim_arr:  np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._prev_cascade: object = None   # detect cascade identity change
         # FA-022: separate int coords for pressed cell — avoids tuple comparison per cell.
         self._pressed_x: int = -1
         self._pressed_y: int = -1
@@ -933,10 +952,15 @@ class Renderer:
         win_anim_arr.fill(False)
 
         anim_set = set()     # kept for _draw_win_animation_fx which still needs the set
+        if self.cascade is not self._prev_cascade:
+            # New cascade started (or cleared) — reset persistent accumulator
+            self._cascade_anim_arr.fill(False)
+            self._prev_cascade = self.cascade
         if self.cascade and not self.cascade.done:
-            for (cx, cy) in self.cascade.current():
-                anim_arr[cy, cx] = True
-                anim_set.add((cx, cy))
+            # advance() returns only newly-revealed cells this frame — O(delta) not O(N)
+            for (cx, cy) in self.cascade.advance():
+                self._cascade_anim_arr[cy, cx] = True
+            np.copyto(anim_arr, self._cascade_anim_arr)
 
         win_anim_set = set()
         if self.win_anim and not self.win_anim.done:
