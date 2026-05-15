@@ -684,8 +684,12 @@ def run_iter9_single(
     # Coarse SA
     phase_start = time.perf_counter()
     cw, ch = bw // 2, bh // 2
+    _teval_pil = PILImage.fromarray(
+        (target_eval / 8.0 * 255.0).clip(0, 255).astype(np.uint8)
+    ).resize((cw, ch), PILImage.BILINEAR)
+    _target_c_raw = np.array(_teval_pil, dtype=np.float32) / 255.0 * 8.0
     target_c = apply_piecewise_T_compression(
-        load_image_smart(str(source_cfg.absolute_path), cw, ch, invert=True), PW_KNEE, PW_T_MAX
+        np.ascontiguousarray(_target_c_raw, dtype=np.float32), PW_KNEE, PW_T_MAX
     )
     weight_c = compute_zone_aware_weights(target_c, BP_TRUE, BP_TRANS, HI_BOOST, HI_THR)
     forbidden_c, _, _, _ = build_adaptive_corridors(target_c, border=BORDER)
