@@ -700,8 +700,7 @@ def run_iter9_single(
         size=min(int(DENSITY * cw * ch), len(available_c)),
         replace=False,
     )
-    for idx in picks:
-        grid_c[available_c[idx][0], available_c[idx][1]] = 1
+    grid_c[available_c[picks, 0], available_c[picks, 1]] = 1
     grid_c, _, history_c = run_sa(
         sa_fn,
         grid_c,

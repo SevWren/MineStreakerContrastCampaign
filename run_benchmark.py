@@ -386,8 +386,7 @@ def run_normal_child(
     grid_c = np.zeros((c_h, c_w), dtype=np.int8)
     available_c = np.argwhere(forbidden_c == 0)
     picks = rng.choice(len(available_c), size=min(int(DENSITY * c_w * c_h), len(available_c)), replace=False)
-    for idx in picks:
-        grid_c[available_c[idx][0], available_c[idx][1]] = 1
+    grid_c[available_c[picks, 0], available_c[picks, 1]] = 1
     grid_c, _, hist_c = run_sa(
         sa_fn,
         grid_c,
