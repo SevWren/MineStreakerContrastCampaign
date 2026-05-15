@@ -374,16 +374,19 @@ def run_normal_child(
 
     phase_start = time.perf_counter()
     c_w, c_h = board_w // 2, board_h // 2
+    _teval_pil = PILImage.fromarray(
+        (target_eval / 8.0 * 255.0).clip(0, 255).astype(np.uint8)
+    ).resize((c_w, c_h), PILImage.BILINEAR)
+    _target_c_raw = np.array(_teval_pil, dtype=np.float32) / 255.0 * 8.0
     target_c = apply_piecewise_T_compression(
-        load_image_smart(str(source_cfg.absolute_path), c_w, c_h, invert=True), PW_KNEE, PW_T_MAX
+        np.ascontiguousarray(_target_c_raw, dtype=np.float32), PW_KNEE, PW_T_MAX
     )
     weight_c = compute_zone_aware_weights(target_c, BP_TRUE, BP_TRANS, HI_BOOST, HI_THR)
     forbidden_c, _, _, _ = build_adaptive_corridors(target_c, border=BORDER)
     grid_c = np.zeros((c_h, c_w), dtype=np.int8)
     available_c = np.argwhere(forbidden_c == 0)
     picks = rng.choice(len(available_c), size=min(int(DENSITY * c_w * c_h), len(available_c)), replace=False)
-    for idx in picks:
-        grid_c[available_c[idx][0], available_c[idx][1]] = 1
+    grid_c[available_c[picks, 0], available_c[picks, 1]] = 1
     grid_c, _, hist_c = run_sa(
         sa_fn,
         grid_c,

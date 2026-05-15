@@ -3,7 +3,7 @@ sa.py — Compiled simulated annealing kernel with Numba.
 Structured for parallel multi-start execution at the caller level.
 """
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 try:
     from .core import compute_N as _compute_N
@@ -17,7 +17,7 @@ def _as_contig(arr: np.ndarray, dtype) -> np.ndarray:
     return np.ascontiguousarray(arr, dtype=dtype)
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=True, parallel=True)
 def _sa_kernel(grid, N_field, target, weights, forbidden,
                n_iters, T_start, T_min, alpha,
                border, H, W, seed):
@@ -30,7 +30,7 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
 
     best_grid = grid.copy()
     current_loss = np.float64(0.0)
-    for y in range(H):
+    for y in prange(H):
         for x in range(W):
             diff = np.float64(N_field[y, x]) - np.float64(target[y, x])
             current_loss += np.float64(weights[y, x]) * diff * diff
