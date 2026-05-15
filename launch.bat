@@ -99,9 +99,7 @@ set /p BOARD_W=" Board width  in tiles [300]: "
 if "!BOARD_W!"=="" set BOARD_W=300
 
 set BOARD_H=
-set "CALC_IMG=!IMG_PATH!"
-set "CALC_W=!BOARD_W!"
-for /f "usebackq" %%H in (`"!PYTHON!" -c "import os,sys;sys.path.insert(0,os.getcwd());from board_sizing import derive_board_from_width;s=derive_board_from_width(os.environ['CALC_IMG'],int(os.environ['CALC_W']));print(s['board_height'])" 2^>nul`) do set BOARD_H=%%H
+for /f "usebackq" %%H in (`"!PYTHON!" "%~dp0_calc_board_height.py" "!IMG_PATH!" !BOARD_W! 2^>nul`) do set BOARD_H=%%H
 if "!BOARD_H!"=="" (
     echo   Board height auto-calculation unavailable, using 370
     set BOARD_H=370
