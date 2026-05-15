@@ -98,8 +98,16 @@ echo.
 set /p BOARD_W=" Board width  in tiles [300]: "
 if "!BOARD_W!"=="" set BOARD_W=300
 
-set /p BOARD_H=" Board height in tiles [370]: "
-if "!BOARD_H!"=="" set BOARD_H=370
+set BOARD_H=
+set "CALC_IMG=!IMG_PATH!"
+set "CALC_W=!BOARD_W!"
+for /f "usebackq" %%H in (`"!PYTHON!" -c "import os,sys;sys.path.insert(0,r'%~dp0');from board_sizing import derive_board_from_width;s=derive_board_from_width(os.environ['CALC_IMG'],int(os.environ['CALC_W']));print(s['board_height'])" 2^>nul`) do set BOARD_H=%%H
+if "!BOARD_H!"=="" (
+    echo   (board height auto-calculation unavailable, using 370)
+    set BOARD_H=370
+) else (
+    echo   Board height (auto from image aspect ratio): !BOARD_H! tiles
+)
 
 set /p MINES=" Mine count (0 = auto) [0]: "
 if "!MINES!"=="" set MINES=0
@@ -123,7 +131,11 @@ if defined DIFF_ARG (
 ) else (
     set CMD=!CMD! !MODE_ARG!
     if defined BOARD_W set CMD=!CMD! --board-w !BOARD_W!
-    if defined BOARD_H set CMD=!CMD! --board-h !BOARD_H!
+    if "!MODE_CHOICE!"=="6" (
+        rem Image mode: --board-h is ignored by engine (auto-derived from image); omit it
+    ) else (
+        if defined BOARD_H set CMD=!CMD! --board-h !BOARD_H!
+    )
     if defined MINES   set CMD=!CMD! --mines !MINES!
 )
 

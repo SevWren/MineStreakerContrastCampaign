@@ -296,6 +296,17 @@ class Renderer:
 
         self._win = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
         self._win_size: Tuple[int, int] = self._win.get_size()
+        # Maximize on Windows for large boards (w_cols >= 100 → panel-below layout)
+        if not self._panel_right:
+            try:
+                import sys as _sys, ctypes as _ctypes
+                if _sys.platform == "win32":
+                    _hwnd = pygame.display.get_wm_info().get("window")
+                    if _hwnd:
+                        _ctypes.windll.user32.ShowWindow(_hwnd, 3)  # SW_MAXIMIZE = 3
+                        self._win_size = self._win.get_size()        # re-sync after maximize
+            except Exception:
+                pass  # Non-Windows, headless, or ctypes unavailable — silently skip
         pygame.display.set_caption("Mine-Streaker · Image Minesweeper")
         self._icon = self._make_icon()
         pygame.display.set_icon(self._icon)
@@ -734,14 +745,37 @@ class Renderer:
           2A: was computing oy but never assigning it to btn.y (panel_right=False)
           2B: panel_right=True branch was entirely absent — buttons drifted as tile changed
           2C: sy double-count in _draw_panel fixed separately (use btn.bottom directly)
+          FA-DYN: fonts and button heights now recalculated on every zoom/resize
         """
         # Invalidate board rect cache — tile size changed, so cached rect is stale
         self._cached_board_rect = None
 
-        ts   = self._tile
-        bh   = self._btn_new.height
-        gap  = self._btn_gap
+        # ── Recalculate fonts (dynamic sizing) ────────────────────────────────
+        # Use panel-layout-specific floor to ensure readable minimum font size.
+        # Prevents unreadably small fonts (e.g. 9px) at auto-tile=10 on large boards.
+        if self._panel_right:
+            panel_floor = max(11, self.PANEL_W // 14)          # right panel: ~17px at PANEL_W=240
+        else:
+            panel_floor = max(11, self._win_size[1] // 55)     # below panel: ~19px at 1080h
+        font_base = max(panel_floor, self._tile * 3 // 5)
+        font_big  = max(14, self._tile * 7 // 8)
+        self._font_big   = pygame.font.SysFont("consolas", font_big, bold=True)
+        self._font_med   = pygame.font.SysFont("consolas", font_base, bold=True)
+        self._font_small = pygame.font.SysFont("consolas", max(9, font_base - 2))
+        self._font_tiny  = pygame.font.SysFont("consolas", max(8, font_base - 3))
 
+        # ── Recalculate button dimensions ─────────────────────────────────────
+        # MUST happen before positioning loop — loop uses btn_h variable, not
+        # self._btn_new.height, to avoid cascade bug where old height drives spacing.
+        btn_h = max(28, font_base + 10)
+        gap   = max(4, btn_h // 5)
+        for btn in (self._btn_new, self._btn_help, self._btn_fog,
+                    self._btn_save, self._btn_restart, self._btn_dev_solve):
+            btn.height = btn_h
+        self._btn_gap = gap
+
+        # ── Compute panel origin ──────────────────────────────────────────────
+        ts = self._tile
         if self._panel_right:
             px = self.board.width * ts + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
@@ -752,13 +786,14 @@ class Renderer:
             px = self.PAD
             oy = int(self.BOARD_OY + self.board.height * ts + self.PAD)
 
+        # ── Reposition buttons using NEW btn_h and gap ────────────────────────
         for i, btn in enumerate((self._btn_new, self._btn_help, self._btn_fog,
                                    self._btn_save, self._btn_restart)):
             btn.x = px
-            btn.y = oy + (bh + gap) * i
+            btn.y = oy + (btn_h + gap) * i
 
         self._btn_dev_solve.x = px
-        self._btn_dev_solve.y = oy + (bh + gap) * 5 + gap * 3
+        self._btn_dev_solve.y = oy + (btn_h + gap) * 5 + gap * 3
 
     # ══════════════════════════════════════════════════════════════════════
     #  Draw

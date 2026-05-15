@@ -2,6 +2,7 @@
 sa.py — Compiled simulated annealing kernel with Numba.
 Structured for parallel multi-start execution at the caller level.
 """
+import time
 import numpy as np
 from numba import njit, prange
 
@@ -194,6 +195,7 @@ def compile_sa_kernel():
     forbidden_w[:1, :] = 1; forbidden_w[-1:, :] = 1
     forbidden_w[:, :1] = 1; forbidden_w[:, -1:] = 1
 
+    t0 = time.perf_counter()
     bg, bl, bh = _sa_kernel(
         grid_w.copy(), N_w.copy(), target_w, weights_w, forbidden_w,
         n_iters=np.int64(200), T_start=np.float64(2.0), T_min=np.float64(0.001),
@@ -202,7 +204,9 @@ def compile_sa_kernel():
 
     assert bg.shape == (H, W), f"Warmup shape wrong: {bg.shape}"
     assert float(bl) >= 0.0, f"Warmup loss negative: {bl}"
+    elapsed_sa = time.perf_counter() - t0
     print(f"  SA warmup OK — best_loss={bl:.3f}", flush=True)
+    print(f"  SA kernel: warmed up in {elapsed_sa:.2f}s", flush=True)
     return _sa_kernel
 
 
