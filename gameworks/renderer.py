@@ -347,8 +347,8 @@ class Renderer:
             px = self.board.width * self._tile + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
         elif self._panel_overlay:
-            px = win_w - self.PANEL_W - self.PAD
-            oy = self.BOARD_OY
+            px = win_w - self.PANEL_W          # flush with right edge — no gap
+            oy = self.HEADER_H                  # dock immediately below header — no extra PAD gap
         else:
             px = self.PAD
             oy = int(self.BOARD_OY + h_rows * self._tile + self.PAD)
@@ -799,8 +799,8 @@ class Renderer:
             px = self.board.width * ts + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
         elif self._panel_overlay:
-            px = self._win_size[0] - self.PANEL_W - self.PAD   # FA-006: use cached _win_size
-            oy = self.BOARD_OY
+            px = self._win_size[0] - self.PANEL_W              # flush right edge
+            oy = self.HEADER_H                                  # dock below header, no PAD gap
         else:
             px = self.PAD
             oy = int(self.BOARD_OY + self.board.height * ts + self.PAD)
