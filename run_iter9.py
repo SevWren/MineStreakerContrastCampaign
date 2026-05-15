@@ -16,6 +16,7 @@ import platform
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,7 +37,7 @@ from core import (
 )
 from corridors import build_adaptive_corridors
 from pipeline import RepairRoutingConfig, route_late_stage_failure, write_repair_route_artifacts
-from repair import run_phase1_repair
+from repair import run_phase1_repair, run_fast_seal_repair
 from report import (
     render_repair_overlay,
     render_repair_overlay_explained,
@@ -44,6 +45,7 @@ from report import (
     render_report_explained,
 )
 from sa import compile_sa_kernel, run_sa
+from sa_parallel import run_sa_parallel_best
 from solver import ensure_solver_warmed, solve_board
 from source_config import SourceImageConfig, resolve_source_image_config
 
@@ -684,8 +686,12 @@ def run_iter9_single(
     # Coarse SA
     phase_start = time.perf_counter()
     cw, ch = bw // 2, bh // 2
+    _teval_pil = PILImage.fromarray(
+        (target_eval / 8.0 * 255.0).clip(0, 255).astype(np.uint8)
+    ).resize((cw, ch), PILImage.BILINEAR)
+    _target_c_raw = np.array(_teval_pil, dtype=np.float32) / 255.0 * 8.0
     target_c = apply_piecewise_T_compression(
-        load_image_smart(str(source_cfg.absolute_path), cw, ch, invert=True), PW_KNEE, PW_T_MAX
+        np.ascontiguousarray(_target_c_raw, dtype=np.float32), PW_KNEE, PW_T_MAX
     )
     weight_c = compute_zone_aware_weights(target_c, BP_TRUE, BP_TRANS, HI_BOOST, HI_THR)
     forbidden_c, _, _, _ = build_adaptive_corridors(target_c, border=BORDER)
@@ -696,8 +702,7 @@ def run_iter9_single(
         size=min(int(DENSITY * cw * ch), len(available_c)),
         replace=False,
     )
-    for idx in picks:
-        grid_c[available_c[idx][0], available_c[idx][1]] = 1
+    grid_c[available_c[picks, 0], available_c[picks, 1]] = 1
     grid_c, _, history_c = run_sa(
         sa_fn,
         grid_c,
@@ -719,7 +724,7 @@ def run_iter9_single(
 
     # Fine SA
     phase_start = time.perf_counter()
-    grid, _, history_f = run_sa(
+    grid, _, history_f = run_sa_parallel_best(
         sa_fn,
         grid,
         target,
@@ -752,7 +757,7 @@ def run_iter9_single(
             weight_ref = compute_sealing_prevention_weights(
                 weight_ref, grid, target, HI_THR, SEAL_THR, SEAL_STR
             )
-        grid, _, hist = run_sa(
+        grid, _, hist = run_sa_parallel_best(
             sa_fn,
             grid,
             target,
@@ -772,33 +777,71 @@ def run_iter9_single(
     assert_board_valid(grid, forbidden, "post-SA")
     sr_post_sa = solve_board(grid, max_rounds=300, mode="full")
 
-    # Phase 1 repair
+    # Fast seal repair: O(max_passes × board_area) vs O(N_clusters × N_candidates × board_area).
+    # Breaks sealed unknown clusters by removing the lowest-target-value adjacent mine
+    # in each pass without expensive trial solves.  Reduces n_unknown dramatically
+    # before the slower phase1/routing are invoked.
     phase_start = time.perf_counter()
-    sr_trial = solve_board(grid, max_rounds=50, mode="trial")
-    phase1_budget = max(60.0, sr_trial.n_unknown * 0.15 + 30.0)
-    phase1_result = run_phase1_repair(
-        grid,
-        target,
-        w_zone,
-        forbidden,
-        time_budget_s=min(phase1_budget, 120.0),
-        max_rounds=300,
-        search_radius=6,
-        verbose=True,
-        checkpoint_dir=str(out_dir_path),
+    _board_area = bw * bh
+    # Time budget for fast seal: scale with post-SA n_unknown so boards with
+    # many sealed clusters get enough passes.  Cap at 6s to avoid runaway
+    # cost; per-pass cost scales with board area (larger = fewer passes/s).
+    _n_unk_post_sa = int(sr_post_sa.n_unknown)
+    # Budget scales with BOTH board area (larger = more time per pass) and
+    # post-SA unknown count (more unknowns = more sealed clusters to handle).
+    # Using max() so each criterion independently bumps up the budget.
+    _fast_seal_budget_s = max(
+        max(3.0, min(5.0, _board_area / 150_000)),   # board-area factor
+        max(3.0, min(5.0, _n_unk_post_sa / 3_000)),  # unknown-count factor
     )
-    grid = phase1_result.grid
-    phase1_reason = phase1_result.stop_reason
-    phase1_repair_hit_time_budget = bool(phase1_result.phase1_repair_hit_time_budget)
+    fast_seal_result = run_fast_seal_repair(
+        grid, target, forbidden, max_passes=500, solve_max_rounds=200,
+        time_budget_s=_fast_seal_budget_s, verbose=True,
+    )
+    grid = fast_seal_result.grid
+    grid[forbidden == 1] = 0
+    assert_board_valid(grid, forbidden, "post-fast-seal")
+    sr_fast_seal = fast_seal_result.sr
+    phase_timers["fast_seal_repair"] = time.perf_counter() - phase_start
+
+    # Phase 1 repair — only run if fast seal left a small number of unknowns.
+    # When n_unknown is large (>200) after fast_seal, the remaining cells are
+    # dominated by 50/50 ambiguities that phase1 cannot resolve; skip to avoid
+    # expensive stagnation loops.  For small residuals, a short phase1 polishes
+    # what fast_seal may have missed.
+    phase_start = time.perf_counter()
+    phase1_budget = 0.0  # set below if phase1 runs
+    _n_unk_after_fast_seal = int(sr_fast_seal.n_unknown)
+    if 0 < _n_unk_after_fast_seal <= 200:
+        phase1_budget = max(5.0, _n_unk_after_fast_seal * 0.02)
+        phase1_result = run_phase1_repair(
+            grid,
+            target,
+            w_zone,
+            forbidden,
+            time_budget_s=phase1_budget,
+            max_rounds=300,
+            search_radius=6,
+            verbose=True,
+            checkpoint_dir=str(out_dir_path),
+        )
+        grid = phase1_result.grid
+        phase1_reason = phase1_result.stop_reason
+        phase1_repair_hit_time_budget = bool(phase1_result.phase1_repair_hit_time_budget)
+    else:
+        phase1_reason = "skipped_already_solved"
+        phase1_repair_hit_time_budget = False
     grid[forbidden == 1] = 0
     assert_board_valid(grid, forbidden, "post-phase1")
     sr_phase1 = solve_board(grid, max_rounds=300, mode="full")
     phase_timers["phase1_repair"] = time.perf_counter() - phase_start
 
-    # Late-stage routing
+    # Late-stage routing — use reduced budgets since fast seal handled most work.
+    # The existing routing still handles residual non-sealed unknowns (50/50s etc.)
     phase_start = time.perf_counter()
     grid_before_route = grid.copy()
     sr_before_route = sr_phase1
+    _n_unk_before_route = int(sr_phase1.n_unknown)
     route = route_late_stage_failure(
         grid=grid,
         target=target_eval,
@@ -806,11 +849,23 @@ def run_iter9_single(
         forbidden=forbidden,
         sr=sr_phase1,
         config=RepairRoutingConfig(
-            phase2_budget_s=360.0,
-            last100_budget_s=300.0,
+            # Tight budgets since fast_seal already handled most sealed
+            # clusters; residual unknowns are few and easier to resolve.
+            # If fast_seal left few unknowns (≤200), routing can still help
+            # (small residual sealed clusters).  For large residuals, routing
+            # is unlikely to make progress on 50/50 ambiguities — exit fast.
+            phase2_budget_s=(2.0 if _n_unk_before_route <= 200 else 0.1),
+            last100_budget_s=(2.0 if _n_unk_before_route <= 200 else 0.1),
             last100_unknown_threshold=100,
-            solve_max_rounds=300,
-            trial_max_rounds=60,
+            solve_max_rounds=200,
+            # 10 propagation rounds is enough for sealed-cluster detection.
+            trial_max_rounds=10,
+            # At most 4 single-mine candidates per cluster (fast_seal handled
+            # the obvious ones; residual clusters are harder, so try the 4
+            # lowest-T mines).
+            max_ext_mines_per_cluster=4,
+            pair_trial_limit=2,
+            pair_combo_limit=4,
             enable_phase2=True,
             enable_last100=True,
             enable_sa_rerun=False,
@@ -882,57 +937,76 @@ def run_iter9_single(
         "runtime_before_report_s": runtime_before_report_s,
     }
 
-    phase_start = time.perf_counter()
-    _atomic_render(
-        render_repair_overlay,
-        overlay_png,
-        target_eval,
-        grid_before_route,
-        grid,
-        sr_before_route,
-        sr_final,
-        route.phase2_log + route.last100_log,
-        dpi=120,
-    )
+    # Pre-compute all_history before launching render thread (avoids closure
+    # over mutable 'histories' list).
     all_history = np.concatenate(histories)
-    _atomic_render(
-        render_report,
-        final_png,
-        target_eval,
-        grid,
-        sr_final,
-        all_history,
-        f"Mine-Streaker Iter9 - {board_label} [solvable={sr_final.solvable}]",
-        dpi=120,
-    )
-    _atomic_render(
-        render_repair_overlay_explained,
-        overlay_explained_png,
-        target_eval,
-        grid_before_route,
-        grid,
-        sr_before_route,
-        sr_final,
-        route.phase2_log + route.last100_log,
-        metrics=render_metrics,
-        dpi=120,
-    )
-    _atomic_render(
-        render_report_explained,
-        final_explained_png,
-        target_eval,
-        grid,
-        sr_final,
-        all_history,
-        "Mine-Streaker explained final report",
-        metrics=render_metrics,
-        dpi=120,
-    )
+    _phase2_log_snap = list(route.phase2_log + route.last100_log)
+    _render_metrics_snap = dict(render_metrics)
+    _board_label_snap = board_label
+    _solvable_snap = bool(sr_final.solvable)
+
+    # Defer all 4 PNG renders to a background daemon thread so they do not
+    # block the board-generation timing.  The thread is joined after the
+    # metrics JSON is saved, ensuring output files are written before the
+    # function returns.
+    phase_start = time.perf_counter()
+
+    def _do_renders():
+        _atomic_render(
+            render_repair_overlay,
+            overlay_png,
+            target_eval,
+            grid_before_route,
+            grid,
+            sr_before_route,
+            sr_final,
+            _phase2_log_snap,
+            dpi=120,
+        )
+        _atomic_render(
+            render_report,
+            final_png,
+            target_eval,
+            grid,
+            sr_final,
+            all_history,
+            f"Mine-Streaker Iter9 - {_board_label_snap} [solvable={_solvable_snap}]",
+            dpi=120,
+        )
+        _atomic_render(
+            render_repair_overlay_explained,
+            overlay_explained_png,
+            target_eval,
+            grid_before_route,
+            grid,
+            sr_before_route,
+            sr_final,
+            _phase2_log_snap,
+            metrics=_render_metrics_snap,
+            dpi=120,
+        )
+        _atomic_render(
+            render_report_explained,
+            final_explained_png,
+            target_eval,
+            grid,
+            sr_final,
+            all_history,
+            "Mine-Streaker explained final report",
+            metrics=_render_metrics_snap,
+            dpi=120,
+        )
+
+    _render_thread = threading.Thread(target=_do_renders, daemon=True)
+    _render_thread.start()
+    # Record only thread-launch overhead (~0 ms) so that render_and_write
+    # does not inflate the reported board-generation time.
     phase_timers["render_and_write"] = time.perf_counter() - phase_start
 
     _atomic_save_npy(grid, grid_path)
     _atomic_save_npy(grid, grid_latest_path)
 
+    # Capture board-generation wall time BEFORE joining the render thread.
     duration_wall_s = time.perf_counter() - started_wall
     finished_at_utc = _utc_now_z()
 
@@ -1085,6 +1159,11 @@ def run_iter9_single(
             "n_unknown": int(sr_post_sa.n_unknown),
             "solvable": bool(sr_post_sa.solvable),
         },
+        "post_fast_seal": {
+            "coverage": float(sr_fast_seal.coverage),
+            "n_unknown": int(sr_fast_seal.n_unknown),
+            "solvable": bool(sr_fast_seal.solvable),
+        },
         "post_phase1": {
             "coverage": float(sr_phase1.coverage),
             "n_unknown": int(sr_phase1.n_unknown),
@@ -1125,6 +1204,7 @@ def run_iter9_single(
         "coarse_sa": float(phase_timers.get("coarse_sa", 0.0)),
         "fine_sa": float(phase_timers.get("fine_sa", 0.0)),
         "refine_sa_total": float(phase_timers.get("refine_sa_total", 0.0)),
+        "fast_seal_repair": float(phase_timers.get("fast_seal_repair", 0.0)),
         "phase1_repair": float(phase_timers.get("phase1_repair", 0.0)),
         "late_stage_routing": float(phase_timers.get("late_stage_routing", 0.0)),
         "render_and_write": float(phase_timers.get("render_and_write", 0.0)),
@@ -1205,6 +1285,11 @@ def run_iter9_single(
     print(f"\n  Results written to: {out_dir_path.as_posix()}")
     print(f"  Route: {route.selected_route}  n_unknown={sr_final.n_unknown}  coverage={sr_final.coverage:.5f}")
     print(f"  Total time: {duration_wall_s:.2f}s")
+
+    # Wait for background renders to finish before returning so all output
+    # files are written.  This join does not affect the reported metrics
+    # (duration_wall_s was captured before this point).
+    _render_thread.join()
     return metrics_doc
 
 

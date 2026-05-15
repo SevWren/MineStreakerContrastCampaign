@@ -58,6 +58,10 @@ class RepairRoutingConfig:
     last100_unknown_threshold: int = 100
     solve_max_rounds: int = 300
     trial_max_rounds: int = 60
+    # Candidate limits for phase2 full repair (lower = faster, fewer repairs)
+    max_ext_mines_per_cluster: int = 16
+    pair_trial_limit: int = 12
+    pair_combo_limit: int = 24
     # Control which repair methods are used during annealing
     enable_phase2: bool = True
     enable_last100: bool = True
@@ -305,6 +309,9 @@ def route_late_stage_failure(
             time_budget_s=float(config.phase2_budget_s),
             trial_max_rounds=int(config.trial_max_rounds),
             solve_max_rounds=int(config.solve_max_rounds),
+            max_ext_mines_per_cluster=int(config.max_ext_mines_per_cluster),
+            pair_trial_limit=int(config.pair_trial_limit),
+            pair_combo_limit=int(config.pair_combo_limit),
         )
         routed_grid = phase2_result.grid
         phase2_log = list(phase2_result.log)
@@ -706,7 +713,7 @@ def run_board(board_w, board_h, label, sa_fn, img_path, out_dir,
 
     # ── Step 6: validate ────────────────────────────────────────────────
     assert_board_valid(grid, forbidden, label='post-SA')
-    print(f"  assert_board_valid PASSED (post-SA)", flush=True)
+    print("  assert_board_valid PASSED (post-SA)", flush=True)
 
     # ── Step 7: repair ──────────────────────────────────────────────────
     try:
@@ -722,13 +729,12 @@ def run_board(board_w, board_h, label, sa_fn, img_path, out_dir,
         time_budget_s=min(repair_budget, 120.0), max_rounds=300,
         search_radius=6, verbose=verbose, checkpoint_dir=out_dir)
     grid = phase1_result.grid
-    sr = phase1_result.sr
     repair_reason = phase1_result.stop_reason
     grid[forbidden == 1] = 0
 
     # ── Step 8: validate post-repair ────────────────────────────────────
     assert_board_valid(grid, forbidden, label='post-repair')
-    print(f"  assert_board_valid PASSED (post-repair)", flush=True)
+    print("  assert_board_valid PASSED (post-repair)", flush=True)
 
     # ── Step 9: metrics ──────────────────────────────────────────────────
     try:

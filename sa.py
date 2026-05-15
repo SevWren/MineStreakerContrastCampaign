@@ -2,8 +2,9 @@
 sa.py — Compiled simulated annealing kernel with Numba.
 Structured for parallel multi-start execution at the caller level.
 """
+import time
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 try:
     from .core import compute_N as _compute_N
@@ -17,7 +18,7 @@ def _as_contig(arr: np.ndarray, dtype) -> np.ndarray:
     return np.ascontiguousarray(arr, dtype=dtype)
 
 
-@njit(cache=True, fastmath=True)
+@njit(cache=True, fastmath=True, parallel=True)
 def _sa_kernel(grid, N_field, target, weights, forbidden,
                n_iters, T_start, T_min, alpha,
                border, H, W, seed):
@@ -30,17 +31,36 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
 
     best_grid = grid.copy()
     current_loss = np.float64(0.0)
-    for y in range(H):
+    for y in prange(H):
         for x in range(W):
             diff = np.float64(N_field[y, x]) - np.float64(target[y, x])
             current_loss += np.float64(weights[y, x]) * diff * diff
 
     best_loss = current_loss
+    initial_loss = best_loss
     T = np.float64(T_start)
     log_interval = np.int64(50000)
     n_log = n_iters // log_interval + 1
     history = np.zeros(n_log, dtype=np.float64)
     h_idx = np.int64(0)
+
+    # Lazy best_grid copy: copy only when loss drops by _copy_gap since the
+    # last copy.  This amortises the memcpy cost across large boards without
+    # losing the best state (a final catch-up copy is done after the loop).
+    _copy_gap = max(np.float64(1.0), initial_loss * np.float64(1e-3))
+    _best_copy_threshold = initial_loss  # trigger first copy immediately
+
+    # Convergence plateau detection: stop early when best_loss stagnates.
+    # Every PLATEAU_CHECK_INTERVAL iterations, record best_loss in a ring
+    # buffer. If the range across PLATEAU_WINDOW consecutive checks is less
+    # than PLATEAU_THRESHOLD * initial_loss, the SA has converged.
+    _plateau_interval = np.int64(100_000)
+    _plateau_window = np.int64(5)
+    _plateau_buf = np.empty(5, dtype=np.float64)
+    for _pi in range(5):
+        _plateau_buf[_pi] = np.float64(1e18)
+    _plateau_ptr = np.int64(0)
+    _plateau_threshold = np.float64(1e-4) * max(initial_loss, np.float64(1.0))
 
     for it in range(n_iters):
         # Random candidate cell
@@ -104,7 +124,13 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
             current_loss += delta
             if current_loss < best_loss:
                 best_loss = current_loss
-                best_grid = grid.copy()
+                # Lazy copy: only write best_grid when loss drops by at least
+                # 0.1% of initial_loss.  This dramatically reduces memcpy
+                # overhead on large boards where early SA accepts many small
+                # improvements.  A final copy is performed after the loop.
+                if _best_copy_threshold - current_loss > np.float64(0.0):
+                    best_grid = grid.copy()
+                    _best_copy_threshold = current_loss - _copy_gap
 
         # Temperature schedule
         T = T * alpha
@@ -116,7 +142,29 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
             history[h_idx] = current_loss
             h_idx += 1
 
+        # Plateau early stopping: check every _plateau_interval iterations
+        if it % _plateau_interval == np.int64(0) and it > np.int64(0):
+            _plateau_buf[_plateau_ptr % _plateau_window] = best_loss
+            _plateau_ptr += np.int64(1)
+            if _plateau_ptr >= _plateau_window:
+                _p_max = np.float64(-1e18)
+                _p_min = np.float64(1e18)
+                for _pi in range(5):
+                    if _plateau_buf[_pi] > _p_max:
+                        _p_max = _plateau_buf[_pi]
+                    if _plateau_buf[_pi] < _p_min:
+                        _p_min = _plateau_buf[_pi]
+                if _p_max - _p_min < _plateau_threshold:
+                    break
+
     history[h_idx] = current_loss
+
+    # Final catch-up: if the current grid is at the best loss (SA ended
+    # there or the lazy copy gap means the final improvements were never
+    # flushed), do one last copy so best_grid is up to date.
+    if current_loss <= best_loss:
+        best_grid = grid.copy()
+
     return best_grid, best_loss, history
 
 
@@ -147,6 +195,7 @@ def compile_sa_kernel():
     forbidden_w[:1, :] = 1; forbidden_w[-1:, :] = 1
     forbidden_w[:, :1] = 1; forbidden_w[:, -1:] = 1
 
+    t0 = time.perf_counter()
     bg, bl, bh = _sa_kernel(
         grid_w.copy(), N_w.copy(), target_w, weights_w, forbidden_w,
         n_iters=np.int64(200), T_start=np.float64(2.0), T_min=np.float64(0.001),
@@ -155,7 +204,9 @@ def compile_sa_kernel():
 
     assert bg.shape == (H, W), f"Warmup shape wrong: {bg.shape}"
     assert float(bl) >= 0.0, f"Warmup loss negative: {bl}"
+    elapsed_sa = time.perf_counter() - t0
     print(f"  SA warmup OK — best_loss={bl:.3f}", flush=True)
+    print(f"  SA kernel: warmed up in {elapsed_sa:.2f}s", flush=True)
     return _sa_kernel
 
 

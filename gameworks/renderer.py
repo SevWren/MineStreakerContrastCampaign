@@ -29,7 +29,8 @@ except ImportError:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 BASE_TILE = 32          # nominal size; actual cell size is auto-computed
-ANIM_TICK = 0.035       # seconds per tile in cascade reveal
+ANIM_TICK = 0.035           # seconds per tile in cascade reveal (small cascades)
+CASCADE_MAX_DURATION_S = 1.0  # largest cascade never animates longer than this
 FPS = 30                # Minesweeper needs no more than 30 fps
 
 # Dark modern palette
@@ -138,7 +139,11 @@ class AnimationCascade:
 
     def __init__(self, positions: List[Tuple[int, int]], speed: float = ANIM_TICK, _clock=None):
         self.positions = positions
-        self.speed = speed
+        n = len(positions)
+        # Cap total animation to CASCADE_MAX_DURATION_S regardless of cascade size.
+        # Without this, a 1 350-cell cascade takes 45 s at 0.035 s/cell.
+        effective_speed = speed if n == 0 else min(speed, CASCADE_MAX_DURATION_S / n)
+        self.speed = effective_speed
         self._clock = _clock if _clock is not None else time.monotonic
         self._start = self._clock()
         self._idx = 0
@@ -154,6 +159,16 @@ class AnimationCascade:
         elapsed = self._clock() - self._start
         self._idx = min(int(elapsed / self.speed) + 1, len(self.positions))
         return self.positions[:self._idx]
+
+    def advance(self) -> List[Tuple[int, int]]:
+        """Return only the cells newly revealed since the last advance() or current() call.
+
+        Used by the renderer to avoid re-iterating all previously-revealed cells
+        every frame (O(N) per frame → O(delta) per frame).
+        """
+        old_idx = self._idx
+        self.current()          # updates self._idx
+        return self.positions[old_idx:self._idx]
 
     def finished_after(self) -> float:
         """Estimated seconds until finished."""
@@ -296,6 +311,17 @@ class Renderer:
 
         self._win = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
         self._win_size: Tuple[int, int] = self._win.get_size()
+        # Maximize on Windows for large boards (w_cols >= 100 → panel-below layout)
+        if not self._panel_right:
+            try:
+                import sys as _sys, ctypes as _ctypes
+                if _sys.platform == "win32":
+                    _hwnd = pygame.display.get_wm_info().get("window")
+                    if _hwnd:
+                        _ctypes.windll.user32.ShowWindow(_hwnd, 3)  # SW_MAXIMIZE = 3
+                        self._win_size = self._win.get_size()        # re-sync after maximize
+            except Exception:
+                pass  # Non-Windows, headless, or ctypes unavailable — silently skip
         pygame.display.set_caption("Mine-Streaker · Image Minesweeper")
         self._icon = self._make_icon()
         pygame.display.set_icon(self._icon)
@@ -321,8 +347,8 @@ class Renderer:
             px = self.board.width * self._tile + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
         elif self._panel_overlay:
-            px = win_w - self.PANEL_W - self.PAD
-            oy = self.BOARD_OY
+            px = win_w - self.PANEL_W          # flush with right edge — no gap
+            oy = self.HEADER_H                  # dock immediately below header — no extra PAD gap
         else:
             px = self.PAD
             oy = int(self.BOARD_OY + h_rows * self._tile + self.PAD)
@@ -393,8 +419,12 @@ class Renderer:
         # Replaces per-cell (x,y) tuple construction & set lookup (333k+ allocs/frame
         # at max zoom-out → gen-0 GC storms).
         bh_arr, bw_arr = self.board.height, self.board.width
-        self._anim_arr:     np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
-        self._win_anim_arr: np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._anim_arr:          np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._win_anim_arr:      np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        # Persistent cascade accumulator — NOT cleared every frame; updated incrementally
+        # via AnimationCascade.advance() to avoid O(N²) re-iteration of all revealed cells.
+        self._cascade_anim_arr:  np.ndarray = np.zeros((bh_arr, bw_arr), dtype=bool)
+        self._prev_cascade: object = None   # detect cascade identity change
         # FA-022: separate int coords for pressed cell — avoids tuple comparison per cell.
         self._pressed_x: int = -1
         self._pressed_y: int = -1
@@ -734,31 +764,55 @@ class Renderer:
           2A: was computing oy but never assigning it to btn.y (panel_right=False)
           2B: panel_right=True branch was entirely absent — buttons drifted as tile changed
           2C: sy double-count in _draw_panel fixed separately (use btn.bottom directly)
+          FA-DYN: fonts and button heights now recalculated on every zoom/resize
         """
         # Invalidate board rect cache — tile size changed, so cached rect is stale
         self._cached_board_rect = None
 
-        ts   = self._tile
-        bh   = self._btn_new.height
-        gap  = self._btn_gap
+        # ── Recalculate fonts (dynamic sizing) ────────────────────────────────
+        # Use panel-layout-specific floor to ensure readable minimum font size.
+        # Prevents unreadably small fonts (e.g. 9px) at auto-tile=10 on large boards.
+        if self._panel_right:
+            panel_floor = max(11, self.PANEL_W // 14)          # right panel: ~17px at PANEL_W=240
+        else:
+            panel_floor = max(11, self._win_size[1] // 55)     # below panel: ~19px at 1080h
+        font_base = max(panel_floor, self._tile * 3 // 5)
+        font_big  = max(14, self._tile * 7 // 8)
+        self._font_big   = pygame.font.SysFont("consolas", font_big, bold=True)
+        self._font_med   = pygame.font.SysFont("consolas", font_base, bold=True)
+        self._font_small = pygame.font.SysFont("consolas", max(9, font_base - 2))
+        self._font_tiny  = pygame.font.SysFont("consolas", max(8, font_base - 3))
 
+        # ── Recalculate button dimensions ─────────────────────────────────────
+        # MUST happen before positioning loop — loop uses btn_h variable, not
+        # self._btn_new.height, to avoid cascade bug where old height drives spacing.
+        btn_h = max(28, font_base + 10)
+        gap   = max(4, btn_h // 5)
+        for btn in (self._btn_new, self._btn_help, self._btn_fog,
+                    self._btn_save, self._btn_restart, self._btn_dev_solve):
+            btn.height = btn_h
+        self._btn_gap = gap
+
+        # ── Compute panel origin ──────────────────────────────────────────────
+        ts = self._tile
         if self._panel_right:
             px = self.board.width * ts + self.BOARD_OX + self.PAD
             oy = self.BOARD_OY
         elif self._panel_overlay:
-            px = self._win_size[0] - self.PANEL_W - self.PAD   # FA-006: use cached _win_size
-            oy = self.BOARD_OY
+            px = self._win_size[0] - self.PANEL_W              # flush right edge
+            oy = self.HEADER_H                                  # dock below header, no PAD gap
         else:
             px = self.PAD
             oy = int(self.BOARD_OY + self.board.height * ts + self.PAD)
 
+        # ── Reposition buttons using NEW btn_h and gap ────────────────────────
         for i, btn in enumerate((self._btn_new, self._btn_help, self._btn_fog,
                                    self._btn_save, self._btn_restart)):
             btn.x = px
-            btn.y = oy + (bh + gap) * i
+            btn.y = oy + (btn_h + gap) * i
 
         self._btn_dev_solve.x = px
-        self._btn_dev_solve.y = oy + (bh + gap) * 5 + gap * 3
+        self._btn_dev_solve.y = oy + (btn_h + gap) * 5 + gap * 3
 
     # ══════════════════════════════════════════════════════════════════════
     #  Draw
@@ -898,10 +952,15 @@ class Renderer:
         win_anim_arr.fill(False)
 
         anim_set = set()     # kept for _draw_win_animation_fx which still needs the set
+        if self.cascade is not self._prev_cascade:
+            # New cascade started (or cleared) — reset persistent accumulator
+            self._cascade_anim_arr.fill(False)
+            self._prev_cascade = self.cascade
         if self.cascade and not self.cascade.done:
-            for (cx, cy) in self.cascade.current():
-                anim_arr[cy, cx] = True
-                anim_set.add((cx, cy))
+            # advance() returns only newly-revealed cells this frame — O(delta) not O(N)
+            for (cx, cy) in self.cascade.advance():
+                self._cascade_anim_arr[cy, cx] = True
+            np.copyto(anim_arr, self._cascade_anim_arr)
 
         win_anim_set = set()
         if self.win_anim and not self.win_anim.done:

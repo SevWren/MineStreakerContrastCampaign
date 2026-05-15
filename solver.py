@@ -394,8 +394,11 @@ def ensure_solver_warmed():
     global _warmed
     if not _warmed:
         print("  Compiling solver kernel…", flush=True)
-        _warmup()
-        _warmed = True
+        t0 = time.perf_counter()
+        _warmup()                                               # may raise; _warmed not set yet
+        elapsed_solver = time.perf_counter() - t0              # capture before print
+        _warmed = True                                          # only set if _warmup() succeeded
+        print(f"  Solver kernel: compiled in {elapsed_solver:.2f}s", flush=True)
 
 
 def solve_board(grid: np.ndarray,
