@@ -41,6 +41,8 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
     n_log = n_iters // log_interval + 1
     history = np.zeros(n_log, dtype=np.float64)
     h_idx = np.int64(0)
+    COPY_STRIDE = np.int64(50)
+    _copy_count = np.int64(0)
 
     for it in range(n_iters):
         # Random candidate cell
@@ -104,7 +106,10 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
             current_loss += delta
             if current_loss < best_loss:
                 best_loss = current_loss
-                best_grid = grid.copy()
+                _copy_count += np.int64(1)
+                if _copy_count >= COPY_STRIDE:
+                    best_grid = grid.copy()
+                    _copy_count = np.int64(0)
 
         # Temperature schedule
         T = T * alpha
@@ -117,6 +122,9 @@ def _sa_kernel(grid, N_field, target, weights, forbidden,
             h_idx += 1
 
     history[h_idx] = current_loss
+    # Final sync: guarantee best_grid reflects current grid if it equals best_loss
+    if current_loss <= best_loss:
+        best_grid = grid.copy()
     return best_grid, best_loss, history
 
 
