@@ -57,16 +57,26 @@ class UnresolvedCluster:
 
 
 def build_neighbor_table(H: int, W: int) -> np.ndarray:
-    nb = np.full((H * W, 8), -1, dtype=np.int32)
-    for y in range(H):
-        for x in range(W):
-            idx = y * W + x; k = 0
-            for dy in range(-1, 2):
-                for dx in range(-1, 2):
-                    if dy == 0 and dx == 0: continue
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < H and 0 <= nx < W:
-                        nb[idx, k] = ny * W + nx; k += 1
+    # Vectorized: build all 8 directional neighbor arrays in parallel, then
+    # compact each row so valid entries precede -1 sentinels.  ~100x faster
+    # than the original pure-Python loop on large boards.
+    y_idx, x_idx = np.mgrid[0:H, 0:W]          # shape (H, W)
+    y_flat = y_idx.ravel()                       # (H*W,)
+    x_flat = x_idx.ravel()                       # (H*W,)
+
+    deltas = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+    # all_nb: shape (H*W, 8) — column k = neighbor index for delta[k], -1 if OOB
+    all_nb = np.full((H * W, 8), -1, dtype=np.int32)
+    for k, (dy, dx) in enumerate(deltas):
+        ny = y_flat + dy
+        nx = x_flat + dx
+        valid = (ny >= 0) & (ny < H) & (nx >= 0) & (nx < W)
+        all_nb[valid, k] = ny[valid] * W + nx[valid]
+
+    # Compact each row: move valid (non -1) entries to the front.
+    # argsort with stable sort puts False (=0, valid) before True (=1, sentinel).
+    order = np.argsort(all_nb == -1, axis=1, kind='stable')
+    nb = np.take_along_axis(all_nb, order, axis=1)
     return np.ascontiguousarray(nb, dtype=np.int32)
 
 _NB_CACHE: dict = {}
