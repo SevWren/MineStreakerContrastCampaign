@@ -168,3 +168,7 @@ demo/demo_screenshot_notes.png
 documentation_ingested_file.txt
 assets/ffiv.png
 assets/ffiv_1.png
+
+# Research experiment outputs
+research/results/*.jsonl
+research/results/runs/
