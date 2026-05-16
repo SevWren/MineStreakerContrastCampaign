@@ -856,14 +856,17 @@ def run_fast_seal_repair(
             break
 
         # R-2 selector: vectorised contact-count computation.
-        # Build a board-wide mask of sealed cluster cells, convolve once with a
-        # 3x3 kernel → contact_counts[y,x] = number of cluster cells adjacent
-        # to position (y,x).  O(board_area) per pass instead of O(sum cluster
-        # sizes) from per-cluster Python set operations.
-        cluster_mask = np.zeros(grid.shape, dtype=np.uint8)
-        for cluster in sealed:
-            for cy, cx in cluster['cells']:
-                cluster_mask[int(cy), int(cx)] = 1
+        # Build a board-wide mask of sealed cluster cells via numpy fancy
+        # indexing (no Python loops over individual cells), then convolve once
+        # with a 3x3 kernel → contact_counts[y,x] = adjacent sealed-cluster
+        # cells count.  O(board_area) per pass, fast even at 1.92 M cells.
+        if sealed:
+            all_cells = np.concatenate([np.asarray(c['cells'], dtype=np.int32)
+                                        for c in sealed], axis=0)
+            cluster_mask = np.zeros(grid.shape, dtype=np.uint8)
+            cluster_mask[all_cells[:, 0], all_cells[:, 1]] = 1
+        else:
+            cluster_mask = np.zeros(grid.shape, dtype=np.uint8)
         _kernel3 = np.ones((3, 3), dtype=np.uint8)
         contact_counts = convolve(cluster_mask, _kernel3, mode='constant').astype(np.int32)
         # Remove self-contribution: cells in cluster_mask count themselves.
