@@ -101,7 +101,7 @@ def _build_post_sa_state(scenario: dict, seed: int) -> dict:
     image_path = str(_ROOT / scenario["image"])
     board_w = scenario["board_w"]
     sizing = derive_board_from_width(image_path, board_w)
-    bw, bh = int(sizing["board_w"]), int(sizing["board_h"])
+    bw, bh = int(sizing["board_width"]), int(sizing["board_height"])
 
     target_eval = load_image_smart(image_path, bw, bh, invert=True)
     target = apply_piecewise_T_compression(target_eval, PW_KNEE, PW_T_MAX)
@@ -183,7 +183,7 @@ def run_experiment(
     scenario: dict,
     seed: int = SEED,
     n_runs: int = 1,
-    log_name: str | None = None,
+    log_name= None,
 ) -> list[dict]:
     """
     Run experiment_fn on a scenario and log results.

@@ -201,10 +201,10 @@ def run_post_sa_local_reanneal(
 
 
 def run_parameter_sweep(
-    scenarios: list[dict] | None = None,
-    ring_radii: list[int] | None = None,
-    mini_sa_iters_list: list[int] | None = None,
-    seal_str_amplifiers: list[float] | None = None,
+    scenarios= None,
+    ring_radii= None,
+    mini_sa_iters_list= None,
+    seal_str_amplifiers= None,
     seed: int = SEED,
 ) -> None:
     """

@@ -232,9 +232,9 @@ def run_mini_sa_reannealing(
 
 
 def run_parameter_sweep(
-    scenarios: list[dict] | None = None,
-    ring_radii: list[int] | None = None,
-    mini_sa_iters_list: list[int] | None = None,
+    scenarios= None,
+    ring_radii= None,
+    mini_sa_iters_list= None,
     seed: int = SEED,
 ) -> None:
     """

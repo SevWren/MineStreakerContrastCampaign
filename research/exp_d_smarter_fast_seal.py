@@ -216,7 +216,7 @@ def run_smarter_fast_seal(
 
 
 def run_all_strategies(
-    scenarios: list[dict] | None = None,
+    scenarios= None,
     seed: int = SEED,
 ) -> None:
     """

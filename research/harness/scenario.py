@@ -47,7 +47,7 @@ SEED = 42
 MAE_TOLERANCE = 0.005
 
 # Acceptance gate: all 4 scenarios must hit n_unknown=0
-def check_acceptance(results: list[dict], baseline_maes: dict | None = None) -> dict:
+def check_acceptance(results: list[dict], baseline_maes= None) -> dict:
     """
     Check whether a set of experiment results passes the acceptance gate.
 

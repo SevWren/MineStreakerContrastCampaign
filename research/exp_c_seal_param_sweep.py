@@ -89,7 +89,7 @@ def run_pipeline_with_params(
 
     image_path = str(_ROOT / scenario["image"])
     sizing = derive_board_from_width(image_path, scenario["board_w"])
-    bw, bh = int(sizing["board_w"]), int(sizing["board_h"])
+    bw, bh = int(sizing["board_width"]), int(sizing["board_height"])
 
     target_eval = load_image_smart(image_path, bw, bh, invert=True)
     target = apply_piecewise_T_compression(target_eval, PW_KNEE, PW_T_MAX)
@@ -183,7 +183,7 @@ def run_pipeline_with_params(
 
 
 def run_sweep(
-    scenarios: list[dict] | None = None,
+    scenarios= None,
     seal_str_values: list[float] = SEAL_STR_VALUES,
     seal_thr_values: list[float] = SEAL_THR_VALUES,
     seed: int = SEED,
