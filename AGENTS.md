@@ -535,6 +535,27 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest tests/test_gameworks_engine.p
 The engine test suite must remain runnable without a display server. If a change breaks
 headless execution of `tests/test_gameworks_engine.py`, it is a regression.
 
+### Image-Reveal Pipeline Contract
+
+`engine.py::load_board_from_pipeline()` is the **sole call site** for all image-based
+board construction within the gameworks subsystem.
+
+1. **Single call site.** Any gameworks code path needing a `Board` from a source image
+   must call `engine.py::load_board_from_pipeline()`. Do not inline pipeline stage calls
+   (`core`, `sa`, `solver`, `repair`, `corridors`) anywhere else in gameworks.
+2. **`main.py` boundary.** `main.py` may reach the pipeline only through
+   `_build_engine` → `engine.py::load_board_from_pipeline()`. Direct imports of `core`,
+   `sa`, `solver`, `repair`, `corridors`, or `board_sizing` in `main.py` or `renderer.py`
+   are forbidden and must be caught by the architecture boundary test.
+3. **Parameter sync obligation.** When SA/solver tuning constants change in `run_iter9.py`
+   (e.g. `T_COARSE`, `DENSITY`, `SEAL_THR`, `BORDER`), update the matching defaults in
+   `load_board_from_pipeline()` in the **same commit**. These two callers are parallel
+   consumers of the same pipeline modules and must not silently diverge.
+4. **No silent divergence.** `run_iter9.py` is the reference full-pipeline implementation
+   (artifacts + metrics + repair routing). `load_board_from_pipeline()` is the board-only
+   counterpart. They must produce boards of equivalent quality from the same image and
+   seed. Silent divergence is a bug.
+
 ### Gameworks Test Commands
 
 ```bash
@@ -580,7 +601,7 @@ Primary files:
 - `gameworks/engine.py` — `Board`, `GameEngine`, scoring, mine-flash, flood-fill
 - `gameworks/renderer.py` — All pygame drawing, animation, HUD, panel, image ghost
 - `gameworks/main.py` — CLI args, game loop state machine, event dispatch
-- `corridors.py` (repo root) — `build_adaptive_corridors()` (returns `(forbidden, coverage_pct, seeds, mst)` tuple — NOT a dict); imported dynamically inside `engine.py::load_board_from_pipeline`
+- `corridors.py` (repo root) — `build_adaptive_corridors()` (returns `(forbidden, coverage_pct, seeds, mst)` tuple — NOT a dict); imported dynamically inside `engine.py::load_board_from_pipeline` — **sole pipeline call site for gameworks image mode; see Image-Reveal Pipeline Contract above**
 
 Issue tracking: `gameworks/docs/BUGS.md` — canonical bug register with severity, root cause, and fix spec per entry.
 Performance analysis: `gameworks/docs/ZOOM_OUT_PERFORMANCE_REPORT.md` (13 bottleneck forensics) and `gameworks/docs/PERFORMANCE_PLAN.md` (Phases 1–8 remediation plan)

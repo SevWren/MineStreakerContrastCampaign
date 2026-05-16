@@ -71,6 +71,19 @@ The pipeline runs in this fixed sequence, each stage feeding into the next:
 | `report.py` | Stage 9 | Renders technical PNG and explained PNG reports. `figsize=(24, 15.5)` for explained reports (contract: `docs/explained_report_artifact_contract.md`). |
 | `run_iter9.py` | Orchestrator | Entry point. CLI argument parsing, I/O, all stage invocations, artifact persistence under `results/`. Defines `SCHEMA_VERSION`. |
 
+**Pipeline consumers (board construction):**
+
+Two callers invoke pipeline stages to construct boards and must stay in sync on
+SA/solver tuning parameters:
+
+| Caller | Purpose | Output |
+|---|---|---|
+| `run_iter9.py` | Full pipeline — image → all artifacts | Board + `results/` artifacts |
+| `engine.py::load_board_from_pipeline()` | Board-only for gameworks `image` mode | `BoardLoadResult` only, no file artifacts |
+
+When tuning constants change in `run_iter9.py` (e.g. `T_COARSE`, `DENSITY`, `SEAL_THR`),
+update the defaults in `load_board_from_pipeline()` in the same commit.
+
 ---
 
 ## Route State Machine

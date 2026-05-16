@@ -48,6 +48,14 @@ python -m unittest discover -s tests -p "test_*.py"
 - `AGENTS.md` - Development standards and patterns (repo root)
 - `docs/DOCS_INDEX.md` - Active vs archived documentation index
 
+## Image-Reveal Pipeline Contract
+
+`engine.py::load_board_from_pipeline()` is the sole gameworks call site for
+image → Board construction. `main.py` must not import pipeline modules directly.
+When SA/solver constants change in `run_iter9.py`, update the matching defaults in
+`load_board_from_pipeline()` in the same commit.
+Full rules: `AGENTS.md § Image-Reveal Pipeline Contract`.
+
 ## Commit Standards
 
 When committing changes:

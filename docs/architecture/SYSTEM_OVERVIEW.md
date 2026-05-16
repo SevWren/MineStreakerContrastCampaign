@@ -84,7 +84,12 @@ responsibilities:
 - Track scoring, streaks, and session timer via `GameEngine`
 
 The gameworks package is **independent of the pipeline** at runtime except for the optional
-`image` mode, which invokes `load_board_from_pipeline()` via a guarded dynamic import.
+`image` mode, which invokes `load_board_from_pipeline()` in `engine.py` via a guarded
+dynamic import. This function is the **sole call site** for image-based board construction
+within gameworks — no other gameworks module may import pipeline modules directly. If
+SA/solver tuning parameters change in `run_iter9.py`, the corresponding defaults in
+`load_board_from_pipeline()` must be updated in the same commit to prevent silent quality
+divergence between the interactive game and the standalone pipeline.
 Gameworks rendering state is private and never written back to pipeline artifacts.
 
 **Entry point:** `python -m gameworks.main [--random|--npy|--image] [flags]`
