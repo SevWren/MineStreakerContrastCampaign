@@ -1,0 +1,467 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mine-streaker.local/schemas/demo/iter9_visual_solver_demo_config.schema.json",
+  "title": "Iter9 Visual Solver Demo Config",
+  "description": "Runtime configuration contract for the pygame-based Iter9 Visual Solver Demo. The visualizer consumes validated config only; pygame rendering must not parse raw JSON.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "window",
+    "playback",
+    "visuals",
+    "status_panel",
+    "input"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "iter9_visual_solver_demo_config.v1",
+      "description": "Explicit schema version for migration-safe runtime config validation."
+    },
+    "window": {
+      "$ref": "#/$defs/window"
+    },
+    "playback": {
+      "$ref": "#/$defs/playback"
+    },
+    "visuals": {
+      "$ref": "#/$defs/visuals"
+    },
+    "status_panel": {
+      "$ref": "#/$defs/status_panel"
+    },
+    "input": {
+      "$ref": "#/$defs/input"
+    }
+  },
+  "$defs": {
+    "rgb": {
+      "type": "array",
+      "description": "RGB color triplet. Each channel is an integer from 0 through 255.",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "finish_behavior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "close_after_seconds"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "stay_open",
+            "close_immediately",
+            "close_after_delay"
+          ],
+          "default": "stay_open",
+          "description": "Controls what the GUI does after the last playback event has been rendered."
+        },
+        "close_after_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "default": null,
+          "description": "Delay used only when mode is close_after_delay. Null is valid when mode is stay_open or close_immediately."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "close_after_delay"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_after_seconds": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "close_after_seconds"
+            ]
+          }
+        }
+      ]
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "resizable",
+        "max_screen_fraction",
+        "status_panel_width_px",
+        "minimum_board_cell_px",
+        "preferred_board_cell_px",
+        "fit_to_screen",
+        "center_window",
+        "finish_behavior"
+      ],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "default": "Mine-Streaker Iter9 Visual Solver Demo",
+          "description": "Window title shown by pygame."
+        },
+        "resizable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the pygame window may be resized by the OS/window manager."
+        },
+        "max_screen_fraction": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 1.0,
+          "default": 0.92,
+          "description": "Maximum fraction of detected display bounds used by the demo window."
+        },
+        "status_panel_width_px": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200,
+          "default": 360,
+          "description": "Minimum/preferred width in pixels for the responsive status panel. Use 0 to hide the side panel area."
+        },
+        "minimum_board_cell_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 1,
+          "description": "Smallest allowed rendered cell size when fitting a large board."
+        },
+        "preferred_board_cell_px": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 2,
+          "description": "Preferred rendered cell size before fit-to-screen scaling is applied. Pydantic must reject values below minimum_board_cell_px."
+        },
+        "fit_to_screen": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, board cell size may be reduced so the full board plus status panel fits."
+        },
+        "center_window": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, pygame window creation should request centered placement where supported."
+        },
+        "finish_behavior": {
+          "$ref": "#/$defs/finish_behavior"
+        }
+      }
+    },
+    "playback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "min_events_per_second",
+        "base_events_per_second",
+        "mine_count_multiplier",
+        "max_events_per_second",
+        "target_fps",
+        "batch_events_per_frame"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "mine_count_scaled"
+          ],
+          "default": "mine_count_scaled",
+          "description": "mine_count_scaled computes playback rate from total mines."
+        },
+        "min_events_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 50,
+          "description": "Lower clamp for playback event rate."
+        },
+        "base_events_per_second": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "default": 1000,
+          "description": "Base playback event rate before mine-count scaling."
+        },
+        "mine_count_multiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10000,
+          "default": 0.08,
+          "description": "Additional events per second per mine when mode is mine_count_scaled."
+        },
+        "max_events_per_second": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000,
+          "default": 12000,
+          "description": "Upper clamp for playback event rate. Pydantic must enforce min_events_per_second <= max_events_per_second."
+        },
+        "target_fps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 240,
+          "default": 60,
+          "description": "Renderer frame-rate target used by the pygame clock."
+        },
+        "batch_events_per_frame": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, event batching may apply multiple playback events per frame to satisfy events-per-second targets. When false, one event is applied per frame."
+        }
+      }
+    },
+    "visuals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unseen_cell_rgb",
+        "flagged_mine_rgb",
+        "safe_cell_rgb",
+        "unknown_cell_rgb",
+        "background_rgb",
+        "show_safe_cells",
+        "show_unknown_cells"
+      ],
+      "properties": {
+        "unseen_cell_rgb": {
+          "$ref": "#/$defs/rgb",
+          "default": [
+            18,
+            18,
+            18
+          ]
+        },
+        "flagged_mine_rgb": {
+          "$ref": "#/$defs/rgb",
+          "default": [
+            255,
+            80,
+            40
+          ]
+        },
+        "safe_cell_rgb": {
+          "$ref": "#/$defs/rgb",
+          "default": [
+            95,
+            95,
+            95
+          ]
+        },
+        "unknown_cell_rgb": {
+          "$ref": "#/$defs/rgb",
+          "default": [
+            60,
+            100,
+            230
+          ]
+        },
+        "background_rgb": {
+          "$ref": "#/$defs/rgb",
+          "default": [
+            10,
+            10,
+            10
+          ]
+        },
+        "show_safe_cells": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether safe-cell reveal events are visibly painted."
+        },
+        "show_unknown_cells": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether unresolved/unknown cells are visibly painted when such events exist."
+        }
+      }
+    },
+    "status_panel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "show_source_image",
+        "show_board_dimensions",
+        "show_seed",
+        "show_total_cells",
+        "show_mines_flagged",
+        "show_safe_cells_solved",
+        "show_unknown_remaining",
+        "show_playback_speed",
+        "show_elapsed_time",
+        "show_finish_message"
+      ],
+      "properties": {
+        "show_source_image": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_board_dimensions": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_seed": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_total_cells": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_mines_flagged": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_safe_cells_solved": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_unknown_remaining": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_playback_speed": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_elapsed_time": {
+          "type": "boolean",
+          "default": true
+        },
+        "show_finish_message": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefer_solver_event_trace",
+        "allow_final_grid_replay_fallback"
+      ],
+      "properties": {
+        "prefer_solver_event_trace": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, use solver_event_trace JSONL if present and valid."
+        },
+        "allow_final_grid_replay_fallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, the MVP may synthesize playback events from the final grid artifact when no solver event trace exists."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "iter9_visual_solver_demo_config.v1",
+      "window": {
+        "title": "Mine-Streaker Iter9 Visual Solver Demo",
+        "resizable": true,
+        "max_screen_fraction": 0.92,
+        "status_panel_width_px": 360,
+        "minimum_board_cell_px": 1,
+        "preferred_board_cell_px": 2,
+        "fit_to_screen": true,
+        "center_window": true,
+        "finish_behavior": {
+          "mode": "stay_open",
+          "close_after_seconds": null
+        }
+      },
+      "playback": {
+        "mode": "mine_count_scaled",
+        "min_events_per_second": 50,
+        "base_events_per_second": 1000,
+        "mine_count_multiplier": 0.08,
+        "max_events_per_second": 12000,
+        "target_fps": 60,
+        "batch_events_per_frame": true
+      },
+      "visuals": {
+        "unseen_cell_rgb": [
+          18,
+          18,
+          18
+        ],
+        "flagged_mine_rgb": [
+          255,
+          80,
+          40
+        ],
+        "safe_cell_rgb": [
+          95,
+          95,
+          95
+        ],
+        "unknown_cell_rgb": [
+          60,
+          100,
+          230
+        ],
+        "background_rgb": [
+          10,
+          10,
+          10
+        ],
+        "show_safe_cells": false,
+        "show_unknown_cells": true
+      },
+      "status_panel": {
+        "show_source_image": true,
+        "show_board_dimensions": true,
+        "show_seed": true,
+        "show_total_cells": true,
+        "show_mines_flagged": true,
+        "show_safe_cells_solved": true,
+        "show_unknown_remaining": true,
+        "show_playback_speed": true,
+        "show_elapsed_time": true,
+        "show_finish_message": true
+      },
+      "input": {
+        "prefer_solver_event_trace": true,
+        "allow_final_grid_replay_fallback": true
+      }
+    }
+  ]
+}

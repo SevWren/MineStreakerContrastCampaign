@@ -1,0 +1,51 @@
+{
+  "schema_version": "iter9_visual_solver_demo_config.v1",
+  "window": {
+    "title": "Mine-Streaker Iter9 Visual Solver Demo",
+    "resizable": true,
+    "max_screen_fraction": 0.92,
+    "status_panel_width_px": 360,
+    "minimum_board_cell_px": 1,
+    "preferred_board_cell_px": 2,
+    "fit_to_screen": true,
+    "center_window": true,
+    "finish_behavior": {
+      "mode": "stay_open",
+      "close_after_seconds": null
+    }
+  },
+  "playback": {
+    "mode": "mine_count_scaled",
+    "min_events_per_second": 50,
+    "base_events_per_second": 500,
+    "mine_count_multiplier": 0.08,
+    "max_events_per_second": 12000,
+    "target_fps": 60,
+    "batch_events_per_frame": true
+  },
+  "visuals": {
+    "unseen_cell_rgb": [18, 18, 18],
+    "flagged_mine_rgb": [255, 80, 40],
+    "safe_cell_rgb": [95, 95, 95],
+    "unknown_cell_rgb": [60, 100, 230],
+    "background_rgb": [10, 10, 10],
+    "show_safe_cells": false,
+    "show_unknown_cells": false
+  },
+  "status_panel": {
+    "show_source_image": true,
+    "show_board_dimensions": true,
+    "show_seed": true,
+    "show_total_cells": true,
+    "show_mines_flagged": true,
+    "show_safe_cells_solved": true,
+    "show_unknown_remaining": true,
+    "show_playback_speed": true,
+    "show_elapsed_time": true,
+    "show_finish_message": true
+  },
+  "input": {
+    "prefer_solver_event_trace": true,
+    "allow_final_grid_replay_fallback": true
+  }
+}

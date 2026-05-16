@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mine-streaker.local/schemas/demo/solver_event_trace.schema.json",
+  "title": "Iter9 Visual Solver Demo Solver Event Trace Row",
+  "description": "Schema for one JSONL row in solver_event_trace.jsonl. Each line is one event object. The renderer consumes normalized playback events and must not care whether the event came from real solver tracing or final-grid replay.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "step",
+    "round",
+    "y",
+    "x",
+    "state",
+    "display"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "iter9_visual_solver_event_trace.v1",
+      "description": "Explicit event trace row schema version."
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable event identifier. Recommended form: evt_<zero-padded step>."
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic zero-based playback step."
+    },
+    "round": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Solver round, repair round, or synthetic replay round that produced this event."
+    },
+    "y": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based row index into the board grid."
+    },
+    "x": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based column index into the board grid."
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "SAFE",
+        "MINE",
+        "UNKNOWN"
+      ],
+      "description": "Logical cell state after this event."
+    },
+    "display": {
+      "type": "string",
+      "enum": [
+        "reveal",
+        "flag",
+        "unknown"
+      ],
+      "description": "Visual action the demo should apply for this event."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "solver_trace",
+        "final_grid_replay",
+        "repair_trace",
+        "synthetic"
+      ],
+      "default": "solver_trace",
+      "description": "Where the event came from."
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "deduced",
+        "known_from_final_grid",
+        "synthetic_replay"
+      ],
+      "default": "deduced",
+      "description": "Why the event can be rendered as a solved-state update."
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "description": "Optional short reason label, such as deterministic_solver, phase2_full_repair, or final_grid_replay."
+    },
+    "mine_count_after": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "default": null,
+      "description": "Optional total flagged mines after this event."
+    },
+    "safe_count_after": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "default": null,
+      "description": "Optional total solved safe cells after this event."
+    },
+    "unknown_count_after": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "default": null,
+      "description": "Optional total unknown cells after this event."
+    },
+    "elapsed_solver_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "default": null,
+      "description": "Optional elapsed solver time in milliseconds when the event was produced."
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {},
+      "description": "Optional low-level diagnostics. Renderer must not require metadata."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "MINE"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "display": {
+            "const": "flag"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "SAFE"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "display": {
+            "const": "reveal"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "UNKNOWN"
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "display": {
+            "const": "unknown"
+          }
+        }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "schema_version": "iter9_visual_solver_event_trace.v1",
+      "event_id": "evt_000000",
+      "step": 0,
+      "round": 0,
+      "y": 12,
+      "x": 77,
+      "state": "MINE",
+      "display": "flag",
+      "source": "final_grid_replay",
+      "confidence": "known_from_final_grid",
+      "reason": "final_grid_replay",
+      "mine_count_after": 1,
+      "safe_count_after": 0,
+      "unknown_count_after": null,
+      "elapsed_solver_ms": null,
+      "metadata": {}
+    }
+  ]
+}
