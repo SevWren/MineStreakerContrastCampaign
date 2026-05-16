@@ -791,8 +791,8 @@ def run_iter9_single(
     # post-SA unknown count (more unknowns = more sealed clusters to handle).
     # Using max() so each criterion independently bumps up the budget.
     _fast_seal_budget_s = max(
-        max(3.0, min(5.0, _board_area / 150_000)),   # board-area factor
-        max(3.0, min(5.0, _n_unk_post_sa / 3_000)),  # unknown-count factor
+        max(3.0, _board_area / 150_000),   # board-area factor (uncapped: large boards get more time)
+        max(3.0, _n_unk_post_sa / 3_000),  # unknown-count factor (uncapped: more clusters = more time)
     )
     fast_seal_result = run_fast_seal_repair(
         grid, target, forbidden, max_passes=500, solve_max_rounds=50,
@@ -852,10 +852,15 @@ def run_iter9_single(
             # Tight budgets since fast_seal already handled most sealed
             # clusters; residual unknowns are few and easier to resolve.
             # If fast_seal left few unknowns (≤200), routing can still help
-            # (small residual sealed clusters).  For large residuals, routing
-            # is unlikely to make progress on 50/50 ambiguities — exit fast.
-            phase2_budget_s=(2.0 if _n_unk_before_route <= 200 else 0.1),
-            last100_budget_s=(2.0 if _n_unk_before_route <= 200 else 0.1),
+            # (small residual sealed clusters).  For large residuals from fast_seal
+            # timeout, give phase2 a real budget scaled with remaining unknowns.
+            # The 0.1s bailout only applied to 50/50 ambiguities; sealed-cluster
+            # failures need genuine repair time.
+            phase2_budget_s=(
+                2.0 if _n_unk_before_route <= 200
+                else max(30.0, _n_unk_before_route / 5_000)
+            ),
+            last100_budget_s=(2.0 if _n_unk_before_route <= 100 else 0.1),
             last100_unknown_threshold=100,
             solve_max_rounds=200,
             # 10 propagation rounds is enough for sealed-cluster detection.
