@@ -775,7 +775,7 @@ def run_iter9_single(
     phase_timers["refine_sa_total"] = time.perf_counter() - phase_start
 
     assert_board_valid(grid, forbidden, "post-SA")
-    sr_post_sa = solve_board(grid, max_rounds=300, mode="full")
+    sr_post_sa = solve_board(grid, max_rounds=15, mode="full")
 
     # Fast seal repair: O(max_passes × board_area) vs O(N_clusters × N_candidates × board_area).
     # Breaks sealed unknown clusters by removing the lowest-target-value adjacent mine
@@ -795,7 +795,7 @@ def run_iter9_single(
         max(3.0, min(5.0, _n_unk_post_sa / 3_000)),  # unknown-count factor
     )
     fast_seal_result = run_fast_seal_repair(
-        grid, target, forbidden, max_passes=500, solve_max_rounds=200,
+        grid, target, forbidden, max_passes=500, solve_max_rounds=50,
         time_budget_s=_fast_seal_budget_s, verbose=True,
     )
     grid = fast_seal_result.grid
@@ -833,7 +833,7 @@ def run_iter9_single(
         phase1_repair_hit_time_budget = False
     grid[forbidden == 1] = 0
     assert_board_valid(grid, forbidden, "post-phase1")
-    sr_phase1 = solve_board(grid, max_rounds=300, mode="full")
+    sr_phase1 = solve_board(grid, max_rounds=15, mode="full")
     phase_timers["phase1_repair"] = time.perf_counter() - phase_start
 
     # Late-stage routing — use reduced budgets since fast seal handled most work.

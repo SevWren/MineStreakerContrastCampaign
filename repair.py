@@ -333,47 +333,86 @@ def find_sealed_unknown_clusters(grid: np.ndarray, sr, forbidden: np.ndarray) ->
     """
     Return sealed UNKNOWN clusters without mutating the grid.
     Uses sr.state as authoritative solver state.
+    Vectorized: computes all adjacency masks ONCE for the entire board, then
+    uses numpy array indexing per cluster — O(9*n_unknown) total instead of
+    O(N*n_comp) from per-cluster convolutions.
     """
     if sr is None or sr.state is None or int(sr.n_unknown) <= 0:
         return []
 
     state = sr.state
-    labeled, n_comp = nd_label((state == UNKNOWN).astype(np.int8))
-    clusters = []
-    for cluster_id in range(1, int(n_comp) + 1):
-        comp_mask = labeled == cluster_id
-        unk_cells = np.argwhere(comp_mask)
-        ext_mines = set()
-        has_safe_neighbor = False
+    unknown_mask = (state == UNKNOWN)
+    labeled, n_comp = nd_label(unknown_mask.astype(np.int8))
+    if n_comp == 0:
+        return []
 
+    safe_mask = (state == SAFE)
+    # All non-forbidden grid mines regardless of solver state
+    # (external mines can be in other unknown clusters too)
+    all_mines = (grid == 1) & (forbidden == 0)
+
+    # Compute adjacency masks ONCE for the entire board using a single convolution each
+    safe_u8 = safe_mask.astype(np.uint8)
+    mine_u8 = all_mines.astype(np.uint8)
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    # safe_expanded[y,x] > 0 means (y,x) is adjacent to some SAFE cell
+    safe_expanded = convolve(safe_u8, kernel, mode='constant') > 0
+    # mine_expanded[y,x] > 0 means (y,x) is adjacent to some grid mine
+    mine_expanded = convolve(mine_u8, kernel, mode='constant') > 0
+
+    # Unknown cells with a SAFE neighbor → their cluster has a safe path out
+    unk_with_safe = unknown_mask & safe_expanded
+    # Unknown cells adjacent to any grid mine (potential external mine)
+    unk_with_mine = unknown_mask & mine_expanded
+
+    # Cluster IDs that have at least one cell with a SAFE neighbor (not sealed)
+    safe_cluster_ids = set(labeled[unk_with_safe].ravel()) - {0}
+    # Cluster IDs that have at least one cell adjacent to a grid mine
+    mine_cluster_ids = set(labeled[unk_with_mine].ravel()) - {0}
+
+    # Truly sealed: has external mines but NO safe neighbors
+    sealed_ids = mine_cluster_ids - safe_cluster_ids
+    if not sealed_ids:
+        return []
+
+    # For truly sealed clusters only, find external mines using original Python loops.
+    # The global convolutions above already filtered out non-sealed clusters,
+    # so we iterate only over cells of sealed clusters — O(9 × n_sealed_cells) total.
+    H, W = grid.shape
+
+    # Collect cells of sealed clusters indexed by cluster ID
+    unk_yx = np.argwhere(unknown_mask)
+    sealed_id_arr = labeled[unk_yx[:, 0], unk_yx[:, 1]]
+
+    clusters = []
+    for cluster_id in sealed_ids:
+        sel = sealed_id_arr == cluster_id
+        unk_cells = unk_yx[sel]
+
+        ext_mines = set()
         for cy, cx in unk_cells:
-            cy_i = int(cy)
-            cx_i = int(cx)
+            cy_i = int(cy); cx_i = int(cx)
             for dy in range(-1, 2):
                 for dx in range(-1, 2):
                     if dy == 0 and dx == 0:
                         continue
-                    ny = cy_i + dy
-                    nx = cx_i + dx
-                    if 0 <= ny < grid.shape[0] and 0 <= nx < grid.shape[1]:
-                        if state[ny, nx] == SAFE:
-                            has_safe_neighbor = True
-                        if grid[ny, nx] == 1 and forbidden[ny, nx] == 0 and not comp_mask[ny, nx]:
-                            ext_mines.add((int(ny), int(nx)))
+                    ny = cy_i + dy; nx = cx_i + dx
+                    if 0 <= ny < H and 0 <= nx < W:
+                        if grid[ny, nx] == 1 and forbidden[ny, nx] == 0 and labeled[ny, nx] != cluster_id:
+                            ext_mines.add((ny, nx))
 
-        if has_safe_neighbor or not ext_mines:
+        if not ext_mines:
             continue
 
-        cells = [(int(y), int(x)) for y, x in unk_cells]
         clusters.append(
             {
                 "cluster_id": int(cluster_id),
-                "cluster_size": int(len(cells)),
-                "cells": [[int(y), int(x)] for y, x in cells],
+                "cluster_size": int(len(unk_cells)),
+                "cells": [[int(y), int(x)] for y, x in unk_cells],
                 "has_safe_neighbor": False,
                 "external_mines": [[int(y), int(x)] for y, x in sorted(ext_mines)],
                 "external_mine_count": int(len(ext_mines)),
-                "cluster_kind": "sealed_single_mesa" if len(cells) == 1 else "sealed_multi_cell_cluster",
+                "cluster_kind": "sealed_single_mesa" if len(unk_cells) == 1 else "sealed_multi_cell_cluster",
             }
         )
     return clusters

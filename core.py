@@ -10,9 +10,29 @@ The SA loss scale changes but the relative gradient is correct.
 from __future__ import annotations
 import numpy as np
 from scipy.ndimage import convolve, gaussian_filter, sobel
+from numba import njit
 from PIL import Image, ImageEnhance
 
 _KERNEL = np.array([[1,1,1],[1,0,1],[1,1,1]], dtype=np.int32)
+
+
+@njit(cache=True, fastmath=True)
+def _compute_N_nb(g, out, H, W):
+    """Numba-compiled 8-neighbor sum. Replaces scipy convolve for compute_N."""
+    for y in range(H):
+        for x in range(W):
+            s = np.int32(0)
+            for dy in range(-1, 2):
+                ny = y + dy
+                if ny < 0 or ny >= H:
+                    continue
+                for dx in range(-1, 2):
+                    if dy == 0 and dx == 0:
+                        continue
+                    nx = x + dx
+                    if 0 <= nx < W:
+                        s += np.int32(g[ny, nx])
+            out[y, x] = np.uint8(s)
 
 
 def _as_binary_u8_contig(grid: np.ndarray) -> np.ndarray:
@@ -27,7 +47,10 @@ def _as_binary_u8_contig(grid: np.ndarray) -> np.ndarray:
 
 def compute_N(grid: np.ndarray) -> np.ndarray:
     g = _as_binary_u8_contig(grid)
-    return convolve(g, _KERNEL, mode='constant', cval=0).astype(np.uint8, copy=False)
+    H, W = g.shape
+    out = np.empty((H, W), dtype=np.uint8)
+    _compute_N_nb(g, out, np.int32(H), np.int32(W))
+    return out
 
 
 def load_image_smart(path: str, board_w: int, board_h: int,
