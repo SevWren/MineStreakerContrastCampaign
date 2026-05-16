@@ -855,14 +855,33 @@ def run_fast_seal_repair(
                 print(f"  FastSeal pass {pass_idx}: no sealed clusters — done", flush=True)
             break
 
+        # Compute N once per pass for constraint scoring
+        N = compute_N(grid)
+
         n_this_pass = 0
         for cluster in sealed:
             ext_mines = [(int(yx[0]), int(yx[1])) for yx in cluster['external_mines']]
             if not ext_mines:
                 continue
-            # Remove the external mine with the lowest target value
-            # (minimises visual-error cost of the repair).
-            best_mine = min(ext_mines, key=lambda yx: float(target[yx[0], yx[1]]))
+
+            # Constraint-score selector: pick mine affecting most numbered cells
+            # This helps the solver make more progress by removing high-constraint mines
+            def constraint_score(mine_yx):
+                my, mx = mine_yx
+                score = 0
+                # Count adjacent numbered cells (non-mine cells with N > 0)
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        if dy == 0 and dx == 0:
+                            continue
+                        ny, nx = my + dy, mx + dx
+                        if 0 <= ny < grid.shape[0] and 0 <= nx < grid.shape[1]:
+                            if grid[ny, nx] == 0 and N[ny, nx] > 0:
+                                score += 1
+                # Tie-break with target value (lower is better visually)
+                return (score, -float(target[my, mx]))
+
+            best_mine = max(ext_mines, key=constraint_score)
             grid[best_mine[0], best_mine[1]] = 0
             n_this_pass += 1
             n_fixed += 1
