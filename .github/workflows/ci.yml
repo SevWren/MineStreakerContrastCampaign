@@ -27,19 +27,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy Pillow matplotlib scikit-image numba pydantic jsonschema pytest pyflakes
+          pip install numpy scipy Pillow matplotlib scikit-image numba pytest pyflakes
           pip install pygame || true
 
       - name: Run pipeline tests
         run: |
-          python -m pytest tests/ --ignore=tests/test_gameworks_engine.py --ignore=tests/demo/ -v
-
-      - name: Run demo tests
-        env:
-          SDL_VIDEODRIVER: dummy
-          SDL_AUDIODRIVER: dummy
-        run: |
-          python -m pytest tests/demo/ -v
+          python -m pytest tests/ --ignore=tests/test_gameworks_engine.py -v
 
       - name: Run gameworks engine tests (headless)
         env:

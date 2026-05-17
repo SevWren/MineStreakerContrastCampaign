@@ -135,12 +135,8 @@ All artifacts are written to `results/iter9/<run_id>/` for single runs, or
 ### `configs/` Directory
 
 The `configs/` directory holds JSON config files for reproducible runs. Used primarily
-by `source_config.py` for image manifest validation and by demo configs.
-
-```
-configs/
-└── demo/          # Demo runtime config JSON files
-```
+by `source_config.py` for image manifest validation.
+Demo configs are in the `demo/standalone` branch under `configs/demo/`.
 
 ### `source_config.py` Config Model
 

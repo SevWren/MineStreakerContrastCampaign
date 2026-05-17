@@ -10,8 +10,7 @@ Mine-Streaker is a Python research codebase dedicated to reconstructing Mineswee
 - **Numerical/Scientific:** NumPy, SciPy, Numba (for high-performance kernels), scikit-image
 - **Image Processing:** Pillow (PIL)
 - **Visualization/Reporting:** Matplotlib
-- **Demo/UI:** Pygame (specifically `pygame-ce` is recommended for newer Python versions)
-- **Configuration/Validation:** Pydantic (for demo configs)
+- **Game/UI:** Pygame for `gameworks/` interactive game (use `pygame-ce` on Python 3.13+)
 
 ## Project Architecture
 
@@ -32,10 +31,8 @@ Mine-Streaker is a Python research codebase dedicated to reconstructing Mineswee
 ### Specialized Directories
 
 - `assets/`: Source images and `image_guard.py` for integrity verification.
-- `demo/` & `demos/`: Contains the Iter9 Visual Solver Demo, including its own documentation, contracts, and runtime package.
 - `results/`: **All generated artifacts must be stored here.**
 - `tests/`: Unit and contract-focused tests.
-- `tests/demo/`: Demo-specific tests.
 - `docs/`: Active and archived project documentation.
 
 ## Development Workflows
@@ -46,7 +43,6 @@ Mine-Streaker is a Python research codebase dedicated to reconstructing Mineswee
 - **Batch Image Sweep:** `python run_iter9.py --image-dir assets --image-glob "*.png" --board-w 300 --seed 11 --allow-noncanonical`
 - **Benchmark Run:** `python run_benchmark.py --image <path> --widths 300 360 --seeds 300 301`
 - **Regression Check:** `python run_benchmark.py --regression-only`
-- **Visual Demo:** `powershell -NoProfile -ExecutionPolicy Bypass -File .\demo\run_iter9_visual_solver_demo_prompted.ps1`
 
 ### 2. Testing
 
@@ -54,8 +50,6 @@ Mine-Streaker is a Python research codebase dedicated to reconstructing Mineswee
 # Full suite
 python -m unittest discover -s tests -p "test_*.py"
 
-# Demo-specific tests
-python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 ```
 
 ## Engineering Standards & Conventions
@@ -73,14 +67,6 @@ python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 - **Safety:** Use atomic output writes (`*.tmp` then `os.replace`).
 - **Route State Invariants:** All repair route artifacts must satisfy the accepted-move-count invariants defined in `docs/ROUTE_STATE_FIELD_INVARIANTS.md`. This is the binding contract for the 4-field route-state model (`phase1_route`, `phase2_route`, `phase2_repair_status`, `route_resolution_status`).
 - **Numba:** Keep kernels isolated and deterministic.
-
-### Iter9 Visual Solver Demo (Strict Contracts)
-
-Work touching the demo (`demo/`, `demos/iter9_visual_solver/`, etc.) must strictly adhere to the contracts in `demo/docs/`.
-
-- **Playback Speed SSOT:** `demo/docs/playback_speed_contract.md` is the binding source of truth for all playback/speed/scheduling logic.
-- **TDD Requirement:** Demo work must be TDD-first. Add/update failing tests before implementation.
-- **Pygame/Pydantic:** Pygame is restricted to rendering modules; Pydantic to config modules.
 
 ## Agent Guidelines
 

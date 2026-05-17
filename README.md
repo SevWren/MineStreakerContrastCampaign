@@ -148,11 +148,6 @@ Batch-image guidance:
 |-- source_config.py
 |-- assets/
 |-- configs/
-|   `-- demo/
-|-- demos/
-|   `-- iter9_visual_solver/   # Visual solver demo package
-|-- demo/
-|   `-- docs/                  # Demo contracts and schema docs
 |-- docs/                      # Pipeline and governance docs
 |-- gameworks/                 # Interactive Pygame Minesweeper game
 |   |-- engine.py
@@ -249,19 +244,6 @@ Technical report wording remains:
 - `Loss curve (log)`
 - `x50k iters`
 - `Weighted loss`
-
-## Demo — Visual Solver Playback
-
-The `demos/iter9_visual_solver/` package provides a visual replay of the pipeline solver,
-rendering each solver event frame-by-frame over the source image.
-
-**Launch:**
-```bash
-python -m demos.iter9_visual_solver --config configs/demo/<config_file>.json
-```
-
-Full runtime contracts, config schema, and acceptance criteria are in `demo/docs/`.
-See `demo/iter9_visual_solver_demo_plan.md` for background and design rationale.
 
 ---
 

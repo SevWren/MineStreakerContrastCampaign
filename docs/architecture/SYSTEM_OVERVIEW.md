@@ -30,17 +30,16 @@ Source Image (assets/*.png)
         |  - failure_taxonomy.json          (solver taxonomy)
         |  - *.png (technical + explained reports)
         |
-        +-------------------+-------------------+
-        |                                       |
-        v                                       v
-+-------------------+             +---------------------------+
-| GAMEWORKS         |             | DEMO SUBSYSTEM            |
-| SUBSYSTEM         |             | demos/iter9_visual_solver/|
-|                   |             |                           |
-| gameworks/main.py |             | Reads pipeline artifacts  |
-| (interactive      |             | and replays solver events |
-|  Pygame game)     |             | frame-by-frame visually   |
-+-------------------+             +---------------------------+
+        |
+        v
++-------------------+
+| GAMEWORKS         |
+| SUBSYSTEM         |
+|                   |
+| gameworks/main.py |
+| (interactive      |
+|  Pygame game)     |
++-------------------+
 ```
 
 ---
@@ -98,38 +97,22 @@ Gameworks rendering state is private and never written back to pipeline artifact
 
 ---
 
-### Demo (`demos/iter9_visual_solver/`)
-
-A standalone visual playback package that reads pipeline artifacts and replays the solver
-decision sequence frame-by-frame. Its responsibilities:
-
-- Load solver event trace JSON artifacts produced by the pipeline
-- Drive a Pygame window to render each solver event over the source image
-- Enforce playback speed contracts (see `demo/docs/playback_speed_contract.md`)
-- Produce no output artifacts — read-only consumer of pipeline results
-
-The demo does **not** write back to pipeline artifacts and does **not** depend on gameworks.
-It has its own test suite under `tests/demo/` (~60 files) and its own contract docs under
-`demo/docs/` (21 files).
-
-**Entry point:** `python -m demos.iter9_visual_solver --config configs/demo/<config>.json`
-
-**Contracts and schema:** `demo/docs/`
+> **Demo subsystem extracted.** `demos/iter9_visual_solver/` lives on the `demo/standalone`
+> branch. Artifact contract: `demo/docs/artifact_consumption_contract.md` on that branch.
 
 ---
 
 ## Shared Artifact Contracts
 
-The pipeline produces artifacts consumed by both gameworks and the demo. The governing
+The pipeline produces artifacts consumed by gameworks. The governing
 schema documents for each:
 
 | Artifact | Schema Doc | Consumer(s) |
 |---|---|---|
 | `grid_iter9_<board>.npy` | `docs/json_schema/metrics_iter9.schema.md` | Gameworks (`--npy` / `--image` mode) |
-| `metrics_iter9_<board>.json` | `docs/json_schema/metrics_iter9.schema.md` | Demo, benchmarking scripts |
-| `repair_route_decision.json` | `docs/json_schema/repair_route_decision.schema.md` | Demo, regression tests |
-| `visual_delta_summary.json` | `docs/json_schema/visual_delta_summary.schema.md` | Demo |
-| `failure_taxonomy.json` | `docs/json_schema/failure_taxonomy.schema.md` | Demo, analysis scripts |
+| `metrics_iter9_<board>.json` | `docs/json_schema/metrics_iter9.schema.md` | Benchmarking scripts |
+| `repair_route_decision.json` | `docs/json_schema/repair_route_decision.schema.md` | Regression tests |
+| `failure_taxonomy.json` | `docs/json_schema/failure_taxonomy.schema.md` | Analysis scripts |
 | `benchmark_summary.json` | `docs/json_schema/benchmark_summary.schema.md` | External consumers |
 
 Schema index: `docs/json_schema/JSON_OUTPUT_SCHEMA_INDEX.md`
@@ -142,8 +125,6 @@ Route state invariants (accepted-move-count rules): `docs/ROUTE_STATE_FIELD_INVA
 
 - **Gameworks rendering state** — `renderer.py` internal state is private. No pipeline
   module reads or writes it.
-- **Demo event scheduler state** — internal to `demos/iter9_visual_solver/`. Not exposed
-  to pipeline or gameworks.
 - **Gameworks game-save `.npy`** — uses a different format than pipeline `.npy` boards
   (game-save: `-1`=mine, `0–8`=neighbour count; pipeline: `0`=safe, `1`=mine). The formats
   are distinguished by the auto-detection logic in `load_board_from_npy()`.
@@ -157,5 +138,3 @@ Route state invariants (accepted-move-count rules): `docs/ROUTE_STATE_FIELD_INVA
 | `python run_iter9.py` | Pipeline | Single image or image-sweep batch |
 | `python run_benchmark.py` | Pipeline | Benchmark matrix + regression |
 | `python -m gameworks.main` | Gameworks | Interactive Minesweeper game |
-| `python -m demos.iter9_visual_solver` | Demo | Visual solver playback |
-| `powershell .\demo\run_iter9_visual_solver_demo_prompted.ps1` | Demo | Prompted demo launcher (Windows) |

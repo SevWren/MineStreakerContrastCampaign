@@ -324,7 +324,7 @@ If a new function has a different pattern, it requires explicit contract amendme
 - **Implementation Plan**: docs/industry_standard_implementation_execution_plan_recommendation_4.md (Sections 3.1, 3.4, 3.5, 4.2)
 - **Governance**: AGENTS.md § Route-State Field Invariants, § Late-Stage Repair Routing Ownership
 - **Transition Notes**: for_user_review.md (applicability, impact, migration guidance)
-- **Demo Artifacts**: demo/docs/artifact_consumption_contract.md (must reflect new field contract)
+- **Demo Artifacts**: `demo/standalone` branch — `demo/docs/artifact_consumption_contract.md` (must reflect new field contract)
 
 ---
 

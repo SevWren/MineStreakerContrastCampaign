@@ -77,7 +77,7 @@ Before opening a PR or merging, verify all of the following:
 | Gameworks CLI | `gameworks/tests/cli/` |
 | Gameworks integration | `gameworks/tests/integration/` |
 | Import boundary (engine must not import pygame) | `gameworks/tests/architecture/` |
-| Demo subsystem | `tests/demo/iter9_visual_solver/` |
+| Demo subsystem | extracted to `demo/standalone` branch — see that branch's `AGENTS.md` |
 
 See `docs/TESTING_STRATEGY.md` for the full test strategy and runner commands.
 

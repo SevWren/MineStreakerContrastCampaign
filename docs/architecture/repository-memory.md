@@ -10,9 +10,9 @@
    avoid hard-coupling the game to the pipeline. This design is intentional but creates
    a sys.path manipulation pattern.
 
-3. The demo package (`demos/iter9_visual_solver/`) is SEPARATE from the game
-   (`gameworks/`). The demo plays back solver event traces; the game is an interactive
-   Minesweeper. These serve different purposes.
+3. The demo package (`demos/iter9_visual_solver/`) has been extracted to the
+   `demo/standalone` branch. It is a separate subsystem from both the pipeline and
+   gameworks; artifact contract: `demo/docs/artifact_consumption_contract.md` on that branch.
 
 4. `run_iter9.py` is the canonical pipeline entrypoint. `run_benchmark.py` runs
    matrices of runs. Neither directly invokes `gameworks/`.
@@ -40,9 +40,6 @@ Documentation: `gameworks/docs/` (8 documents — see `gameworks/docs/INDEX.md`)
 Test suite: `gameworks/tests/` (22 files — see `docs/DOCS_INDEX.md`)
 Design pattern debt: `gameworks/docs/DESIGN_PATTERNS.md` (R2–R9 recommendations)
 
-### demos/iter9_visual_solver/
-Standalone demo that reads pipeline output artifacts and replays the solver decision
-sequence visually. Has ~30 tests. NOT the game.
 
 ### Pipeline (run_iter9.py + modules)
 SA-based image reconstruction pipeline. Produces .npy boards + visual reports.

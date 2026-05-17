@@ -2,7 +2,7 @@
 
 This document covers project-wide setup for the MineStreaker pipeline and gameworks
 packages. For gameworks-specific developer guidance, see `gameworks/docs/DEVELOPER_GUIDE.md`.
-For demo-specific setup, see `demo/docs/`.
+
 
 ---
 
@@ -87,19 +87,6 @@ See `gameworks/docs/README.md` for full controls and launch modes.
 
 ---
 
-## Running the Demo
-
-```bash
-python -m demos.iter9_visual_solver --config configs/demo/<config_file>.json
-```
-
-Or on Windows with the prompted launcher:
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\demo\run_iter9_visual_solver_demo_prompted.ps1
-```
-
----
-
 ## Running All Tests
 
 See `docs/TESTING_STRATEGY.md` for the full test strategy. Quick-start commands:
@@ -110,9 +97,6 @@ python -m unittest discover -s tests -p "test_*.py"
 
 # Full gameworks test suite (headless — no display required)
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/ -v
-
-# Demo tests
-python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 
 # Lint check
 pyflakes gameworks/ gameworks/tests/
@@ -136,12 +120,7 @@ MineStreakerContrastCampaign/
 |-- board_sizing.py       # Board dimension derivation
 |-- corridors.py          # Corridor construction
 |-- assets/               # Source images
-|-- configs/              # Run and demo config JSON files
-|   `-- demo/
-|-- demos/
-|   `-- iter9_visual_solver/  # Demo package
-|-- demo/
-|   `-- docs/                 # Demo contracts (21 files)
+|-- configs/              # Run config JSON files
 |-- docs/                     # Pipeline and governance docs
 |   |-- architecture/         # System and pipeline architecture
 |   |-- json_schema/          # Output artifact schemas
@@ -168,9 +147,8 @@ MineStreakerContrastCampaign/
 
 ## configs/ Directory
 
-The `configs/` directory holds JSON files for reproducible demo runs. To create a new
-demo config, copy an existing file from `configs/demo/` and adjust the `image_path`,
-`board_w`, and `seed` fields. Schema: `demo/docs/json_schemas/iter9_visual_solver_demo_config.schema.json`.
+The `configs/` directory holds JSON files for reproducible pipeline runs.
+Demo configs are in the `demo/standalone` branch under `configs/demo/`.
 
 ---
 
@@ -208,5 +186,5 @@ cleanup script — manual deletion is the current approach.
 - Testing strategy: `docs/TESTING_STRATEGY.md`
 - Contribution guidelines: `CONTRIBUTING.md`
 - Gameworks developer guide: `gameworks/docs/DEVELOPER_GUIDE.md`
-- Demo contracts: `demo/docs/`
+- Demo contracts: `demo/standalone` branch — `demo/docs/`
 - Agent instructions: `CLAUDE.md`, `AGENTS.md`

@@ -5,11 +5,10 @@
 # Run before every git push and post the complete output as evidence.
 #
 # Usage:
-#   bash scripts/pre_push_check.sh [--suite pipeline|gameworks|demo|all]
+#   bash scripts/pre_push_check.sh [--suite pipeline|gameworks|all]
 #
 # --suite pipeline  (default) python -m unittest discover -s tests
 # --suite gameworks pytest tests/test_gameworks_engine.py + renderer headless
-# --suite demo      python -m unittest discover -s tests/demo/iter9_visual_solver
 # --suite all       same as pipeline (full repo suite)
 #
 # Exit code: 0 = all mechanical checks passed
@@ -147,9 +146,6 @@ run_suite() {
                 echo "pytest not found — install with: pip install pytest" >&2
                 return 1
             fi
-            ;;
-        demo)
-            python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
             ;;
         all|pipeline|*)
             python -m unittest discover -s tests -p "test_*.py"

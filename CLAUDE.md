@@ -33,7 +33,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 - `gameworks/` - Main game package (engine, renderer, main loop)
 - `core.py`, `sa.py`, `solver.py`, `repair.py`, `pipeline.py`, etc. - Reconstruction pipeline (root-level modules)
-- `demos/iter9_visual_solver/` - Visual solver demo package
+
 - `tests/` - Root test suite (pipeline, benchmark, gameworks legacy regression guard)
 - `gameworks/tests/` - Package-local gameworks test suite (unit, integration, renderer, CLI, architecture)
 - `gameworks/docs/` - Documentation including BUGS.md, PERFORMANCE_PLAN.md

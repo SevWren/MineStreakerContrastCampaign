@@ -14,11 +14,10 @@ For gameworks-specific test coverage and hardening plans, see:
 
 ## Test Suite Map
 
-The project has three test domains, each with its own location and runner:
+The project has two primary test domains, each with its own location and runner:
 
 ```
 tests/                          Pipeline contract tests + gameworks legacy guards
-tests/demo/iter9_visual_solver/ Demo-specific tests (~60 files)
 gameworks/tests/                Gameworks package tests (unit, integration, renderer, CLI, architecture)
 ```
 
@@ -52,18 +51,6 @@ python -m unittest discover -s tests -p "test_*.py"
 Or with pytest:
 ```bash
 pytest tests/ -v
-```
-
----
-
-### `tests/demo/iter9_visual_solver/` — Demo Tests (~60 files)
-
-These tests verify the demo subsystem: speed policy, event trace schema, config
-validation, scheduler behavior, and architecture boundaries for the demo package.
-
-**Runner:**
-```bash
-python -m unittest discover -s tests/demo/iter9_visual_solver -p "test_*.py"
 ```
 
 ---
@@ -118,13 +105,6 @@ SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy pytest gameworks/tests/renderer/ -v
 - **Renderer headless:** All rendering paths execute without crashing under `SDL_VIDEODRIVER=dummy`.
 - **CLI:** `--random`, `--npy`, `--image`, `--easy`, `--medium`, `--hard` flags parse correctly.
 - **Integration:** Board construction and full game-loop steps for all three board modes.
-
-### Demo tests (`tests/demo/`)
-
-- **Speed policy:** Playback speed, batching, and scheduler behavior matches
-  `demo/docs/playback_speed_contract.md` (SSOT for all speed logic).
-- **Event trace:** Schema conformance for solver event trace JSON.
-- **Config validation:** Demo config JSON matches schema.
 
 ---
 
